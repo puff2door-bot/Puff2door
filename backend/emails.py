@@ -65,10 +65,11 @@ def items_table(order: dict) -> str:
         for i in order["items"]
     )
     ship = "FREE" if not order.get("shippingCost") else _money(order["shippingCost"])
+    tax_row = f'<tr><td style="padding:4px 0;font-size:14px;color:#737373;">Sales tax ({order.get("taxRate", 0) * 100:g}%)</td><td align="right" style="padding:4px 0;font-size:14px;">{_money(order["tax"])}</td></tr>' if order.get("tax") else ""
     return f"""<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0;">{rows}
 <tr><td style="padding:8px 0;font-size:14px;color:#737373;">Subtotal</td><td align="right" style="padding:8px 0;font-size:14px;">{_money(order["subtotal"])}</td></tr>
-<tr><td style="padding:4px 0;font-size:14px;color:#737373;">Shipping</td><td align="right" style="padding:4px 0;font-size:14px;">{ship}</td></tr>
-<tr><td style="padding:10px 0;font-size:18px;font-weight:800;">Total</td><td align="right" style="padding:10px 0;font-size:18px;font-weight:800;">{_money(order["total"])}</td></tr>
+<tr><td style="padding:4px 0;font-size:14px;color:#737373;">Delivery</td><td align="right" style="padding:4px 0;font-size:14px;">{ship}</td></tr>
+{tax_row}<tr><td style="padding:10px 0;font-size:18px;font-weight:800;">Total</td><td align="right" style="padding:10px 0;font-size:18px;font-weight:800;">{_money(order["total"])}</td></tr>
 </table>"""
 
 

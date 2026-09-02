@@ -219,9 +219,10 @@ class TestCardAndPricing:
         assert o["paymentLast4"] == "4242"
         expected_sub = round(payload["items"][0]["price"], 2)
         assert abs(o["subtotal"] - expected_sub) < 0.011, o
-        expected_ship = 0 if expected_sub >= 75 else 7.99
+        expected_ship = 0 if expected_sub >= 75 else 15.0
         assert abs(o["shippingCost"] - expected_ship) < 0.001
-        assert abs(o["total"] - round(expected_sub + expected_ship, 2)) < 0.011
+        assert abs(o["tax"] - round(expected_sub * 0.065, 2)) < 0.011
+        assert abs(o["total"] - round(expected_sub + expected_ship + o["tax"], 2)) < 0.011
         assert o["zelle"] is None
 
     def test_free_shipping_over_75(self, client, product):
@@ -233,7 +234,7 @@ class TestCardAndPricing:
         o = r.json()
         assert o["subtotal"] >= 75
         assert o["shippingCost"] == 0
-        assert abs(o["total"] - o["subtotal"]) < 0.001
+        assert abs(o["total"] - (o["subtotal"] + o["tax"])) < 0.011
 
     def test_below_floor_price_corrected(self, client, product):
         payload = order_payload(product, "test_card", paymentLast4="4242424242424242")

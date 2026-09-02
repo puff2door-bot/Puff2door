@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { CreditCard, Lock, ChevronRight, ShieldCheck } from "lucide-react";
-import { useCart } from "../context/CartContext";
+import { useCart, computeTotals, PRICING } from "../context/CartContext";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../hooks/use-toast";
 import { usStates } from "../mock";
@@ -20,8 +20,8 @@ const CheckoutPage = () => {
   const [placed, setPlaced] = useState(false);
   const [discount] = useState(0);
 
-  const shipping = subtotal >= 75 || subtotal === 0 ? 0 : 7.99;
-  const total = subtotal + shipping - discount;
+  const { shipping, tax, total: grossTotal } = computeTotals(subtotal);
+  const total = grossTotal - discount;
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
@@ -204,7 +204,8 @@ const CheckoutPage = () => {
             </div>
             <div className="space-y-2 text-sm border-t pt-4">
               <div className="flex justify-between"><span className="text-neutral-500">Subtotal</span><span className="font-semibold">${subtotal.toFixed(2)}</span></div>
-              <div className="flex justify-between"><span className="text-neutral-500">Shipping</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
+              <div className="flex justify-between"><span className="text-neutral-500">Delivery</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
+              <div className="flex justify-between" data-testid="checkout-tax"><span className="text-neutral-500">{PRICING.taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>
             </div>
             <div className="flex justify-between items-center border-t mt-4 pt-4">
               <span className="font-heading text-lg uppercase">Total</span>

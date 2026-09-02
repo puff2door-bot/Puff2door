@@ -162,6 +162,19 @@ ZELLE_NAME = os.environ.get("ZELLE_NAME", "").strip()
 ZELLE_ENABLED = bool(ZELLE_EMAIL)
 TEST_CARD_ENABLED = not (SQUARE_ENABLED or PAYPAL_ENABLED)
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "zelle"}
+TAX_RATE = 0.065  # Orlando / Orange County FL: 6% state + 0.5% county, items only
+DELIVERY_FEE = 15.0
+FREE_DELIVERY_MIN = 75.0
+
+
+def pricing_rules() -> dict:
+    return {"taxRate": TAX_RATE, "taxLabel": "Sales tax (6.5%)", "deliveryFee": DELIVERY_FEE, "freeDeliveryMin": FREE_DELIVERY_MIN}
+
+
+def compute_totals(subtotal: float) -> dict:
+    shipping_cost = 0.0 if subtotal >= FREE_DELIVERY_MIN or subtotal == 0 else DELIVERY_FEE
+    tax = round(subtotal * TAX_RATE, 2)
+    return {"subtotal": round(subtotal, 2), "shippingCost": shipping_cost, "tax": tax, "taxRate": TAX_RATE, "total": round(subtotal + shipping_cost + tax, 2)}
 
 
 def payments_config() -> dict:
@@ -171,6 +184,7 @@ def payments_config() -> dict:
         "paypal": {"enabled": PAYPAL_ENABLED, "clientId": PAYPAL_CLIENT_ID if PAYPAL_ENABLED else None, "env": PAYPAL_ENV},
         "zelle": {"enabled": ZELLE_ENABLED, "email": ZELLE_EMAIL, "name": ZELLE_NAME},
         "testCard": {"enabled": TEST_CARD_ENABLED},
+        "pricing": pricing_rules(),
     }
 
 
@@ -239,10 +253,8 @@ async def price_cart(items: List[CartItem]):
         priced.append({**it.model_dump(), "name": prod["name"], "price": round(price, 2), "image": prod.get("image", ""), "slug": prod["slug"]})
     if problems:
         raise HTTPException(status_code=409, detail="; ".join(problems))
-    subtotal = round(sum(i["price"] * i["qty"] for i in priced), 2)
-    shipping_cost = 0 if subtotal >= 75 else 7.99
-    total = round(subtotal + shipping_cost, 2)
-    return priced, subtotal, shipping_cost, total
+    totals = compute_totals(sum(i["price"] * i["qty"] for i in priced))
+    return priced, totals
 
 
 class GoogleSessionInput(BaseModel):
@@ -540,6 +552,8 @@ def order_response(o: dict) -> dict:
         "shipping": o["shipping"],
         "subtotal": o["subtotal"],
         "shippingCost": o.get("shippingCost", 0),
+        "tax": o.get("tax", 0),
+        "taxRate": o.get("taxRate", 0),
         "discount": o.get("discount", 0),
         "total": o["total"],
         "paymentLast4": o.get("paymentLast4", ""),
@@ -806,7 +820,8 @@ async def paypal_create_order(inp: PayPalCreateInput):
         raise HTTPException(status_code=503, detail="PayPal is not configured")
     if not inp.items:
         raise HTTPException(status_code=400, detail="Your cart is empty")
-    _, _, _, total = await price_cart(inp.items)
+    _, totals = await price_cart(inp.items)
+    total = totals["total"]
     data = await paypal_request("POST", "/v2/checkout/orders", {
         "intent": "CAPTURE",
         "purchase_units": [{"amount": {"currency_code": "USD", "value": f"{total:.2f}"}, "description": "Puff2Door order"}],
@@ -838,7 +853,8 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
     enabled = {"test_card": TEST_CARD_ENABLED, "square": SQUARE_ENABLED, "cash_app": SQUARE_ENABLED, "paypal": PAYPAL_ENABLED, "zelle": ZELLE_ENABLED}
     if method not in PAYMENT_METHODS or not enabled[method]:
         raise HTTPException(status_code=400, detail="That payment method is not available")
-    priced_items, subtotal, shipping_cost, total = await price_cart(inp.items)
+    priced_items, totals = await price_cart(inp.items)
+    subtotal, shipping_cost, total = totals["subtotal"], totals["shippingCost"], totals["total"]
     await reserve_stock(priced_items)
     order_id = str(uuid.uuid4())
     order_number = "P2D-" + "".join(random.choices("0123456789", k=8))
@@ -884,6 +900,8 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
         "shipping": inp.shipping.model_dump(),
         "subtotal": subtotal,
         "shippingCost": shipping_cost,
+        "tax": totals["tax"],
+        "taxRate": totals["taxRate"],
         "discount": 0,
         "total": total,
         **payment,

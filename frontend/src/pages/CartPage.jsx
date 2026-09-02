@@ -2,7 +2,7 @@ import { imgUrl } from "../api";
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Trash2, Minus, Plus, ShoppingBag, ArrowRight, Tag } from "lucide-react";
-import { useCart } from "../context/CartContext";
+import { useCart, computeTotals, PRICING } from "../context/CartContext";
 import { useToast } from "../hooks/use-toast";
 
 const CartPage = () => {
@@ -12,8 +12,8 @@ const CartPage = () => {
   const [promo, setPromo] = useState("");
   const [discount, setDiscount] = useState(0);
 
-  const shipping = subtotal >= 75 || subtotal === 0 ? 0 : 7.99;
-  const total = subtotal + shipping - discount;
+  const { shipping, tax, total: grossTotal } = computeTotals(subtotal);
+  const total = grossTotal - discount;
 
   const applyPromo = () => {
     if (promo.trim().toUpperCase() === "PUFF10") {
@@ -85,9 +85,10 @@ const CartPage = () => {
             </div>
             <div className="space-y-3 text-sm border-t pt-4">
               <div className="flex justify-between"><span className="text-neutral-500">Subtotal</span><span className="font-semibold">${subtotal.toFixed(2)}</span></div>
-              <div className="flex justify-between"><span className="text-neutral-500">Shipping</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
+              <div className="flex justify-between"><span className="text-neutral-500">Delivery</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
+              <div className="flex justify-between" data-testid="cart-tax"><span className="text-neutral-500">{PRICING.taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>
               {discount > 0 && (<div className="flex justify-between text-emerald-600"><span>Discount</span><span className="font-semibold">-${discount.toFixed(2)}</span></div>)}
-              {subtotal < 75 && (<p className="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">Add ${(75 - subtotal).toFixed(2)} more for FREE shipping!</p>)}
+              {subtotal < 75 && (<p className="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">Add ${(PRICING.freeDeliveryMin - subtotal).toFixed(2)} more for FREE delivery!</p>)}
             </div>
             <div className="flex justify-between items-center border-t mt-4 pt-4">
               <span className="font-heading text-lg uppercase">Total</span>

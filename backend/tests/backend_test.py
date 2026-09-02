@@ -212,7 +212,8 @@ class TestOrders:
         assert d["orderNumber"].startswith("P2D-")
         # Server recomputes pricing: client-sent $19.99 is floored to the real product price (+ shipping under $75)
         assert d["items"][0]["price"] >= 19.99
-        assert d["total"] == round(d["subtotal"] + d["shippingCost"], 2)
+        assert d["total"] == round(d["subtotal"] + d["shippingCost"] + d["tax"], 2)
+        assert d["tax"] == round(d["subtotal"] * 0.065, 2)
         assert d["status"] == "placed"
         assert len(d["timeline"]) == 4
         assert "_id" not in d

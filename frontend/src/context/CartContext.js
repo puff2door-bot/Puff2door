@@ -107,4 +107,12 @@ export const CartProvider = ({ children }) => {
   );
 };
 
+export const PRICING = { taxRate: 0.065, taxLabel: "Sales tax (6.5%)", deliveryFee: 15, freeDeliveryMin: 75 };
+
+export const computeTotals = (subtotal, rules = PRICING) => {
+  const shipping = subtotal >= rules.freeDeliveryMin || subtotal === 0 ? 0 : rules.deliveryFee;
+  const tax = Math.round(subtotal * rules.taxRate * 100) / 100;
+  return { subtotal, shipping, tax, total: Math.round((subtotal + shipping + tax) * 100) / 100 };
+};
+
 export const useCart = () => useContext(CartContext);
