@@ -158,11 +158,13 @@ PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID", "").strip()
 PAYPAL_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET", "").strip()
 PAYPAL_ENV = os.environ.get("PAYPAL_ENV", "sandbox").strip().lower()
 PAYPAL_ENABLED = bool(PAYPAL_CLIENT_ID and PAYPAL_SECRET)
-PAYPAL_BASE = "https://api-m.paypal.com" if PAYPAL_ENV == "production" else "https://api-m.sandbox.paypal.com"
+PAYPAL_BASE = "https://api-m.paypal.com" if PAYPAL_ENV in ("production", "live") else "https://api-m.sandbox.paypal.com"
 ZELLE_EMAIL = os.environ.get("ZELLE_EMAIL", "").strip()
 ZELLE_NAME = os.environ.get("ZELLE_NAME", "").strip()
 ZELLE_ENABLED = bool(ZELLE_EMAIL)
-TEST_CARD_ENABLED = not (SQUARE_ENABLED or PAYPAL_ENABLED)
+REAL_CARD_PROVIDER = SQUARE_ENABLED or PAYPAL_ENABLED
+# ALLOW_TEST_CARD=true keeps the simulated card usable for QA even when a real provider exists (hidden in UI). Leave unset in production.
+TEST_CARD_ENABLED = (not REAL_CARD_PROVIDER) or os.environ.get("ALLOW_TEST_CARD", "").lower() == "true"
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "zelle"}
 DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0}
 _settings_cache: dict = {}
@@ -264,7 +266,7 @@ def payments_config() -> dict:
         "cashApp": {"enabled": SQUARE_ENABLED},
         "paypal": {"enabled": PAYPAL_ENABLED, "clientId": PAYPAL_CLIENT_ID if PAYPAL_ENABLED else None, "env": PAYPAL_ENV},
         "zelle": {"enabled": ZELLE_ENABLED, "email": ZELLE_EMAIL, "name": ZELLE_NAME},
-        "testCard": {"enabled": TEST_CARD_ENABLED},
+        "testCard": {"enabled": TEST_CARD_ENABLED, "visible": TEST_CARD_ENABLED and not REAL_CARD_PROVIDER},
     }
 
 
@@ -307,7 +309,14 @@ async def paypal_request(method: str, path: str, body: Optional[dict] = None) ->
         r = await http.request(method, f"{PAYPAL_BASE}{path}", json=body, headers=headers)
     data = r.json() if r.content else {}
     if r.is_error:
-        msg = data.get("message") or data.get("details", [{}])[0].get("description") or "PayPal error"
+        issue = (data.get("details") or [{}])[0].get("issue", "")
+        friendly = {
+            "ORDER_NOT_APPROVED": "The PayPal payment wasn't approved. Please try again.",
+            "ORDER_ALREADY_CAPTURED": "This PayPal payment was already used.",
+            "INSTRUMENT_DECLINED": "PayPal declined the selected payment method. Please choose another in PayPal.",
+            "PAYER_ACTION_REQUIRED": "PayPal needs you to finish approving the payment.",
+        }
+        msg = friendly.get(issue) or data.get("message") or (data.get("details") or [{}])[0].get("description") or "PayPal error"
         raise HTTPException(status_code=402, detail=f"PayPal: {msg}")
     return data
 

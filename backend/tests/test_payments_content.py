@@ -103,31 +103,41 @@ class TestPaymentsConfig:
         c = r.json()
         assert c["zelle"]["enabled"] is True
         assert c["zelle"]["email"] == "puff2door@gmail.com"
-        assert c["testCard"]["enabled"] is True
-        assert c["square"]["enabled"] is False
-        assert c["cashApp"]["enabled"] is False
-        assert c["paypal"]["enabled"] is False
-        assert c["square"]["applicationId"] is None
-        assert c["paypal"]["clientId"] is None
+        assert c["testCard"]["enabled"] is True  # ALLOW_TEST_CARD=true in preview
+        assert c["cashApp"]["enabled"] == c["square"]["enabled"]
+        assert (c["square"]["applicationId"] is None) == (not c["square"]["enabled"])
+        assert (c["paypal"]["clientId"] is None) == (not c["paypal"]["enabled"])
+        if c["square"]["enabled"] or c["paypal"]["enabled"]:
+            assert c["testCard"]["visible"] is False
 
 
 # ---- disabled providers ----
 class TestDisabledMethods:
     @pytest.mark.parametrize("method", ["square", "paypal", "cash_app"])
     def test_disabled_method_rejected(self, client, product, method):
+        cfg = client.get(f"{API}/payments/config").json()
+        enabled = cfg["paypal"]["enabled"] if method == "paypal" else cfg["square"]["enabled"]
         r = client.post(f"{API}/orders", json=order_payload(product, method, paymentToken="cnon:fake", paypalOrderId="X"))
-        assert r.status_code == 400, r.text
-        assert "not available" in r.json()["detail"].lower()
+        if enabled:
+            assert r.status_code == 402, r.text  # provider configured: bogus token/order is rejected by provider check
+        else:
+            assert r.status_code == 400, r.text
+            assert "not available" in r.json()["detail"].lower()
 
     def test_unknown_method_rejected(self, client, product):
         r = client.post(f"{API}/orders", json=order_payload(product, "bitcoin"))
         assert r.status_code == 400, r.text
         assert "not available" in r.json()["detail"].lower()
 
-    def test_paypal_create_order_503(self, client, product):
+    def test_paypal_create_order(self, client, product):
+        cfg = client.get(f"{API}/payments/config").json()
         r = client.post(f"{API}/payments/paypal/create-order", json={"items": [cart_item(product)]})
-        assert r.status_code == 503, r.text
-        assert "not configured" in r.json()["detail"].lower()
+        if cfg["paypal"]["enabled"]:
+            assert r.status_code == 200, r.text
+            assert r.json()["id"] and r.json()["total"] > 0
+        else:
+            assert r.status_code == 503, r.text
+            assert "not configured" in r.json()["detail"].lower()
 
     def test_empty_cart_rejected(self, client):
         r = client.post(f"{API}/orders", json={"items": [], "shipping": dict(SHIPPING), "subtotal": 0, "shippingCost": 0, "total": 0, "paymentMethod": "test_card"})
@@ -219,20 +229,22 @@ class TestCardAndPricing:
         assert o["paymentLast4"] == "4242"
         expected_sub = round(payload["items"][0]["price"], 2)
         assert abs(o["subtotal"] - expected_sub) < 0.011, o
-        expected_ship = 0 if expected_sub >= 75 else 15.0
+        rules = client.get(f"{API}/settings").json()["pricing"]
+        expected_ship = 0 if expected_sub >= rules["freeDeliveryMin"] else rules["deliveryFee"]
         assert abs(o["shippingCost"] - expected_ship) < 0.001
         assert abs(o["tax"] - round(expected_sub * 0.065, 2)) < 0.011
         assert abs(o["total"] - round(expected_sub + expected_ship + o["tax"], 2)) < 0.011
         assert o["zelle"] is None
 
-    def test_free_shipping_over_75(self, client, product):
-        qty = int(75 // (product.get("salePrice") or product["price"])) + 1
+    def test_free_shipping_over_threshold(self, client, product):
+        rules = client.get(f"{API}/settings").json()["pricing"]
+        qty = int(rules["freeDeliveryMin"] // (product.get("salePrice") or product["price"])) + 1
         payload = order_payload(product, "test_card", paymentLast4="4242424242424242")
         payload["items"][0]["qty"] = qty
         r = client.post(f"{API}/orders", json=payload)
         assert r.status_code == 200, r.text
         o = r.json()
-        assert o["subtotal"] >= 75
+        assert o["subtotal"] >= rules["freeDeliveryMin"]
         assert o["shippingCost"] == 0
         assert abs(o["total"] - (o["subtotal"] + o["tax"])) < 0.011
 
