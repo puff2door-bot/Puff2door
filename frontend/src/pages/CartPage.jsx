@@ -1,3 +1,4 @@
+import { imgUrl } from "../api";
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Trash2, Minus, Plus, ShoppingBag, ArrowRight, Tag } from "lucide-react";
@@ -47,7 +48,7 @@ const CartPage = () => {
             {items.map((it) => (
               <div key={it.id} className="flex gap-4 p-4 border-b last:border-b-0">
                 <Link to={`/shop/${it.slug}`} className="h-24 w-24 shrink-0 bg-neutral-50 rounded-lg overflow-hidden grid place-items-center p-2">
-                  <img src={it.image} alt={it.name} className="max-h-full max-w-full object-contain" />
+                  <img src={imgUrl(it.image)} alt={it.name} className="max-h-full max-w-full object-contain" />
                 </Link>
                 <div className="flex-1 min-w-0">
                   <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide">{it.category}</p>

@@ -4,8 +4,8 @@
 export const BRAND = {
   name: "Puff2Door",
   tagline: "Puffs Delivered To Your Door",
-  phone: "(407) 555-0199",
-  email: "support@puff2door.com",
+  phone: "(530) 665-0850",
+  email: "puff2door@gmail.com",
   address: "1200 Orange Ave, Orlando, FL 32801",
 };
 
@@ -59,9 +59,46 @@ export const brands = [
   { name: "ZIPPO", slug: "zippo", image: "https://nonaonlinesmokeshop.com/wp-content/uploads/2023/09/23-ZIPPO-280x280.jpg" },
 ];
 
+const BRAND_PREFIXES = [
+  "GEEK BAR", "RAZ", "NEXA", "SMOGGER", "FOGER", "TWENTY ONE", "PURE GRAM", "FLYING HORSE", "BOUTIQ", "MEADOW",
+  "MUHA", "UNIVERSITY", "CAKE", "MELLOW FELLOW", "MODUS", "MINTS", "CKARATS", "HC8", "BLACK SHEEP", "VENOM",
+  "RED DEVIL", "RED TRIANGLE", "FIERY CUBES", "MAGIC TRIP", "FLYING MONKEY", "NUGG LIFE", "BANGBANG", "DANKLEAF",
+  "PRSNLS", "WILD HEMP", "APEX", "RED DRAGON", "SILLY DOTS", "PURE ZEN", "GLASS TOBACCO PIPE",
+];
+
+export const FLAVOR_KEYWORDS = [
+  "Grape", "Mango", "Watermelon", "Strawberry", "Blueberry", "Peach", "Pineapple", "Cherry", "Kiwi", "Blue Raz",
+  "Hawaiian Punch", "Tropical", "Lemon", "Orange", "Raspberry", "Melon", "Apple", "Mint", "Ice", "Dragon Berry",
+];
+
+export const PUFF_RANGES = [
+  { key: "up-to-10k", label: "Up to 10K puffs", min: 1, max: 10000 },
+  { key: "10k-30k", label: "10K – 30K puffs", min: 10001, max: 30000 },
+  { key: "30k-40k", label: "30K – 40K puffs", min: 30001, max: 40000 },
+  { key: "50k-plus", label: "50K+ puffs", min: 40001, max: Infinity },
+];
+
+const OUT_OF_STOCK = new Set([
+  "RAZ VUE 50000 REFILL POD HAWAIIAN PUNCH",
+  "FOGER DISPOSABLE POD 30000 PUFF CHERRY SLUSH",
+  "MUHA CARTRIDGE 1G SATIVA JACK HERER",
+  "CAKE CDT STAX DISPOSABLE 3G HYBRID M-18",
+]);
+
+const parsePuffs = (name) => {
+  let m = name.match(/\b(\d{1,3})K\b/);
+  if (m) return parseInt(m[1], 10) * 1000;
+  m = name.match(/\b(\d{4,5})\s*PUFF/);
+  if (m) return parseInt(m[1], 10);
+  m = name.match(/\bTN(\d{4})\b/);
+  if (m) return parseInt(m[1], 10);
+  return null;
+};
+
 let _id = 0;
 const p = (name, category, categorySlug, price, image, image2 = null, brand = "") => {
   _id += 1;
+  const upper = name.toUpperCase();
   return {
     id: _id,
     slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 60) + "-" + _id,
@@ -72,8 +109,11 @@ const p = (name, category, categorySlug, price, image, image2 = null, brand = ""
     image,
     image2: image2 || image,
     brand,
+    brandName: BRAND_PREFIXES.find((b) => upper.startsWith(b)) || name.split(" ")[0],
+    flavors: FLAVOR_KEYWORDS.filter((f) => upper.includes(f.toUpperCase())),
+    puffs: parsePuffs(upper),
     rating: 4 + Math.round(Math.random() * 10) / 10,
-    inStock: true,
+    inStock: !OUT_OF_STOCK.has(name),
     description:
       "Premium quality " + category.toLowerCase() + " available for fast, discreet delivery from Puff2Door. Lab-tested, sealed, and ready to enjoy. Must be 21 or older to purchase.",
   };
@@ -168,7 +208,22 @@ export const getProductsByCategory = (slug) =>
 export const getProductBySlug = (slug) =>
   products.find((pr) => pr.slug === slug);
 
+export const getProductById = (id) => products.find((pr) => pr.id === Number(id));
+
 export const newProducts = products.slice(0, 18);
+
+const dealPool = products.filter((pr) => pr.categorySlug === "disposable" && pr.inStock);
+const dayIndex = Math.floor(Date.now() / 86400000);
+const dealProduct = dealPool[dayIndex % dealPool.length];
+export const dealOfTheDay = {
+  product: dealProduct,
+  pct: 20,
+  dealPrice: Math.round(dealProduct.price * 0.8 * 100) / 100,
+  endsAt: new Date(new Date().setHours(24, 0, 0, 0)),
+};
+
+export const getPrice = (pr) => (pr.id === dealOfTheDay.product.id ? dealOfTheDay.dealPrice : pr.price);
+export const isOnDeal = (pr) => pr.id === dealOfTheDay.product.id;
 
 const byName = (name) => products.find((pr) => pr.name === name);
 const productLink = (name) => `/shop/${byName(name).slug}`;

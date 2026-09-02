@@ -19,4 +19,6 @@ export const setToken = (token) => {
 
 export const getToken = () => localStorage.getItem("p2d_token");
 
+export const imgUrl = (u) => (u && u.startsWith("/api/") ? `${BACKEND_URL}${u}` : u);
+
 export default api;

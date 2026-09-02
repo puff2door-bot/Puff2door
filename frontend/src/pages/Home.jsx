@@ -2,14 +2,10 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Truck, ShieldCheck, Clock, BadgePercent } from "lucide-react";
 import HeroSlider from "../components/HeroSlider";
+import DealOfTheDay from "../components/DealOfTheDay";
 import ProductCard from "../components/ProductCard";
-import {
-  promoBlocks,
-  newProducts,
-  categories,
-  brands,
-  getProductsByCategory,
-} from "../mock";
+import { promoBlocks, categories, brands } from "../mock";
+import { useCatalog } from "../context/CatalogContext";
 
 const tabCats = [
   { name: "Disposable Vapes", slug: "disposable" },
@@ -44,6 +40,7 @@ const SectionHeader = ({ title, link }) => (
 
 const Home = () => {
   const [activeTab, setActiveTab] = useState("disposable");
+  const { newProducts, getProductsByCategory } = useCatalog();
   const tabProducts = getProductsByCategory(activeTab).slice(0, 12);
 
   return (
@@ -66,6 +63,8 @@ const Home = () => {
           ))}
         </div>
       </section>
+
+      <DealOfTheDay />
 
       {/* Category pills */}
       <section className="max-w-[1280px] mx-auto px-4 pt-10">

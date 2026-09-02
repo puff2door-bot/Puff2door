@@ -1,21 +1,31 @@
 import React, { useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ChevronRight, Minus, Plus, ShoppingCart, Truck, ShieldCheck, RotateCcw, Star, Check } from "lucide-react";
+import { ChevronRight, Minus, Plus, ShoppingCart, Truck, ShieldCheck, RotateCcw, Star, Check, Heart, Bell, BellRing } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import ReviewsSection from "../components/ReviewsSection";
-import { getProductBySlug, getProductsByCategory } from "../mock";
+import { useCatalog } from "../context/CatalogContext";
 import { useCart } from "../context/CartContext";
+import { useWishlist } from "../context/WishlistContext";
+import { useApp } from "../context/AppContext";
 import { useToast } from "../hooks/use-toast";
+import api, { imgUrl } from "../api";
 
 const ProductDetail = () => {
   const { slug } = useParams();
+  const { getProductBySlug, getProductsByCategory, getPrice, isOnDeal, loading } = useCatalog();
   const product = getProductBySlug(slug);
   const { addItem } = useCart();
+  const { has, toggle, items: wishItems, setNotify } = useWishlist();
+  const { user } = useApp();
   const { toast } = useToast();
   const [qty, setQty] = useState(1);
   const [activeImg, setActiveImg] = useState(0);
   const [added, setAdded] = useState(false);
   const [reviewSummary, setReviewSummary] = useState(null);
+  const [alertEmail, setAlertEmail] = useState(user?.email || "");
+  const [alertBusy, setAlertBusy] = useState(false);
+
+  if (loading) return <div className="max-w-[1280px] mx-auto px-4 py-24 text-center text-neutral-500">Loading...</div>;
 
   if (!product) {
     return (
@@ -28,12 +38,35 @@ const ProductDetail = () => {
 
   const gallery = [product.image, product.image2].filter((v, i, a) => a.indexOf(v) === i);
   const related = getProductsByCategory(product.categorySlug).filter((p) => p.id !== product.id).slice(0, 5);
+  const price = getPrice(product);
+  const wished = has(product.id);
+  const alertSet = Boolean(wishItems.find((i) => i.productId === product.id)?.notify);
 
   const handleAdd = () => {
-    addItem(product, qty);
+    addItem({ ...product, price }, qty);
     setAdded(true);
     toast({ title: "Added to cart", description: `${qty} × ${product.name}` });
     setTimeout(() => setAdded(false), 1600);
+  };
+
+  const handleWish = () => {
+    const nowWished = toggle(product);
+    toast({ title: nowWished ? "Saved to wishlist" : "Removed from wishlist", description: product.name });
+  };
+
+  const handleAlert = async (e) => {
+    e.preventDefault();
+    setAlertBusy(true);
+    try {
+      await api.post("/stock-alerts", { productId: product.id, productSlug: product.slug, name: product.name, email: alertEmail });
+      if (!wished) toggle(product);
+      setNotify(product.id, true);
+      toast({ title: "Restock alert set", description: `We'll email ${alertEmail} when it's back.` });
+    } catch (err) {
+      toast({ title: "Could not set alert", description: err?.response?.data?.detail || "Try again", variant: "destructive" });
+    } finally {
+      setAlertBusy(false);
+    }
   };
 
   return (
@@ -50,13 +83,13 @@ const ProductDetail = () => {
         {/* Gallery */}
         <div>
           <div className="aspect-square bg-neutral-50 border border-neutral-200 rounded-xl overflow-hidden grid place-items-center p-6">
-            <img src={gallery[activeImg]} alt={product.name} className="max-h-full max-w-full object-contain" />
+            <img src={imgUrl(gallery[activeImg])} alt={product.name} className="max-h-full max-w-full object-contain" />
           </div>
           {gallery.length > 1 && (
             <div className="flex gap-3 mt-4">
               {gallery.map((g, i) => (
                 <button key={i} onClick={() => setActiveImg(i)} className={`h-20 w-20 rounded-lg border-2 overflow-hidden bg-neutral-50 p-2 ${activeImg === i ? "border-emerald-600" : "border-neutral-200"}`}>
-                  <img src={g} alt="" className="h-full w-full object-contain" />
+                  <img src={imgUrl(g)} alt="" className="h-full w-full object-contain" />
                 </button>
               ))}
             </div>
@@ -77,23 +110,60 @@ const ProductDetail = () => {
             <span className="text-sm text-neutral-500">
               {reviewSummary && reviewSummary.count
                 ? `${reviewSummary.average} · ${reviewSummary.count} review${reviewSummary.count === 1 ? "" : "s"}`
-                : `${product.rating.toFixed(1)} · In stock`}
+                : `${product.rating.toFixed(1)}`}
+              {" · "}
+              <span data-testid="stock-status" className={product.inStock ? "text-emerald-600 font-semibold" : "text-red-500 font-semibold"}>{product.inStock ? (product.stock <= 5 ? `Only ${product.stock} left` : "In stock") : "Sold out"}</span>
             </span>
           </div>
 
-          <p className="font-heading text-4xl text-neutral-900 mb-6">${product.price.toFixed(2)}</p>
+          <div className="flex items-baseline gap-3 mb-6">
+            <p className="font-heading text-4xl text-neutral-900" data-testid="product-price">${price.toFixed(2)}</p>
+            {isOnDeal(product) && (
+              <>
+                <span className="text-xl text-neutral-400 line-through">${product.price.toFixed(2)}</span>
+                <span className="bg-red-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-full uppercase">Deal of the Day</span>
+              </>
+            )}
+            {!isOnDeal(product) && price < product.price && (
+              <>
+                <span className="text-xl text-neutral-400 line-through">${product.price.toFixed(2)}</span>
+                <span className="bg-red-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-full uppercase">Sale</span>
+              </>
+            )}
+          </div>
           <p className="text-neutral-600 leading-relaxed mb-7">{product.description}</p>
 
-          <div className="flex items-center gap-4 mb-6">
-            <div className="flex items-center border border-neutral-300 rounded-full">
-              <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="h-11 w-11 grid place-items-center hover:text-emerald-600"><Minus className="h-4 w-4" /></button>
-              <span className="w-10 text-center font-semibold">{qty}</span>
-              <button onClick={() => setQty((q) => q + 1)} className="h-11 w-11 grid place-items-center hover:text-emerald-600"><Plus className="h-4 w-4" /></button>
+          {product.inStock ? (
+            <div className="flex items-center gap-3 mb-6">
+              <div className="flex items-center border border-neutral-300 rounded-full">
+                <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="h-11 w-11 grid place-items-center hover:text-emerald-600"><Minus className="h-4 w-4" /></button>
+                <span className="w-10 text-center font-semibold">{qty}</span>
+                <button onClick={() => setQty((q) => q + 1)} className="h-11 w-11 grid place-items-center hover:text-emerald-600"><Plus className="h-4 w-4" /></button>
+              </div>
+              <button onClick={handleAdd} data-testid="detail-add-to-cart" className={`flex-1 h-11 rounded-full font-bold text-white flex items-center justify-center gap-2 transition-colors ${added ? "bg-emerald-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>
+                {added ? <><Check className="h-5 w-5" /> Added!</> : <><ShoppingCart className="h-5 w-5" /> Add to Cart</>}
+              </button>
+              <button onClick={handleWish} data-testid="detail-wishlist-toggle" aria-label="Wishlist" className={`h-11 w-11 grid place-items-center rounded-full border-2 transition-colors ${wished ? "border-red-500 text-red-500" : "border-neutral-300 text-neutral-500 hover:border-red-400 hover:text-red-500"}`}>
+                <Heart className={`h-5 w-5 ${wished ? "fill-current" : ""}`} />
+              </button>
             </div>
-            <button onClick={handleAdd} className={`flex-1 h-11 rounded-full font-bold text-white flex items-center justify-center gap-2 transition-colors ${added ? "bg-emerald-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>
-              {added ? <><Check className="h-5 w-5" /> Added!</> : <><ShoppingCart className="h-5 w-5" /> Add to Cart</>}
-            </button>
-          </div>
+          ) : (
+            <div className="mb-6 border border-neutral-200 rounded-xl p-5 bg-neutral-50">
+              <p className="font-heading text-lg mb-1">Currently sold out</p>
+              <p className="text-sm text-neutral-500 mb-4">Get an email the moment this vape is back in stock.</p>
+              {alertSet ? (
+                <span data-testid="detail-alert-active" className="inline-flex items-center gap-1.5 text-sm font-bold text-emerald-700 bg-emerald-50 px-4 py-2 rounded-full"><BellRing className="h-4 w-4" /> Restock alert set</span>
+              ) : (
+                <form onSubmit={handleAlert} className="flex flex-col sm:flex-row gap-2">
+                  <input required type="email" data-testid="detail-alert-email" value={alertEmail} onChange={(e) => setAlertEmail(e.target.value)} placeholder="you@email.com" className="flex-1 border border-neutral-300 rounded-full px-4 py-2.5 text-sm outline-none focus:border-emerald-600" />
+                  <button disabled={alertBusy} data-testid="detail-alert-submit" className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-neutral-900 text-white font-bold rounded-full hover:bg-emerald-600 transition-colors text-sm disabled:opacity-60"><Bell className="h-4 w-4" /> Notify Me</button>
+                  <button type="button" onClick={handleWish} data-testid="detail-wishlist-toggle" aria-label="Wishlist" className={`h-11 w-11 grid place-items-center rounded-full border-2 transition-colors ${wished ? "border-red-500 text-red-500" : "border-neutral-300 text-neutral-500 hover:border-red-400 hover:text-red-500"}`}>
+                    <Heart className={`h-5 w-5 ${wished ? "fill-current" : ""}`} />
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-3 border-t pt-6">
             {[{ icon: Truck, t: "Fast Shipping" }, { icon: ShieldCheck, t: "Lab Tested" }, { icon: RotateCcw, t: "Easy Returns" }].map((f, i) => (

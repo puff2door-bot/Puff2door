@@ -10,6 +10,7 @@ const StarRow = ({ value, size = "h-4 w-4", onSelect }) => (
         key={i}
         type={onSelect ? "button" : undefined}
         disabled={!onSelect}
+        data-testid={onSelect ? `review-star-${i + 1}` : undefined}
         onClick={onSelect ? () => onSelect(i + 1) : undefined}
         className={onSelect ? "p-0.5" : ""}
       >
@@ -64,15 +65,15 @@ const ReviewsSection = ({ productSlug, onSummary }) => {
             <div className="flex justify-center my-2"><StarRow value={data.average} size="h-5 w-5" /></div>
             <p className="text-sm text-neutral-500">{data.count} review{data.count === 1 ? "" : "s"}</p>
           </div>
-          <form onSubmit={submit} className="border border-neutral-200 rounded-xl p-6 space-y-3">
+          <form onSubmit={submit} data-testid="review-form" className="border border-neutral-200 rounded-xl p-6 space-y-3">
             <h3 className="font-heading text-lg uppercase tracking-wide">Write a Review</h3>
             <div>
               <label className="block text-xs font-medium mb-1.5 text-neutral-500">Your Rating</label>
               <StarRow value={form.rating} size="h-7 w-7" onSelect={(r) => setForm({ ...form, rating: r })} />
             </div>
-            <input className={inputCls} placeholder="Your name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <textarea rows={3} className={inputCls} placeholder="Share your thoughts..." value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} />
-            <button disabled={busy} className="w-full py-2.5 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-60">{busy ? "Posting..." : "Submit Review"}</button>
+            <input data-testid="review-name" className={inputCls} placeholder="Your name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <textarea rows={3} data-testid="review-comment" className={inputCls} placeholder="Share your thoughts..." value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} />
+            <button disabled={busy} data-testid="review-submit" className="w-full py-2.5 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-60">{busy ? "Posting..." : "Submit Review"}</button>
           </form>
         </div>
 

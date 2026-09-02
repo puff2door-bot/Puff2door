@@ -5,7 +5,7 @@ import { useCart } from "../context/CartContext";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../hooks/use-toast";
 import { usStates } from "../mock";
-import api from "../api";
+import api, { imgUrl } from "../api";
 
 const CheckoutPage = () => {
   const { items, subtotal, clearCart, toServerItem } = useCart();
@@ -70,7 +70,8 @@ const CheckoutPage = () => {
       toast({ title: "Order placed!", description: `Order ${data.orderNumber} confirmed.` });
       navigate(`/order/${data.id}`);
     } catch (err) {
-      toast({ title: "Checkout failed", description: err?.response?.data?.detail || "Try again", variant: "destructive" });
+      const detail = err?.response?.data?.detail;
+      toast({ title: err?.response?.status === 409 ? "Stock changed" : "Checkout failed", description: typeof detail === "string" ? detail : "Try again", variant: "destructive" });
     } finally { setBusy(false); }
   };
 
@@ -93,14 +94,14 @@ const CheckoutPage = () => {
           <section>
             <h2 className="font-heading text-xl uppercase tracking-wide mb-4">Delivery Details</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div><label className="block text-sm font-medium mb-1.5">First Name *</label><input required className={inputCls} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} /></div>
-              <div><label className="block text-sm font-medium mb-1.5">Last Name *</label><input required className={inputCls} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></div>
-              <div><label className="block text-sm font-medium mb-1.5">Email *</label><input required type="email" className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-              <div><label className="block text-sm font-medium mb-1.5">Phone *</label><input required className={inputCls} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-              <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">Street Address *</label><input required className={inputCls} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
-              <div><label className="block text-sm font-medium mb-1.5">City *</label><input required className={inputCls} value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></div>
-              <div><label className="block text-sm font-medium mb-1.5">State *</label><select required className={inputCls} value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })}><option value="">Select...</option>{usStates.map((s) => (<option key={s} value={s}>{s}</option>))}</select></div>
-              <div><label className="block text-sm font-medium mb-1.5">ZIP *</label><input required className={inputCls} value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1.5">First Name *</label><input required data-testid="checkout-firstName" className={inputCls} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1.5">Last Name *</label><input required data-testid="checkout-lastName" className={inputCls} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1.5">Email *</label><input required data-testid="checkout-email" type="email" className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1.5">Phone *</label><input required data-testid="checkout-phone" className={inputCls} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+              <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">Street Address *</label><input required data-testid="checkout-address" className={inputCls} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1.5">City *</label><input required data-testid="checkout-city" className={inputCls} value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1.5">State *</label><select required data-testid="checkout-state" className={inputCls} value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })}><option value="">Select...</option>{usStates.map((s) => (<option key={s} value={s}>{s}</option>))}</select></div>
+              <div><label className="block text-sm font-medium mb-1.5">ZIP *</label><input required data-testid="checkout-zip" className={inputCls} value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value })} /></div>
             </div>
           </section>
 
@@ -109,10 +110,10 @@ const CheckoutPage = () => {
             <h2 className="font-heading text-xl uppercase tracking-wide mb-1 flex items-center gap-2"><CreditCard className="h-5 w-5 text-emerald-600" /> Payment</h2>
             <p className="text-xs text-neutral-500 mb-4">Demo checkout — use test card <span className="font-semibold">4242 4242 4242 4242</span>. No real charge.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">Card Number *</label><input required inputMode="numeric" placeholder="4242 4242 4242 4242" className={inputCls} value={card.number} onChange={(e) => setCard({ ...card, number: fmtCard(e.target.value) })} /></div>
-              <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">Name on Card *</label><input required className={inputCls} value={card.name} onChange={(e) => setCard({ ...card, name: e.target.value })} /></div>
-              <div><label className="block text-sm font-medium mb-1.5">Expiry *</label><input required placeholder="MM/YY" className={inputCls} value={card.expiry} onChange={(e) => setCard({ ...card, expiry: fmtExp(e.target.value) })} /></div>
-              <div><label className="block text-sm font-medium mb-1.5">CVC *</label><input required inputMode="numeric" placeholder="123" className={inputCls} value={card.cvc} onChange={(e) => setCard({ ...card, cvc: e.target.value.replace(/\D/g, "").slice(0, 4) })} /></div>
+              <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">Card Number *</label><input required data-testid="checkout-card-number" inputMode="numeric" placeholder="4242 4242 4242 4242" className={inputCls} value={card.number} onChange={(e) => setCard({ ...card, number: fmtCard(e.target.value) })} /></div>
+              <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">Name on Card *</label><input required data-testid="checkout-card-name" className={inputCls} value={card.name} onChange={(e) => setCard({ ...card, name: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1.5">Expiry *</label><input required data-testid="checkout-card-expiry" placeholder="MM/YY" className={inputCls} value={card.expiry} onChange={(e) => setCard({ ...card, expiry: fmtExp(e.target.value) })} /></div>
+              <div><label className="block text-sm font-medium mb-1.5">CVC *</label><input required data-testid="checkout-card-cvc" inputMode="numeric" placeholder="123" className={inputCls} value={card.cvc} onChange={(e) => setCard({ ...card, cvc: e.target.value.replace(/\D/g, "").slice(0, 4) })} /></div>
             </div>
             <p className="flex items-center gap-2 text-xs text-neutral-400 mt-3"><Lock className="h-3.5 w-3.5" /> Your payment info is encrypted &amp; secure.</p>
           </section>
@@ -125,7 +126,7 @@ const CheckoutPage = () => {
             <div className="space-y-3 max-h-64 overflow-y-auto mb-4">
               {items.map((it) => (
                 <div key={it.id} className="flex items-center gap-3">
-                  <div className="h-12 w-12 bg-neutral-50 rounded-lg overflow-hidden grid place-items-center p-1 shrink-0"><img src={it.image} alt={it.name} className="max-h-full max-w-full object-contain" /></div>
+                  <div className="h-12 w-12 bg-neutral-50 rounded-lg overflow-hidden grid place-items-center p-1 shrink-0"><img src={imgUrl(it.image)} alt={it.name} className="max-h-full max-w-full object-contain" /></div>
                   <p className="flex-1 text-xs text-neutral-700 line-clamp-2">{it.name}</p>
                   <span className="text-xs font-semibold">{it.qty}× ${it.price.toFixed(2)}</span>
                 </div>
@@ -139,7 +140,7 @@ const CheckoutPage = () => {
               <span className="font-heading text-lg uppercase">Total</span>
               <span className="font-heading text-2xl">${total.toFixed(2)}</span>
             </div>
-            <button disabled={busy} className="w-full mt-5 py-3.5 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+            <button disabled={busy} data-testid="checkout-submit" className="w-full mt-5 py-3.5 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
               <ShieldCheck className="h-5 w-5" /> {busy ? "Processing..." : `Pay $${total.toFixed(2)}`}
             </button>
           </div>

@@ -21,6 +21,11 @@ export const AppProvider = ({ children }) => {
 
   // Load current user if token exists
   useEffect(() => {
+    // Skip when returning from Google OAuth: AuthCallback exchanges the session_id first.
+    if (window.location.hash?.includes("session_id=")) {
+      setAuthLoading(false);
+      return;
+    }
     const loadUser = async () => {
       if (getToken()) {
         try {
@@ -36,8 +41,15 @@ export const AppProvider = ({ children }) => {
     loadUser();
   }, []);
 
-  const login = async (email, password) => {
-    const { data } = await api.post("/auth/login", { email, password });
+  const login = async (email, password, rememberMe = false) => {
+    const { data } = await api.post("/auth/login", { email, password, rememberMe });
+    setToken(data.token);
+    setUser(data.user);
+    return data.user;
+  };
+
+  const resetPassword = async (token, password) => {
+    const { data } = await api.post("/auth/reset-password", { token, password });
     setToken(data.token);
     setUser(data.user);
     return data.user;
@@ -50,14 +62,28 @@ export const AppProvider = ({ children }) => {
     return data.user;
   };
 
+  const loginWithGoogle = () => {
+    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+    const redirectUrl = window.location.origin + "/my-account";
+    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+  };
+
+  const completeGoogleSession = async (sessionId) => {
+    const { data } = await api.post("/auth/google/session", { session_id: sessionId });
+    setToken(data.token);
+    setUser(data.user);
+    return data.user;
+  };
+
   const logout = () => {
+    api.post("/auth/logout").catch(() => {});
     setToken(null);
     setUser(null);
   };
 
   return (
     <AppContext.Provider
-      value={{ ageVerified, verifyAge, user, setUser, login, register, logout, authLoading }}
+      value={{ ageVerified, verifyAge, user, setUser, login, register, resetPassword, loginWithGoogle, completeGoogleSession, logout, authLoading }}
     >
       {children}
     </AppContext.Provider>

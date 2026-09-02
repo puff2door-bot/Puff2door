@@ -1,0 +1,84 @@
+import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { ExternalLink } from "lucide-react";
+import api from "../../api";
+import { useToast } from "../../hooks/use-toast";
+
+const STATUSES = [
+  { key: "placed", label: "Order Placed" },
+  { key: "confirmed", label: "Confirmed" },
+  { key: "out_for_delivery", label: "Out for Delivery" },
+  { key: "delivered", label: "Delivered" },
+];
+
+const tone = { placed: "bg-neutral-100 text-neutral-700", confirmed: "bg-blue-100 text-blue-700", out_for_delivery: "bg-amber-100 text-amber-700", delivered: "bg-emerald-100 text-emerald-700" };
+
+const AdminOrders = () => {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
+  const { toast } = useToast();
+
+  useEffect(() => {
+    api.get("/admin/orders").then(({ data }) => setOrders(data.orders)).finally(() => setLoading(false));
+  }, []);
+
+  const setStatus = async (o, status) => {
+    try {
+      const { data } = await api.put(`/admin/orders/${o.id}/status`, { status });
+      setOrders((prev) => prev.map((x) => (x.id === o.id ? data : x)));
+      toast({ title: "Order updated", description: `${o.orderNumber} → ${STATUSES.find((s) => s.key === status).label}` });
+    } catch (e) {
+      toast({ title: "Update failed", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
+    }
+  };
+
+  const list = filter === "all" ? orders : orders.filter((o) => o.status === filter);
+
+  return (
+    <div data-testid="admin-orders">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+        <h1 className="font-heading text-3xl uppercase tracking-tight">Orders <span className="text-neutral-400 text-xl">({orders.length})</span></h1>
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+          {[{ key: "all", label: "All" }, ...STATUSES].map((s) => (
+            <button key={s.key} onClick={() => setFilter(s.key)} data-testid={`orders-filter-${s.key}`} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-colors ${filter === s.key ? "bg-neutral-900 border-neutral-900 text-white" : "border-neutral-300 text-neutral-600 hover:border-neutral-900"}`}>{s.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="text-neutral-500">Loading orders...</p>
+      ) : list.length === 0 ? (
+        <p className="text-neutral-500 border border-dashed rounded-2xl p-10 text-center">No orders here yet.</p>
+      ) : (
+        <div className="space-y-3">
+          {list.map((o) => (
+            <div key={o.id} data-testid={`admin-order-${o.orderNumber}`} className="border border-neutral-200 rounded-2xl p-4 sm:p-5">
+              <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-6">
+                <div className="min-w-[160px]">
+                  <p className="font-heading text-lg">{o.orderNumber}</p>
+                  <p className="text-xs text-neutral-500">{new Date(o.createdAt).toLocaleString()}</p>
+                </div>
+                <div className="flex-1 min-w-0 text-sm">
+                  <p className="font-medium text-neutral-900">{o.shipping.firstName} {o.shipping.lastName} <span className="text-neutral-400 font-normal">· {o.shipping.email || "guest"}</span></p>
+                  <p className="text-xs text-neutral-500 line-clamp-1">{o.items.map((i) => `${i.qty}× ${i.name}`).join(", ")}</p>
+                  <p className="text-xs text-neutral-500">{[o.shipping.address, o.shipping.city, o.shipping.state, o.shipping.zip].filter(Boolean).join(", ")}</p>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="font-heading text-xl">${o.total.toFixed(2)}</span>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${tone[o.status]}`}>{STATUSES.find((s) => s.key === o.status)?.label}</span>
+                  <select data-testid={`order-status-select-${o.orderNumber}`} value={o.manualStatus || o.status} onChange={(e) => setStatus(o, e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold outline-none focus:border-emerald-600">
+                    {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  </select>
+                  <Link to={`/order/${o.id}`} target="_blank" className="text-neutral-400 hover:text-emerald-600" aria-label="Open"><ExternalLink className="h-4 w-4" /></Link>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AdminOrders;

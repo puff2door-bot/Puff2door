@@ -10,14 +10,17 @@ import {
   Leaf,
   Phone,
   MapPin,
+  Heart,
 } from "lucide-react";
 import { categories, brands, announcements, BRAND } from "../mock";
 import { useCart } from "../context/CartContext";
+import { useWishlist } from "../context/WishlistContext";
 import { useApp } from "../context/AppContext";
 
 const Header = () => {
   const navigate = useNavigate();
   const { count } = useCart();
+  const { count: wishCount } = useWishlist();
   const { user } = useApp();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -94,11 +97,22 @@ const Header = () => {
                   <span className="block font-semibold">{user ? user.firstName || "Member" : "Login"}</span>
                 </span>
               </Link>
-              <Link to="/cart" className="relative flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
+              <Link to="/wishlist" data-testid="header-wishlist-link" className="relative flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
+                <div className="relative">
+                  <Heart className="h-6 w-6" />
+                  {wishCount > 0 && (
+                    <span data-testid="header-wishlist-count" className="absolute -top-2 -right-2 h-5 w-5 grid place-items-center rounded-full bg-red-500 text-white text-[10px] font-bold">
+                      {wishCount}
+                    </span>
+                  )}
+                </div>
+                <span className="hidden sm:block text-xs font-semibold">Wishlist</span>
+              </Link>
+              <Link to="/cart" data-testid="header-cart-link" className="relative flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
                 <div className="relative">
                   <ShoppingCart className="h-6 w-6" />
                   {count > 0 && (
-                    <span className="absolute -top-2 -right-2 h-5 w-5 grid place-items-center rounded-full bg-emerald-600 text-white text-[10px] font-bold">
+                    <span data-testid="header-cart-count" className="absolute -top-2 -right-2 h-5 w-5 grid place-items-center rounded-full bg-emerald-600 text-white text-[10px] font-bold">
                       {count}
                     </span>
                   )}
@@ -189,6 +203,13 @@ const Header = () => {
                   Track Order
                 </Link>
               </li>
+              {user?.role === "admin" && (
+                <li>
+                  <Link to="/admin" data-testid="header-admin-link" className="block px-4 py-3.5 text-[13px] font-semibold tracking-wide uppercase text-amber-300 hover:text-amber-200 transition-colors">
+                    Admin
+                  </Link>
+                </li>
+              )}
 
               <li className="ml-auto flex items-center gap-5 text-[12px] text-neutral-300">
                 <span className="flex items-center gap-1.5"><Phone className="h-4 w-4 text-emerald-400" /> {BRAND.phone}</span>
@@ -223,7 +244,9 @@ const Header = () => {
                 <Link to="/about" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">About</Link>
                 <Link to="/contact" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Contact</Link>
                 <Link to="/track" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Track Order</Link>
+                <Link to="/wishlist" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Wishlist</Link>
                 <Link to="/my-account" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">My Account</Link>
+                {user?.role === "admin" && <Link to="/admin" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-bold border-b border-neutral-100 text-amber-600">Admin Panel</Link>}
               </div>
             </div>
           </div>

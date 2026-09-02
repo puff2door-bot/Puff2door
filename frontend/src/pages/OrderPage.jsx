@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { CheckCircle2, Circle, Truck, Package, MapPin, Home, Clock, PartyPopper } from "lucide-react";
-import api from "../api";
+import api, { imgUrl } from "../api";
 
 const ICONS = { placed: Package, confirmed: CheckCircle2, out_for_delivery: Truck, delivered: Home };
 
@@ -12,7 +12,7 @@ const Tracker = ({ order }) => {
       <div className="flex items-center justify-between mb-8">
         <h2 className="font-heading text-xl uppercase tracking-wide">Delivery Tracker</h2>
         {order.status !== "delivered" ? (
-          <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full"><Clock className="h-3.5 w-3.5" /> Live</span>
+          <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full"><Clock className="h-3.5 w-3.5" /> {order.manualStatus ? "In Progress" : "Live"}</span>
         ) : (
           <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full"><PartyPopper className="h-3.5 w-3.5" /> Delivered</span>
         )}
@@ -31,7 +31,7 @@ const Tracker = ({ order }) => {
                 <Icon className="h-5 w-5" />
               </span>
               <p className={`mt-3 text-sm font-semibold ${t.done ? "text-neutral-900" : "text-neutral-400"}`}>{t.label}</p>
-              <p className="text-[11px] text-neutral-400 mt-0.5">{new Date(t.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+              <p className="text-[11px] text-neutral-400 mt-0.5">{t.at ? new Date(t.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Pending"}</p>
             </div>
           );
         })}
@@ -49,7 +49,7 @@ const Tracker = ({ order }) => {
               </div>
               <div className="pb-4">
                 <p className={`text-sm font-semibold ${t.done ? "text-neutral-900" : "text-neutral-400"}`}>{t.label}</p>
-                <p className="text-[11px] text-neutral-400">{new Date(t.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                <p className="text-[11px] text-neutral-400">{t.at ? new Date(t.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Pending"}</p>
               </div>
             </div>
           );
@@ -100,7 +100,7 @@ const OrderPage = () => {
             <div className="space-y-4">
               {order.items.map((it, i) => (
                 <div key={i} className="flex items-center gap-4">
-                  <div className="h-16 w-16 bg-neutral-50 rounded-lg overflow-hidden grid place-items-center p-1 shrink-0"><img src={it.image} alt={it.name} className="max-h-full max-w-full object-contain" /></div>
+                  <div className="h-16 w-16 bg-neutral-50 rounded-lg overflow-hidden grid place-items-center p-1 shrink-0"><img src={imgUrl(it.image)} alt={it.name} className="max-h-full max-w-full object-contain" /></div>
                   <div className="flex-1 min-w-0"><p className="text-sm text-neutral-800 line-clamp-2">{it.name}</p><p className="text-xs text-neutral-500">Qty {it.qty}</p></div>
                   <span className="font-heading text-lg">${(it.price * it.qty).toFixed(2)}</span>
                 </div>
