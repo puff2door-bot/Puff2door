@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink, Link, Outlet } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 
 const nav = [
@@ -8,6 +8,7 @@ const nav = [
   { to: "/admin/products", label: "Products", icon: Package },
   { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
   { to: "/admin/alerts", label: "Restock Alerts", icon: Bell },
+  { to: "/admin/banners", label: "Home Banners", icon: Images },
 ];
 
 const AdminLayout = () => {

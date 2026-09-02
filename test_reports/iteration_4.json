@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 4 full test of new payment methods (Zelle / Test Card / disabled Square-PayPal-CashApp), server-side order pricing, admin payment-status flow, admin Home Banners CMS, 404 route, plus regression. Added new pytest module /app/backend/tests/test_payments_content.py (18 tests) — all pass; full backend suite 94/94 pass. Playwright covered: checkout payment picker + Zelle end-to-end, Test Card end-to-end, admin /admin/orders Mark Paid + Awaiting Payment filter + customer order page update, /admin/banners edit/publish/add/remove + home reflection + restore, 404 page and home/shop-filter/wishlist regression. No functional defects found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/orders (price_cart)", "issue": "Server enforces only a price FLOOR: a client-supplied item price ABOVE the DB/sale price is accepted verbatim (subtotal computed from it). Under-floor prices are correctly corrected, and client subtotal/total are ignored, so no revenue loss, but item pricing is not strictly server-authoritative."},
+      {"endpoint": "n/a (server.py)", "issue": "PydanticDeprecatedSince20 warnings: .dict() used in price_cart (line 236) and create_order (line 878); switch to model_dump()."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_payments_content.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Optional: make item price fully server-authoritative in price_cart (use DB price instead of accepting any client price >= floor).",
+    "Optional: replace Pydantic .dict() with .model_dump() to clear deprecation warnings.",
+    "Optional: server.py is 1191 lines — split into routers (payments/orders/admin/content) for maintainability."
+  ],
+  "critical_code_review_comments": [
+    "price_cart uses `price = it.price if it.price >= floor - 0.005 else floor` — inbound client price is trusted when higher than the floor; prefer DB price as source of truth.",
+    "reserve_stock/release_stock compensating logic is correct (atomic $inc with stock>=qty guard, release on payment failure) — verified via over-stock 409 test.",
+    "order_response correctly hides zelle block and re-derives timeline once paymentStatus != awaiting_payment; no _id leakage observed in any tested response."
+  ],
+  "updated_files": ["/app/backend/tests/test_payments_content.py"],
+  "success_rate": {"backend": "100% (94/94 pytest, incl. 18 new)", "frontend": "100% of tested flows"},
+  "seed_data_creation": "Backend tests created orders with shipping.firstName 'TEST' — all 37 leftover TEST orders deleted afterwards and product stock restored (product 14 stock now 97, reduced only by the 3 real UI checkout orders). Home content was modified and restored to seed values (verified via GET /api/content/home: 'Geek Bar Pulse 2 25K Grape Hubba' / '30K Puffs', 3 slides / 4 promo blocks). UI test orders left in DB: P2D-04036581 (Zelle, marked paid via admin), P2D-53856801 (Test Card).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@puff2door.com / Puff2Door-Admin1 ; qa.reset.1788317514@example.com / Brand New99 (both valid)",
+  "context_for_next_testing_agent": "Verified this iteration: GET /api/payments/config flags (zelle+testCard on, square/cashApp/paypal off, no leaked ids), square/paypal/cash_app/unknown -> 400 'not available', /payments/paypal/create-order -> 503, empty cart -> 400, Zelle order (awaiting_payment + zelle{recipient,name,amount,memo=orderNumber}, status placed, 1 timeline step, stock decremented), admin PUT /admin/orders/{id}/payment (paid -> confirmed + zelle null, invalid -> 400, non-admin -> 403, status update afterwards works; NOTE valid statuses are placed/confirmed/out_for_delivery/delivered — 'shipped' is invalid), test_card totals recomputed server-side incl. free shipping >= $75 and under-floor price correction, content/home GET+PUT (422 on empty heroSlides, 403 non-admin). Frontend: checkout state select uses FULL state names ('Florida', not 'FL'); age gate button 'Yes, I am 21+'. One flaky failure observed once: tests/test_puff2door_full.py::TestGoogle::test_bogus_session (~1 of 2 full-suite runs, passed on rerun and in isolation) — likely transient ingress response; re-check if it recurs.",
+  "rca_of_the_issue": "No product defects reproduced. The single flaky backend failure (TestGoogle::test_bogus_session expecting 401) did not reproduce on rerun (94/94 pass) and is attributed to a transient upstream/ingress response rather than app logic."
+}

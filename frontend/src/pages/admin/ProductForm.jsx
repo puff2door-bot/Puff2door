@@ -6,7 +6,7 @@ import { useToast } from "../../hooks/use-toast";
 
 const inputCls = "w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-600 transition-colors";
 
-const ImageField = ({ label, value, onChange, testId }) => {
+export const ImageField = ({ label, value, onChange, testId }) => {
   const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [urlMode, setUrlMode] = useState(false);

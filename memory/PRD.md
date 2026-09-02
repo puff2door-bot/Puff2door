@@ -16,12 +16,14 @@ Pixel-faithful, Puff2Door-branded clone of nonaonlinesmokeshop.com (WooCommerce 
 - 2026-09-02: Google login (Emergent Auth) alongside email/password; wishlist hearts + /wishlist + restock "Notify me" alerts; Deal of the Day countdown banner (20% off, resets midnight); shop filters (brand / flavor / puff count); sold-out products.
 - 2026-09-02: Password auth hardening: strength rules + meter + show/hide, remember-me (30d vs 1d JWT), forgot/reset password (token shown in-app – no email provider), brute-force lockout (5 fails → 15 min, per email).
 - 2026-09-02: Catalog moved to MongoDB with real inventory: orders reserve stock atomically, 409 when insufficient, server-side price recomputation (client totals ignored). Admin panel `/admin`: dashboard stats, products CRUD (drag-drop upload or URL, sale price, stock, hide), orders with manual status override (drives customer tracker), restock alerts list (restock 0→N marks alerts notified – EMAIL MOCKED/logged only). 404 page. Footer/header contact → (530) 665-0850 / puff2door@gmail.com.
-- Testing: iteration_3 – backend 74/74 pytest, all frontend flows passed.
+- 2026-09-02: Payments layer – checkout payment picker with Square card, Cash App Pay (via Square), PayPal, Zelle and Test Card; providers env-driven (SQUARE_APPLICATION_ID/ACCESS_TOKEN/LOCATION_ID/ENV, PAYPAL_CLIENT_ID/CLIENT_SECRET/ENV, ZELLE_EMAIL/NAME) with graceful "not configured" state; Zelle = manual pay (order awaiting_payment, instructions with memo=order#, admin "Mark Paid" → confirmed); server-authoritative pricing, atomic stock reserve/release on payment failure; PayPal order created & captured server-side with amount check. Square/PayPal paths covered by mocked unit tests (tests/test_payments_mock.py) – REAL KEYS NOT YET PROVIDED.
+- 2026-09-02: Admin "Home Banners" CMS (/admin/banners): hero slides + promo tiles editable (site_content collection, GET /api/content/home, PUT /api/admin/content/home), seeded from seed_content.json. puff2door@gmail.com added to ADMIN_EMAILS.
+- Testing: iteration_3 (74/74) and iteration_4 (94/94 backend, all frontend flows) passed.
 
 ## Known gaps / backlog
-- P0: Owner's Gmail must be added to `ADMIN_EMAILS` (backend/.env) so their Google login gets admin. Currently only admin@puff2door.com.
+- P0: Square (Application ID, Access Token, Location ID – sandbox first) and PayPal (Client ID, Secret) credentials from owner → paste into backend/.env and restart; then verify real card / Cash App / PayPal flows in browser (frontend components SquarePayment.jsx / PayPalCheckout.jsx untested against live SDKs).
 - P1: No email provider → password reset link and restock alerts are shown/logged only (integrate Resend/SendGrid).
 - P1: Deal-of-day floor allows 20% off any disposable at order time (lenient server floor); tighten if abused.
-- P2: Real payments (Stripe) – checkout is simulated.
+- P2: Order confirmation emails once an email provider is chosen.
 - P2: Product slug not regenerated on rename; promo/hero tiles are static in mock.js (not admin-editable).
 - P2: Split server.py into routers.

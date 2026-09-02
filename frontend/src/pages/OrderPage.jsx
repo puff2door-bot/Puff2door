@@ -2,6 +2,9 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { CheckCircle2, Circle, Truck, Package, MapPin, Home, Clock, PartyPopper } from "lucide-react";
 import api, { imgUrl } from "../api";
+import ZelleInstructions from "../components/checkout/ZelleInstructions";
+
+const PAY_LABEL = { square: "Card", cash_app: "Cash App Pay", paypal: "PayPal", zelle: "Zelle", test_card: "Test card" };
 
 const ICONS = { placed: Package, confirmed: CheckCircle2, out_for_delivery: Truck, delivered: Home };
 
@@ -84,13 +87,24 @@ const OrderPage = () => {
 
   return (
     <div className="max-w-[1280px] mx-auto px-4 py-10">
-      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 mb-8 flex items-center gap-4">
-        <span className="grid place-items-center h-12 w-12 rounded-full bg-emerald-600 text-white shrink-0"><CheckCircle2 className="h-6 w-6" /></span>
-        <div>
-          <h1 className="font-heading text-2xl uppercase tracking-wide text-emerald-800">Thank you for your order!</h1>
-          <p className="text-sm text-emerald-700">Order <span className="font-bold">{order.orderNumber}</span> · placed {new Date(order.createdAt).toLocaleString()}</p>
+      {order.paymentStatus === "awaiting_payment" ? (
+        <div data-testid="awaiting-payment-banner" className="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8 flex items-center gap-4">
+          <span className="grid place-items-center h-12 w-12 rounded-full bg-amber-500 text-white shrink-0"><Clock className="h-6 w-6" /></span>
+          <div>
+            <h1 className="font-heading text-2xl uppercase tracking-wide text-amber-800">Order received — awaiting your payment</h1>
+            <p className="text-sm text-amber-700">Order <span className="font-bold">{order.orderNumber}</span> · we'll confirm it as soon as your {PAY_LABEL[order.paymentMethod]} payment arrives.</p>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 mb-8 flex items-center gap-4">
+          <span className="grid place-items-center h-12 w-12 rounded-full bg-emerald-600 text-white shrink-0"><CheckCircle2 className="h-6 w-6" /></span>
+          <div>
+            <h1 className="font-heading text-2xl uppercase tracking-wide text-emerald-800">Thank you for your order!</h1>
+            <p className="text-sm text-emerald-700">Order <span className="font-bold">{order.orderNumber}</span> · placed {new Date(order.createdAt).toLocaleString()}</p>
+          </div>
+        </div>
+      )}
+      {order.zelle && <div className="mb-8 max-w-2xl"><ZelleInstructions recipient={order.zelle.recipient} name={order.zelle.name} amount={order.zelle.amount} memo={order.zelle.memo} /></div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8">
         <div className="space-y-8">
@@ -117,7 +131,9 @@ const OrderPage = () => {
               <div className="flex justify-between"><span className="text-neutral-500">Shipping</span><span>{order.shippingCost === 0 ? "FREE" : `$${order.shippingCost.toFixed(2)}`}</span></div>
               {order.discount > 0 && <div className="flex justify-between text-emerald-600"><span>Discount</span><span>-${order.discount.toFixed(2)}</span></div>}
               <div className="flex justify-between font-heading text-lg border-t pt-2 mt-2"><span>Total</span><span>${order.total.toFixed(2)}</span></div>
-              {order.paymentLast4 && <p className="text-xs text-neutral-400 pt-1">Paid with card ending •••• {order.paymentLast4}</p>}
+              <p className="text-xs text-neutral-400 pt-1" data-testid="order-payment-info">
+                {order.paymentStatus === "awaiting_payment" ? `Awaiting ${PAY_LABEL[order.paymentMethod]} payment` : order.paymentStatus === "refunded" ? "Refunded" : `Paid via ${order.paymentBrand || PAY_LABEL[order.paymentMethod]}${order.paymentLast4 && order.paymentMethod !== "paypal" ? ` •••• ${order.paymentLast4}` : ""}`}
+              </p>
             </div>
           </div>
           <div className="border border-neutral-200 rounded-xl p-6">

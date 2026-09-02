@@ -125,11 +125,122 @@ class ShippingInfo(BaseModel):
 class OrderInput(BaseModel):
     items: List[CartItem]
     shipping: ShippingInfo
-    subtotal: float
+    subtotal: float = 0
     shippingCost: float = 0
     discount: float = 0
-    total: float
+    total: float = 0
     paymentLast4: str = ""
+    paymentMethod: str = "test_card"
+    paymentToken: str = ""
+    paypalOrderId: str = ""
+
+
+class PayPalCreateInput(BaseModel):
+    items: List[CartItem]
+
+
+class PaymentStatusInput(BaseModel):
+    paymentStatus: str
+
+
+# ---- Payment providers config ----
+SQUARE_APP_ID = os.environ.get("SQUARE_APPLICATION_ID", "").strip()
+SQUARE_TOKEN = os.environ.get("SQUARE_ACCESS_TOKEN", "").strip()
+SQUARE_LOCATION = os.environ.get("SQUARE_LOCATION_ID", "").strip()
+SQUARE_ENV = os.environ.get("SQUARE_ENV", "sandbox").strip().lower()
+SQUARE_ENABLED = bool(SQUARE_APP_ID and SQUARE_TOKEN and SQUARE_LOCATION and SQUARE_ENV in {"sandbox", "production"})
+SQUARE_BASE = "https://connect.squareup.com" if SQUARE_ENV == "production" else "https://connect.squareupsandbox.com"
+PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID", "").strip()
+PAYPAL_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET", "").strip()
+PAYPAL_ENV = os.environ.get("PAYPAL_ENV", "sandbox").strip().lower()
+PAYPAL_ENABLED = bool(PAYPAL_CLIENT_ID and PAYPAL_SECRET)
+PAYPAL_BASE = "https://api-m.paypal.com" if PAYPAL_ENV == "production" else "https://api-m.sandbox.paypal.com"
+ZELLE_EMAIL = os.environ.get("ZELLE_EMAIL", "").strip()
+ZELLE_NAME = os.environ.get("ZELLE_NAME", "").strip()
+ZELLE_ENABLED = bool(ZELLE_EMAIL)
+TEST_CARD_ENABLED = not (SQUARE_ENABLED or PAYPAL_ENABLED)
+PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "zelle"}
+
+
+def payments_config() -> dict:
+    return {
+        "square": {"enabled": SQUARE_ENABLED, "applicationId": SQUARE_APP_ID if SQUARE_ENABLED else None, "locationId": SQUARE_LOCATION if SQUARE_ENABLED else None, "env": SQUARE_ENV},
+        "cashApp": {"enabled": SQUARE_ENABLED},
+        "paypal": {"enabled": PAYPAL_ENABLED, "clientId": PAYPAL_CLIENT_ID if PAYPAL_ENABLED else None, "env": PAYPAL_ENV},
+        "zelle": {"enabled": ZELLE_ENABLED, "email": ZELLE_EMAIL, "name": ZELLE_NAME},
+        "testCard": {"enabled": TEST_CARD_ENABLED},
+    }
+
+
+def zelle_instructions(order_number: str, total: float) -> dict:
+    return {"recipient": ZELLE_EMAIL, "name": ZELLE_NAME, "amount": total, "memo": order_number}
+
+
+async def square_create_payment(source_id: str, amount_cents: int, idem_key: str, reference: str) -> dict:
+    payload = {
+        "source_id": source_id,
+        "idempotency_key": idem_key,
+        "amount_money": {"amount": amount_cents, "currency": "USD"},
+        "location_id": SQUARE_LOCATION,
+        "autocomplete": True,
+        "reference_id": reference,
+        "customer_details": {"customer_initiated": True, "seller_keyed_in": False},
+    }
+    headers = {"Authorization": f"Bearer {SQUARE_TOKEN}", "Content-Type": "application/json", "Square-Version": "2025-10-16"}
+    async with httpx.AsyncClient(timeout=25) as http:
+        r = await http.post(f"{SQUARE_BASE}/v2/payments", json=payload, headers=headers)
+    data = r.json()
+    if r.is_error:
+        msg = "; ".join(e.get("detail") or e.get("code", "") for e in data.get("errors", [])) or "Card was declined"
+        raise HTTPException(status_code=402, detail=f"Payment failed: {msg}")
+    return data.get("payment", {})
+
+
+async def paypal_token() -> str:
+    async with httpx.AsyncClient(timeout=25) as http:
+        r = await http.post(f"{PAYPAL_BASE}/v1/oauth2/token", data={"grant_type": "client_credentials"}, auth=(PAYPAL_CLIENT_ID, PAYPAL_SECRET))
+    if r.is_error:
+        raise HTTPException(status_code=502, detail="PayPal is unavailable right now")
+    return r.json()["access_token"]
+
+
+async def paypal_request(method: str, path: str, body: Optional[dict] = None) -> dict:
+    token = await paypal_token()
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=25) as http:
+        r = await http.request(method, f"{PAYPAL_BASE}{path}", json=body, headers=headers)
+    data = r.json() if r.content else {}
+    if r.is_error:
+        msg = data.get("message") or data.get("details", [{}])[0].get("description") or "PayPal error"
+        raise HTTPException(status_code=402, detail=f"PayPal: {msg}")
+    return data
+
+
+async def price_cart(items: List[CartItem]):
+    problems, priced = [], []
+    for it in items:
+        prod = await db.products.find_one({"id": it.productId})
+        if not prod or not prod.get("active", True):
+            problems.append(f"{it.name} is no longer available")
+            continue
+        if int(prod.get("stock", 0)) < it.qty:
+            left = int(prod.get("stock", 0))
+            problems.append(f"Only {left} left of {it.name}" if left else f"{it.name} is sold out")
+            continue
+        base = prod["price"]
+        sale = prod.get("salePrice")
+        price = min(base, sale) if sale and sale > 0 else base
+        if prod.get("categorySlug") == "disposable":
+            deal = round(base * 0.8, 2)
+            if it.price <= deal + 0.005:
+                price = min(price, deal)
+        priced.append({**it.model_dump(), "name": prod["name"], "price": round(price, 2), "image": prod.get("image", ""), "slug": prod["slug"]})
+    if problems:
+        raise HTTPException(status_code=409, detail="; ".join(problems))
+    subtotal = round(sum(i["price"] * i["qty"] for i in priced), 2)
+    shipping_cost = 0 if subtotal >= 75 else 7.99
+    total = round(subtotal + shipping_cost, 2)
+    return priced, subtotal, shipping_cost, total
 
 
 class GoogleSessionInput(BaseModel):
@@ -172,6 +283,30 @@ class ProductInput(BaseModel):
 
 class OrderStatusInput(BaseModel):
     status: str
+
+
+class HeroSlide(BaseModel):
+    id: int
+    image: str = ""
+    tag: str = ""
+    title: str
+    subtitle: str = ""
+    cta: str = "Shop Now"
+    link: str = "/shop"
+
+
+class PromoBlock(BaseModel):
+    id: int
+    productId: Optional[int] = None
+    tag: str = ""
+    label: str = ""
+    image: str = ""
+    link: str = ""
+
+
+class HomeContentInput(BaseModel):
+    heroSlides: List[HeroSlide] = Field(min_length=1)
+    promoBlocks: List[PromoBlock] = []
 
 
 ADMIN_EMAILS = [e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()]
@@ -390,7 +525,11 @@ def order_response(o: dict) -> dict:
             created_dt = now_utc()
     else:
         created_dt = created
-    status, timeline = build_tracking(created_dt, o.get("manualStatus"), o.get("statusUpdatedAt"))
+    awaiting = o.get("paymentStatus") == "awaiting_payment"
+    if awaiting:
+        status, timeline = build_tracking(created_dt, "placed", None)
+    else:
+        status, timeline = build_tracking(created_dt, o.get("manualStatus"), o.get("statusUpdatedAt"))
     return {
         "id": o["id"],
         "orderNumber": o["orderNumber"],
@@ -402,6 +541,11 @@ def order_response(o: dict) -> dict:
         "discount": o.get("discount", 0),
         "total": o["total"],
         "paymentLast4": o.get("paymentLast4", ""),
+        "paymentMethod": o.get("paymentMethod", "test_card"),
+        "paymentStatus": o.get("paymentStatus", "paid"),
+        "paymentBrand": o.get("paymentBrand", ""),
+        "paymentRef": o.get("paymentRef", ""),
+        "zelle": zelle_instructions(o["orderNumber"], o["total"]) if awaiting and o.get("paymentMethod") == "zelle" else None,
         "createdAt": created_dt.isoformat() if not isinstance(created, str) else created,
         "status": status,
         "manualStatus": o.get("manualStatus"),
@@ -646,55 +790,98 @@ async def create_review(inp: ReviewInput):
 
 
 # ---- Orders ----
-@api_router.post("/orders")
-async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optional_user)):
+@api_router.get("/payments/config")
+async def get_payments_config():
+    return payments_config()
+
+
+@api_router.post("/payments/paypal/create-order")
+async def paypal_create_order(inp: PayPalCreateInput):
+    if not PAYPAL_ENABLED:
+        raise HTTPException(status_code=503, detail="PayPal is not configured")
     if not inp.items:
         raise HTTPException(status_code=400, detail="Your cart is empty")
-    # Validate availability and server-side pricing
-    problems = []
-    priced_items = []
-    for it in inp.items:
-        prod = await db.products.find_one({"id": it.productId})
-        if not prod or not prod.get("active", True):
-            problems.append(f"{it.name} is no longer available")
-            continue
-        if int(prod.get("stock", 0)) < it.qty:
-            left = int(prod.get("stock", 0))
-            problems.append(f"Only {left} left of {it.name}" if left else f"{it.name} is sold out")
-            continue
-        base = prod["price"]
-        sale = prod.get("salePrice")
-        floor = min(base, sale) if sale else base
-        if prod.get("categorySlug") == "disposable":
-            floor = min(floor, round(base * 0.8, 2))
-        price = it.price if it.price >= floor - 0.005 else floor
-        priced_items.append({**it.dict(), "name": prod["name"], "price": round(price, 2), "image": prod.get("image", ""), "slug": prod["slug"]})
-    if problems:
-        raise HTTPException(status_code=409, detail="; ".join(problems))
-    # Atomic stock reservation with rollback
+    _, _, _, total = await price_cart(inp.items)
+    data = await paypal_request("POST", "/v2/checkout/orders", {
+        "intent": "CAPTURE",
+        "purchase_units": [{"amount": {"currency_code": "USD", "value": f"{total:.2f}"}, "description": "Puff2Door order"}],
+    })
+    await db.paypal_orders.update_one({"paypalOrderId": data["id"]}, {"$set": {"total": total, "createdAt": now_utc(), "captured": False}}, upsert=True)
+    return {"id": data["id"], "total": total}
+
+
+async def reserve_stock(priced_items: List[dict]):
     reserved = []
     for it in priced_items:
         res = await db.products.update_one({"id": it["productId"], "stock": {"$gte": it["qty"]}}, {"$inc": {"stock": -it["qty"]}})
         if res.modified_count == 0:
-            for r in reserved:
-                await db.products.update_one({"id": r["productId"]}, {"$inc": {"stock": r["qty"]}})
+            await release_stock(reserved)
             raise HTTPException(status_code=409, detail=f"{it['name']} just sold out")
         reserved.append(it)
-    subtotal = round(sum(i["price"] * i["qty"] for i in priced_items), 2)
-    shipping_cost = 0 if subtotal >= 75 else 7.99
-    total = round(subtotal + shipping_cost, 2)
+
+
+async def release_stock(items: List[dict]):
+    for r in items:
+        await db.products.update_one({"id": r["productId"]}, {"$inc": {"stock": r["qty"]}})
+
+
+@api_router.post("/orders")
+async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optional_user)):
+    if not inp.items:
+        raise HTTPException(status_code=400, detail="Your cart is empty")
+    method = inp.paymentMethod
+    enabled = {"test_card": TEST_CARD_ENABLED, "square": SQUARE_ENABLED, "cash_app": SQUARE_ENABLED, "paypal": PAYPAL_ENABLED, "zelle": ZELLE_ENABLED}
+    if method not in PAYMENT_METHODS or not enabled[method]:
+        raise HTTPException(status_code=400, detail="That payment method is not available")
+    priced_items, subtotal, shipping_cost, total = await price_cart(inp.items)
+    await reserve_stock(priced_items)
+    order_id = str(uuid.uuid4())
     order_number = "P2D-" + "".join(random.choices("0123456789", k=8))
+    payment = {"paymentMethod": method, "paymentStatus": "paid", "paymentRef": "", "paymentLast4": inp.paymentLast4, "paymentBrand": ""}
+    try:
+        if method in ("square", "cash_app"):
+            if not inp.paymentToken:
+                raise HTTPException(status_code=400, detail="Missing payment token")
+            pay = await square_create_payment(inp.paymentToken, int(round(total * 100)), order_id, order_number)
+            if pay.get("status") not in ("COMPLETED", "APPROVED"):
+                raise HTTPException(status_code=402, detail=f"Payment {pay.get('status', 'failed').lower()}")
+            card = pay.get("card_details", {}).get("card", {})
+            payment.update({"paymentRef": pay.get("id", ""), "paymentLast4": card.get("last_4", ""), "paymentBrand": card.get("card_brand", "Cash App" if method == "cash_app" else "")})
+        elif method == "paypal":
+            if not inp.paypalOrderId:
+                raise HTTPException(status_code=400, detail="Missing PayPal order")
+            pending = await db.paypal_orders.find_one({"paypalOrderId": inp.paypalOrderId, "captured": False})
+            if not pending or abs(pending["total"] - total) > 0.01:
+                raise HTTPException(status_code=402, detail="PayPal order does not match your cart. Please try again.")
+            cap = await paypal_request("POST", f"/v2/checkout/orders/{inp.paypalOrderId}/capture")
+            if cap.get("status") != "COMPLETED":
+                raise HTTPException(status_code=402, detail=f"PayPal payment {cap.get('status', 'failed').lower()}")
+            capture_id = cap["purchase_units"][0]["payments"]["captures"][0]["id"]
+            await db.paypal_orders.update_one({"paypalOrderId": inp.paypalOrderId}, {"$set": {"captured": True, "orderId": order_id}})
+            payment.update({"paymentRef": capture_id, "paymentBrand": "PayPal", "paymentLast4": (cap.get("payer", {}).get("email_address") or "")})
+        elif method == "zelle":
+            payment.update({"paymentStatus": "awaiting_payment", "paymentBrand": "Zelle"})
+        elif method == "test_card":
+            digits = re.sub(r"\D", "", inp.paymentLast4)
+            payment.update({"paymentLast4": digits[-4:], "paymentBrand": "Test Card"})
+    except HTTPException:
+        await release_stock(priced_items)
+        raise
+    except Exception as e:
+        await release_stock(priced_items)
+        logger.error("Payment error: %s", e)
+        raise HTTPException(status_code=502, detail="Payment provider error. You were not charged.")
     order = {
-        "id": str(uuid.uuid4()),
+        "id": order_id,
         "orderNumber": order_number,
         "userId": user["id"] if user else None,
         "items": priced_items,
-        "shipping": inp.shipping.dict(),
+        "shipping": inp.shipping.model_dump(),
         "subtotal": subtotal,
         "shippingCost": shipping_cost,
         "discount": 0,
         "total": total,
-        "paymentLast4": inp.paymentLast4,
+        **payment,
         "createdAt": now_utc(),
     }
     await db.orders.insert_one(order)
@@ -754,6 +941,32 @@ async def get_admin_user(user: dict = Depends(get_current_user)):
     if not is_admin(user):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+
+# ---- Home content (hero slider / promo tiles) ----
+async def get_home_content() -> dict:
+    doc = await db.site_content.find_one({"key": "home"}, {"_id": 0})
+    if not doc:
+        seed_path = ROOT_DIR / "seed_content.json"
+        data = json.loads(seed_path.read_text()) if seed_path.exists() else {"heroSlides": [], "promoBlocks": []}
+        doc = {"key": "home", **data, "updatedAt": now_utc()}
+        await db.site_content.insert_one(dict(doc))
+        doc.pop("_id", None)
+    doc.pop("updatedAt", None)
+    return doc
+
+
+@api_router.get("/content/home")
+async def content_home():
+    return await get_home_content()
+
+
+@api_router.put("/admin/content/home")
+async def admin_update_home(inp: HomeContentInput, admin: dict = Depends(get_admin_user)):
+    data = {"heroSlides": [s.dict() for s in inp.heroSlides], "promoBlocks": [b.dict() for b in inp.promoBlocks]}
+    await db.site_content.update_one({"key": "home"}, {"$set": {**data, "updatedAt": now_utc(), "updatedBy": admin["id"]}}, upsert=True)
+    return {"key": "home", **data}
+
 
 
 async def next_product_id() -> int:
@@ -859,6 +1072,24 @@ async def admin_update_order_status(order_id: str, inp: OrderStatusInput, admin:
     )
     if not res.matched_count:
         raise HTTPException(status_code=404, detail="Order not found")
+    return order_response(await db.orders.find_one({"id": order_id}))
+
+
+@api_router.put("/admin/orders/{order_id}/payment")
+async def admin_update_order_payment(order_id: str, inp: PaymentStatusInput, admin: dict = Depends(get_admin_user)):
+    if inp.paymentStatus not in ("paid", "awaiting_payment", "refunded"):
+        raise HTTPException(status_code=400, detail="Invalid payment status")
+    o = await db.orders.find_one({"id": order_id})
+    if not o:
+        raise HTTPException(status_code=404, detail="Order not found")
+    updates = {"paymentStatus": inp.paymentStatus, "paymentUpdatedAt": now_utc(), "paymentUpdatedBy": admin["id"]}
+    if inp.paymentStatus == "paid" and o.get("paymentStatus") != "paid":
+        updates["paidAt"] = now_utc()
+        updates["manualStatus"] = "confirmed"
+        updates["statusUpdatedAt"] = now_utc()
+    if inp.paymentStatus == "refunded":
+        await release_stock(o["items"])
+    await db.orders.update_one({"id": order_id}, {"$set": updates})
     return order_response(await db.orders.find_one({"id": order_id}))
 
 

@@ -1,0 +1,65 @@
+{
+ "heroSlides": [
+  {
+   "id": 1,
+   "image": "/img/hero-geekbar.jpg",
+   "tag": "Geek Bar Pulse 2",
+   "title": "Geek Bar Pulse 2 25K Grape Hubba",
+   "subtitle": "25,000 puffs, dual-mode display, bold grape bubblegum flavor.",
+   "cta": "Shop This Vape",
+   "link": "/shop/geek-bar-pulse-2-25k-grape-hubba-14"
+  },
+  {
+   "id": 2,
+   "image": "/img/hero-raz.jpg",
+   "tag": "RAZ Punch Edition",
+   "title": "RAZ Bar 25000 Hawaiian Punch",
+   "subtitle": "Mega HD screen, boost mode & juicy tropical punch flavor.",
+   "cta": "Shop This Vape",
+   "link": "/shop/raz-bar-25000-punch-edition-hawaiian-punch-19"
+  },
+  {
+   "id": 3,
+   "image": "/img/hero-nexa.jpg",
+   "tag": "NEXA Ultra II",
+   "title": "NEXA Ultra II 50K Georgia Peach Ice",
+   "subtitle": "50,000 puffs with Juicy Lock and visible e-liquid window.",
+   "cta": "Shop This Vape",
+   "link": "/shop/nexa-ultra-ii-50k-puff-disposable-georgia-peach-ice-17"
+  }
+ ],
+ "promoBlocks": [
+  {
+   "id": 25,
+   "productId": 25,
+   "tag": "30K Puffs",
+   "label": "",
+   "image": "",
+   "link": ""
+  },
+  {
+   "id": 20,
+   "productId": 20,
+   "tag": "Best Seller",
+   "label": "",
+   "image": "",
+   "link": ""
+  },
+  {
+   "id": 22,
+   "productId": 22,
+   "tag": "40K Puffs",
+   "label": "",
+   "image": "",
+   "link": ""
+  },
+  {
+   "id": 10,
+   "productId": 10,
+   "tag": "Delta Disposable",
+   "label": "",
+   "image": "",
+   "link": ""
+  }
+ ]
+}

@@ -5,12 +5,14 @@ const CatalogContext = createContext(null);
 
 export const CatalogProvider = ({ children }) => {
   const [products, setProducts] = useState([]);
+  const [home, setHome] = useState({ heroSlides: [], promoBlocks: [] });
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
-      const { data } = await api.get("/products");
-      setProducts(data.products || []);
+      const [p, c] = await Promise.all([api.get("/products"), api.get("/content/home")]);
+      setProducts(p.data.products || []);
+      setHome({ heroSlides: c.data.heroSlides || [], promoBlocks: c.data.promoBlocks || [] });
     } finally {
       setLoading(false);
     }
@@ -31,8 +33,24 @@ export const CatalogProvider = ({ children }) => {
       if (p.salePrice != null && p.salePrice > 0 && p.salePrice < p.price) return p.salePrice;
       return isOnDeal(p) ? deal.dealPrice : p.price;
     };
+    const byId = (id) => products.find((p) => p.id === Number(id));
+    const promoTiles = home.promoBlocks.map((b) => {
+      const pr = b.productId ? byId(b.productId) : null;
+      return {
+        id: b.id,
+        tag: b.tag,
+        label: b.label || pr?.name || "",
+        image: b.image || pr?.image || "",
+        link: b.link || (pr ? `/shop/${pr.slug}` : "/shop"),
+        price: pr ? getPrice(pr) : null,
+      };
+    }).filter((t) => t.image);
     return {
       products,
+      home,
+      heroSlides: home.heroSlides,
+      promoTiles,
+      setHome,
       loading,
       refresh,
       getProductBySlug: (slug) => products.find((p) => p.slug === slug),
@@ -43,7 +61,7 @@ export const CatalogProvider = ({ children }) => {
       isOnDeal,
       getPrice,
     };
-  }, [products, loading, refresh]);
+  }, [products, home, loading, refresh]);
 
   return <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>;
 };

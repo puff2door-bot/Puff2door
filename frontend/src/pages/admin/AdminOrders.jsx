@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, BadgeDollarSign } from "lucide-react";
 import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
 
@@ -10,6 +10,9 @@ const STATUSES = [
   { key: "out_for_delivery", label: "Out for Delivery" },
   { key: "delivered", label: "Delivered" },
 ];
+
+const PAY_LABEL = { square: "Card", cash_app: "Cash App", paypal: "PayPal", zelle: "Zelle", test_card: "Test card" };
+const payTone = { paid: "bg-emerald-100 text-emerald-700", awaiting_payment: "bg-amber-100 text-amber-800", refunded: "bg-neutral-200 text-neutral-600" };
 
 const tone = { placed: "bg-neutral-100 text-neutral-700", confirmed: "bg-blue-100 text-blue-700", out_for_delivery: "bg-amber-100 text-amber-700", delivered: "bg-emerald-100 text-emerald-700" };
 
@@ -33,14 +36,25 @@ const AdminOrders = () => {
     }
   };
 
-  const list = filter === "all" ? orders : orders.filter((o) => o.status === filter);
+  const markPaid = async (o) => {
+    if (!window.confirm(`Confirm you received $${o.total.toFixed(2)} for ${o.orderNumber}?`)) return;
+    try {
+      const { data } = await api.put(`/admin/orders/${o.id}/payment`, { paymentStatus: "paid" });
+      setOrders((prev) => prev.map((x) => (x.id === o.id ? data : x)));
+      toast({ title: "Payment confirmed", description: `${o.orderNumber} is now confirmed.` });
+    } catch (e) {
+      toast({ title: "Update failed", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
+    }
+  };
+
+  const list = filter === "all" ? orders : filter === "awaiting_payment" ? orders.filter((o) => o.paymentStatus === "awaiting_payment") : orders.filter((o) => o.status === filter);
 
   return (
     <div data-testid="admin-orders">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h1 className="font-heading text-3xl uppercase tracking-tight">Orders <span className="text-neutral-400 text-xl">({orders.length})</span></h1>
         <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-          {[{ key: "all", label: "All" }, ...STATUSES].map((s) => (
+          {[{ key: "all", label: "All" }, { key: "awaiting_payment", label: "Awaiting Payment" }, ...STATUSES].map((s) => (
             <button key={s.key} onClick={() => setFilter(s.key)} data-testid={`orders-filter-${s.key}`} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-colors ${filter === s.key ? "bg-neutral-900 border-neutral-900 text-white" : "border-neutral-300 text-neutral-600 hover:border-neutral-900"}`}>{s.label}</button>
           ))}
         </div>
@@ -66,8 +80,12 @@ const AdminOrders = () => {
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="font-heading text-xl">${o.total.toFixed(2)}</span>
+                  <span data-testid={`order-pay-badge-${o.orderNumber}`} className={`text-xs font-bold px-2.5 py-1 rounded-full ${payTone[o.paymentStatus] || payTone.paid}`}>{PAY_LABEL[o.paymentMethod] || "Card"} · {o.paymentStatus === "awaiting_payment" ? "Unpaid" : o.paymentStatus === "refunded" ? "Refunded" : "Paid"}</span>
+                  {o.paymentStatus === "awaiting_payment" && (
+                    <button onClick={() => markPaid(o)} data-testid={`mark-paid-${o.orderNumber}`} className="inline-flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-full bg-neutral-900 text-white hover:bg-emerald-600 transition-colors"><BadgeDollarSign className="h-3.5 w-3.5" /> Mark Paid</button>
+                  )}
                   <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${tone[o.status]}`}>{STATUSES.find((s) => s.key === o.status)?.label}</span>
-                  <select data-testid={`order-status-select-${o.orderNumber}`} value={o.manualStatus || o.status} onChange={(e) => setStatus(o, e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold outline-none focus:border-emerald-600">
+                  <select data-testid={`order-status-select-${o.orderNumber}`} disabled={o.paymentStatus === "awaiting_payment"} value={o.manualStatus || o.status} onChange={(e) => setStatus(o, e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold outline-none focus:border-emerald-600">
                     {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                   </select>
                   <Link to={`/order/${o.id}`} target="_blank" className="text-neutral-400 hover:text-emerald-600" aria-label="Open"><ExternalLink className="h-4 w-4" /></Link>
