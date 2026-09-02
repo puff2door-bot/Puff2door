@@ -86,12 +86,12 @@ const Home = () => {
       <section className="max-w-[1280px] mx-auto px-4 pt-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {promoBlocks.map((b) => (
-            <Link key={b.id} to={b.link} className="group relative rounded-xl overflow-hidden aspect-[4/3]">
-              <img src={b.image} alt={b.label} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500" />
-              <div className="absolute inset-0 bg-gradient-to-t from-neutral-900/80 to-transparent" />
-              <div className="absolute bottom-0 left-0 p-4">
-                <p className="font-heading text-white text-lg uppercase tracking-wide">{b.label}</p>
-                <span className="inline-flex items-center gap-1 text-emerald-400 text-xs font-bold mt-1">Shop Now <ArrowRight className="h-3.5 w-3.5" /></span>
+            <Link key={b.id} to={b.link} data-testid={`promo-tile-${b.id}`} className="group relative rounded-xl overflow-hidden aspect-[4/3] bg-neutral-100 border border-neutral-200 hover:border-emerald-300 hover:shadow-lg transition-all">
+              <span className="absolute top-3 left-3 z-10 bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">{b.tag}</span>
+              <img src={b.image} alt={b.label} className="h-full w-full object-contain p-6 pb-16 group-hover:scale-105 transition-transform duration-500" />
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-white via-white/95 to-transparent p-4 pt-8">
+                <p className="text-neutral-900 text-xs font-bold uppercase tracking-wide line-clamp-1">{b.label}</p>
+                <span className="inline-flex items-center gap-1 text-emerald-600 text-xs font-bold mt-1">${b.price.toFixed(2)} · Shop Now <ArrowRight className="h-3.5 w-3.5" /></span>
               </div>
             </Link>
           ))}

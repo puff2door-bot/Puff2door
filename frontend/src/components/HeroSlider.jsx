@@ -21,13 +21,13 @@ const HeroSlider = () => {
           key={s.id}
           className={`hero-slide absolute inset-0 ${i === idx ? "opacity-100 z-10" : "opacity-0 z-0"}`}
         >
-          <img src={s.image} alt={s.title} className="h-full w-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-r from-neutral-900/80 via-neutral-900/40 to-transparent" />
+          <img src={s.image} alt={s.title} className="h-full w-full object-cover object-right" />
+          <div className="absolute inset-0 bg-gradient-to-r from-neutral-900/90 via-neutral-900/50 to-transparent" />
           <div className="absolute inset-0 flex items-center">
             <div className="max-w-[1280px] w-full mx-auto px-6 lg:px-4">
               <div className="max-w-xl">
                 <span className="inline-block bg-emerald-600 text-white text-[11px] font-bold tracking-[0.2em] uppercase px-3 py-1.5 rounded-full mb-4">
-                  Puff2Door
+                  {s.tag}
                 </span>
                 <h1 className="font-heading text-4xl sm:text-5xl lg:text-6xl font-700 text-white leading-tight mb-3">
                   {s.title}
@@ -35,6 +35,7 @@ const HeroSlider = () => {
                 <p className="text-neutral-200 text-base sm:text-lg mb-7 max-w-md">{s.subtitle}</p>
                 <Link
                   to={s.link}
+                  data-testid={`hero-cta-${s.id}`}
                   className="inline-flex items-center px-7 py-3.5 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors"
                 >
                   {s.cta}

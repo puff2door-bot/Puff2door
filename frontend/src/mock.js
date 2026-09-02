@@ -15,60 +15,6 @@ export const announcements = [
   "SAME-DAY LOCAL DELIVERY AVAILABLE",
 ];
 
-export const heroSlides = [
-  {
-    id: 1,
-    image: "https://nonaonlinesmokeshop.com/wp-content/uploads/2025/03/MAIN-SLIDER-2.jpg",
-    title: "Premium Disposable Vapes",
-    subtitle: "Top brands, freshest flavors, delivered fast.",
-    cta: "Shop Disposables",
-    link: "/product-category/disposable",
-  },
-  {
-    id: 2,
-    image: "https://nonaonlinesmokeshop.com/wp-content/uploads/2025/03/MAIN-SLIDER-1.jpg",
-    title: "Delta & THCA Collection",
-    subtitle: "Carts, edibles, disposables & more.",
-    cta: "Explore Delta",
-    link: "/product-category/delta",
-  },
-  {
-    id: 3,
-    image: "https://nonaonlinesmokeshop.com/wp-content/uploads/2025/03/slider-5.jpg",
-    title: "Glass, Papers & Accessories",
-    subtitle: "Everything you need for the perfect session.",
-    cta: "Shop Accessories",
-    link: "/product-category/glass-pipes",
-  },
-];
-
-export const promoBlocks = [
-  {
-    id: 1,
-    image: "https://nonaonlinesmokeshop.com/wp-content/uploads/2023/12/ORDER-ONLINE-2-of-2.jpg",
-    label: "Order Online",
-    link: "/shop",
-  },
-  {
-    id: 2,
-    image: "https://nonaonlinesmokeshop.com/wp-content/uploads/2023/09/2-min.jpg",
-    label: "Best Sellers",
-    link: "/shop",
-  },
-  {
-    id: 3,
-    image: "https://nonaonlinesmokeshop.com/wp-content/uploads/2023/12/NONA-1-of-2.jpg",
-    label: "New Arrivals",
-    link: "/shop",
-  },
-  {
-    id: 4,
-    image: "https://nonaonlinesmokeshop.com/wp-content/uploads/2023/09/NONA-3.jpg",
-    label: "Kratom & Supplements",
-    link: "/product-category/kratom",
-  },
-];
-
 export const categories = [
   { name: "DISPOSABLE VAPES", slug: "disposable" },
   { name: "DELTA DISPOSABLES", slug: "delta" },
@@ -223,6 +169,51 @@ export const getProductBySlug = (slug) =>
   products.find((pr) => pr.slug === slug);
 
 export const newProducts = products.slice(0, 18);
+
+const byName = (name) => products.find((pr) => pr.name === name);
+const productLink = (name) => `/shop/${byName(name).slug}`;
+
+export const heroSlides = [
+  {
+    id: 1,
+    image: "/img/hero-geekbar.jpg",
+    tag: "Geek Bar Pulse 2",
+    title: "Geek Bar Pulse 2 25K Grape Hubba",
+    subtitle: "25,000 puffs, dual-mode display, bold grape bubblegum flavor.",
+    cta: "Shop This Vape",
+    link: productLink("GEEK BAR PULSE 2 25K GRAPE HUBBA"),
+  },
+  {
+    id: 2,
+    image: "/img/hero-raz.jpg",
+    tag: "RAZ Punch Edition",
+    title: "RAZ Bar 25000 Hawaiian Punch",
+    subtitle: "Mega HD screen, boost mode & juicy tropical punch flavor.",
+    cta: "Shop This Vape",
+    link: productLink("RAZ BAR 25000 PUNCH EDITION HAWAIIAN PUNCH"),
+  },
+  {
+    id: 3,
+    image: "/img/hero-nexa.jpg",
+    tag: "NEXA Ultra II",
+    title: "NEXA Ultra II 50K Georgia Peach Ice",
+    subtitle: "50,000 puffs with Juicy Lock and visible e-liquid window.",
+    cta: "Shop This Vape",
+    link: productLink("NEXA ULTRA II 50K PUFF DISPOSABLE GEORGIA PEACH ICE"),
+  },
+];
+
+const promo = (name, tag) => {
+  const pr = byName(name);
+  return { id: pr.id, image: pr.image.replace(/-\d+x\d+(\.\w+)$/, "$1"), label: pr.name, price: pr.price, tag, link: `/shop/${pr.slug}` };
+};
+
+export const promoBlocks = [
+  promo("FOGER SWITCH PRO KIT MEXICO MANGO 30000 PUFF", "30K Puffs"),
+  promo("RAZ BAR MEGA TN9000 TROPICAL STORM", "Best Seller"),
+  promo("SMOGGER SWITCH PRO KIT KIWI DRAGON BERRY 40000 PUFF", "40K Puffs"),
+  promo("MUHA DISPOSABLE 3.5G MELTED DIAMONDS HYBRID BLUE ZUSHII", "Delta Disposable"),
+];
 
 export const usStates = [
   "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan","Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey","New Mexico","New York","North Carolina","North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island","South Carolina","South Dakota","Tennessee","Texas","Utah","Vermont","Virginia","Washington","West Virginia","Wisconsin","Wyoming"
