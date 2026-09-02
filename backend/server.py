@@ -164,7 +164,7 @@ ZELLE_NAME = os.environ.get("ZELLE_NAME", "").strip()
 ZELLE_ENABLED = bool(ZELLE_EMAIL)
 TEST_CARD_ENABLED = not (SQUARE_ENABLED or PAYPAL_ENABLED)
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "zelle"}
-DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 75.0}
+DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0}
 _settings_cache: dict = {}
 
 
