@@ -102,7 +102,260 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "Test the Puff2Door smoke shop frontend (React app). This is a FRONTEND-ONLY app with mock data and localStorage. Verify: 1) Age gate modal, 2) Homepage elements (hero slider, categories, products, tabs), 3) Header navigation (SHOP/BRANDS dropdowns), 4) Product card to detail page, 5) Add to cart functionality, 6) Cart operations (qty, remove, promo code PUFF10), 7) Search functionality, 8) Auth (login/register), 9) Static pages (about, contact, brands)."
+user_problem_statement: "Test the Puff2Door FastAPI backend. Verify: 1) AUTH endpoints (register, login, /me with JWT), 2) CART endpoints (GET, PUT with auth), 3) REVIEWS endpoints (GET, POST without auth), 4) ORDERS + TRACKING endpoints (POST with/without auth, GET orders, track by orderNumber)."
+
+backend:
+  - task: "Auth - Register New User"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "POST /api/auth/register with unique email returns 200 with {token, user}. User object contains id, email, firstName, lastName, address, state, city, zip, phone. Password field correctly excluded from response. JWT token generated successfully."
+
+  - task: "Auth - Duplicate Email Validation"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "POST /api/auth/register with duplicate email correctly returns 400 with error message 'An account with this email already exists'."
+
+  - task: "Auth - Login with Correct Credentials"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "POST /api/auth/login with correct email/password returns 200 with {token, user}. JWT token and user data returned successfully."
+
+  - task: "Auth - Login with Wrong Password"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "POST /api/auth/login with wrong password correctly returns 401 with error message 'Invalid email or password'."
+
+  - task: "Auth - Get Current User with Token"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/auth/me with valid Bearer token returns 200 with {user} object containing all user details."
+
+  - task: "Auth - Get Current User without Token"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/auth/me without Authorization header correctly returns 401 with 'Not authenticated' error."
+
+  - task: "Auth - Get Current User with Invalid Token"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/auth/me with invalid Bearer token correctly returns 401 with 'Invalid token' error."
+
+  - task: "Cart - Get Empty Cart"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/cart with valid token returns 200 with {items: []} for new user. Empty cart handled correctly."
+
+  - task: "Cart - Update Cart with Items"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "PUT /api/cart with valid token and items array returns 200 with saved items. Cart items include productId, name, price, image, category, categorySlug, slug, qty."
+
+  - task: "Cart - Persistence Check"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/cart after PUT returns the same items that were saved. Cart persistence to MongoDB working correctly."
+
+  - task: "Cart - Unauthorized Access"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/cart without Authorization header correctly returns 401. Cart endpoints properly protected."
+
+  - task: "Reviews - Get Reviews for Fresh Slug"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/reviews/{slug} for new product slug returns 200 with {reviews: [], average: 0, count: 0}. Empty state handled correctly."
+
+  - task: "Reviews - Post Review"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "POST /api/reviews with productSlug, name, rating (1-5), comment returns 200 with review object containing id, name, rating, comment, createdAt. No authentication required (open endpoint)."
+
+  - task: "Reviews - Average Calculation and Sorting"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/reviews/{slug} after posting multiple reviews correctly calculates average rating (4.0 for ratings 5 and 3). Reviews sorted by createdAt descending (newest first). Count field accurate."
+
+  - task: "Reviews - Rating Validation"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "POST /api/reviews with rating outside 1-5 range (e.g., rating: 7) correctly returns 422 validation error. Pydantic Field validation working."
+
+  - task: "Orders - Create Order with Auth"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "POST /api/orders with Bearer token, items, shipping, subtotal, shippingCost, discount, total, paymentLast4 returns 200 with order object. orderNumber starts with 'P2D-' followed by 8 digits. Status is 'placed'. Timeline array contains 4 stages (placed, confirmed, out_for_delivery, delivered) with first stage (placed) marked as done. Cart cleared after order creation."
+
+  - task: "Orders - Get Orders List"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/orders with Bearer token returns 200 with {orders: [...]} array. Created order found in list. Orders sorted by createdAt descending."
+
+  - task: "Orders - Track Order by Number (No Auth)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/orders/track/{orderNumber} without authentication returns 200 with full order details including timeline and status. Public tracking endpoint working correctly."
+
+  - task: "Orders - Get Order by ID"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/orders/{id} returns 200 with order details. Order retrieval by UUID working correctly."
+
+  - task: "Orders - Track Invalid Order Number"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "GET /api/orders/track/INVALID-12345 correctly returns 404 with 'Order not found' error. Invalid order number handling working."
+
+  - task: "Orders - Guest Checkout (No Auth)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "POST /api/orders without Bearer token (guest checkout) returns 200 with order object. Guest orders supported - userId is null. Order created successfully without authentication."
 
 frontend:
   - task: "Age Gate Modal"
@@ -467,13 +720,16 @@ frontend:
 
 metadata:
   created_by: "testing_agent"
-  version: "1.0"
-  test_sequence: 1
-  run_ui: true
+  version: "1.1"
+  test_sequence: 2
+  run_ui: false
   last_tested: "2026-09-02"
+  backend_tested: true
+  frontend_tested: true
 
 test_plan:
   current_focus:
+    - "All backend API endpoints tested and verified"
     - "All frontend features tested and verified"
   stuck_tasks: []
   test_all: true
@@ -482,3 +738,5 @@ test_plan:
 agent_communication:
   - agent: "testing"
     message: "Comprehensive frontend testing completed. All 30 frontend tasks tested successfully. Age gate, homepage elements (hero slider, feature bar, categories, products, tabs, brands), header navigation (SHOP/BRANDS dropdowns), product detail page, add to cart (from card and detail page), cart operations (quantity controls, remove item, promo code PUFF10 with 10% discount), search functionality, auth (login/register tabs and login flow), and static pages (about, brands, contact with form submission) all working correctly. No console errors or network failures detected. App is fully functional as a frontend-only demo with mock data and localStorage."
+  - agent: "testing"
+    message: "Comprehensive backend API testing completed. All 21 backend tests passed (100%). Tested AUTH endpoints (register with unique email returns token+user without password field, duplicate email returns 400, login with correct/wrong credentials, /me with valid/invalid/no token), CART endpoints (GET empty cart, PUT items, persistence check, unauthorized access returns 401), REVIEWS endpoints (GET fresh slug returns empty, POST review, average calculation with multiple reviews, rating validation rejects out-of-range values with 422), ORDERS + TRACKING endpoints (POST order with auth creates order with P2D-XXXXXXXX number and 4-stage timeline, GET orders list, track by orderNumber without auth, get by ID, invalid order returns 404, guest checkout without auth works). All endpoints using correct base URL (https://puff2door-preview.preview.emergentagent.com/api). MongoDB persistence working. JWT authentication working. No critical issues found."

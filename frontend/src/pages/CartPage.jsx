@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Trash2, Minus, Plus, ShoppingBag, ArrowRight, Tag } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { useToast } from "../hooks/use-toast";
@@ -7,6 +7,7 @@ import { useToast } from "../hooks/use-toast";
 const CartPage = () => {
   const { items, updateQty, removeItem, subtotal, clearCart } = useCart();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [promo, setPromo] = useState("");
   const [discount, setDiscount] = useState(0);
 
@@ -91,7 +92,7 @@ const CartPage = () => {
               <span className="font-heading text-lg uppercase">Total</span>
               <span className="font-heading text-2xl">${total.toFixed(2)}</span>
             </div>
-            <button onClick={() => toast({ title: "Checkout (demo)", description: "Checkout is mocked in this preview." })} className="w-full mt-5 py-3.5 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2">
+            <button onClick={() => navigate("/checkout")} className="w-full mt-5 py-3.5 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2">
               Proceed to Checkout <ArrowRight className="h-4 w-4" />
             </button>
             <p className="text-center text-xs text-neutral-400 mt-3">Secure checkout · 21+ verification required</p>

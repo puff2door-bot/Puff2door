@@ -11,6 +11,9 @@ import Home from "./pages/Home";
 import ShopPage from "./pages/ShopPage";
 import ProductDetail from "./pages/ProductDetail";
 import CartPage from "./pages/CartPage";
+import CheckoutPage from "./pages/CheckoutPage";
+import OrderPage from "./pages/OrderPage";
+import TrackPage from "./pages/TrackPage";
 import AuthPage from "./pages/AuthPage";
 import ContactPage from "./pages/ContactPage";
 import { BrandsPage, AboutPage } from "./pages/StaticPages";
@@ -41,6 +44,9 @@ function App() {
                 <Route path="/about" element={<AboutPage />} />
                 <Route path="/contact" element={<ContactPage />} />
                 <Route path="/cart" element={<CartPage />} />
+                <Route path="/checkout" element={<CheckoutPage />} />
+                <Route path="/order/:id" element={<OrderPage />} />
+                <Route path="/track" element={<TrackPage />} />
                 <Route path="/my-account" element={<AuthPage />} />
               </Routes>
             </main>

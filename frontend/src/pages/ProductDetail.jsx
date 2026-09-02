@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ChevronRight, Minus, Plus, ShoppingCart, Truck, ShieldCheck, RotateCcw, Star, Check } from "lucide-react";
 import ProductCard from "../components/ProductCard";
+import ReviewsSection from "../components/ReviewsSection";
 import { getProductBySlug, getProductsByCategory } from "../mock";
 import { useCart } from "../context/CartContext";
 import { useToast } from "../hooks/use-toast";
@@ -14,6 +15,7 @@ const ProductDetail = () => {
   const [qty, setQty] = useState(1);
   const [activeImg, setActiveImg] = useState(0);
   const [added, setAdded] = useState(false);
+  const [reviewSummary, setReviewSummary] = useState(null);
 
   if (!product) {
     return (
@@ -67,11 +69,16 @@ const ProductDetail = () => {
           <h1 className="font-heading text-3xl sm:text-4xl font-700 text-neutral-900 leading-tight mb-3">{product.name}</h1>
           <div className="flex items-center gap-2 mb-5">
             <div className="flex text-amber-400">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star key={i} className={`h-4 w-4 ${i < Math.round(product.rating) ? "fill-current" : ""}`} />
-              ))}
+              {Array.from({ length: 5 }).map((_, i) => {
+                const val = reviewSummary && reviewSummary.count ? reviewSummary.average : product.rating;
+                return <Star key={i} className={`h-4 w-4 ${i < Math.round(val) ? "fill-current" : ""}`} />;
+              })}
             </div>
-            <span className="text-sm text-neutral-500">{product.rating.toFixed(1)} · In stock</span>
+            <span className="text-sm text-neutral-500">
+              {reviewSummary && reviewSummary.count
+                ? `${reviewSummary.average} · ${reviewSummary.count} review${reviewSummary.count === 1 ? "" : "s"}`
+                : `${product.rating.toFixed(1)} · In stock`}
+            </span>
           </div>
 
           <p className="font-heading text-4xl text-neutral-900 mb-6">${product.price.toFixed(2)}</p>
@@ -98,6 +105,8 @@ const ProductDetail = () => {
           </div>
         </div>
       </div>
+
+      <ReviewsSection productSlug={product.slug} onSummary={setReviewSummary} />
 
       {related.length > 0 && (
         <section className="pt-16">

@@ -184,6 +184,11 @@ const Header = () => {
                   Contact
                 </Link>
               </li>
+              <li>
+                <Link to="/track" className="block px-4 py-3.5 text-[13px] font-semibold tracking-wide uppercase text-emerald-400 hover:text-emerald-300 transition-colors">
+                  Track Order
+                </Link>
+              </li>
 
               <li className="ml-auto flex items-center gap-5 text-[12px] text-neutral-300">
                 <span className="flex items-center gap-1.5"><Phone className="h-4 w-4 text-emerald-400" /> {BRAND.phone}</span>
@@ -217,6 +222,7 @@ const Header = () => {
                 <Link to="/brands" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Brands</Link>
                 <Link to="/about" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">About</Link>
                 <Link to="/contact" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Contact</Link>
+                <Link to="/track" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Track Order</Link>
                 <Link to="/my-account" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">My Account</Link>
               </div>
             </div>
