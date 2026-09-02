@@ -4,7 +4,7 @@
 export const BRAND = {
   name: "Puff2Door",
   tagline: "Puffs Delivered To Your Door",
-  phone: "(530) 665-0850",
+  phone: "(407) 625-6826",
   email: "puff2door@gmail.com",
   address: "1200 Orange Ave, Orlando, FL 32801",
 };

@@ -48,7 +48,7 @@ def layout(title: str, body: str, preheader: str = "") -> str:
   {body}
 </td></tr>
 <tr><td style="padding:20px 32px;background:#fafafa;border-top:1px solid #e5e5e5;font-size:12px;color:#737373;line-height:1.6;">
-  Questions? Reply to this email or reach us at puff2door@gmail.com · (530) 665-0850.<br>
+  Questions? Reply to this email or reach us at puff2door@gmail.com · (407) 625-6826.<br>
   You must be 21+ to purchase. Puff2Door, Orlando, FL.
 </td></tr>
 </table></td></tr></table></body></html>"""
