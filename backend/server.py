@@ -1,6 +1,8 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File
 from dotenv import load_dotenv
 import httpx
+import asyncio
+import emails
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
@@ -611,9 +613,12 @@ async def forgot_password(inp: ForgotPasswordInput):
         "used": False,
         "createdAt": now_utc(),
     })
+    sent = await emails.send_password_reset(email, user.get("firstName", ""), token, RESET_TOKEN_MINUTES)
+    if sent == "sent":
+        return {**generic, "emailSent": True, "expiresInMinutes": RESET_TOKEN_MINUTES}
     logger.info("Password reset link for %s: /my-account?reset_token=%s", email, token)
-    # No email provider connected: the reset token is returned so the UI can show the link in-app.
-    return {**generic, "resetToken": token, "expiresInMinutes": RESET_TOKEN_MINUTES}
+    # Email not delivered (provider disabled/failed): fall back to showing the link in-app.
+    return {**generic, "emailSent": False, "resetToken": token, "expiresInMinutes": RESET_TOKEN_MINUTES}
 
 
 @api_router.post("/auth/reset-password")
@@ -887,7 +892,9 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
     await db.orders.insert_one(order)
     if user:
         await db.carts.update_one({"userId": user["id"]}, {"$set": {"items": []}}, upsert=True)
-    return order_response(order)
+    resp = order_response(order)
+    asyncio.create_task(emails.send_order_confirmation(order, resp.get("zelle")))
+    return resp
 
 
 @api_router.get("/orders")
@@ -1009,15 +1016,17 @@ async def admin_update_product(product_id: int, inp: ProductInput, admin: dict =
     await db.products.update_one({"id": product_id}, {"$set": doc})
     restocked = int(existing.get("stock", 0)) == 0 and inp.stock > 0
     notified = 0
+    updated = await db.products.find_one({"id": product_id})
     if restocked:
-        # MOCKED email: no provider connected, alerts are marked as notified and logged.
+        pending = await db.stock_alerts.find({"productId": product_id, "notified": False}).to_list(1000)
+        for a in pending:
+            asyncio.create_task(emails.send_restock_alert(a["email"], updated))
         res = await db.stock_alerts.update_many(
             {"productId": product_id, "notified": False},
             {"$set": {"notified": True, "notifiedAt": now_utc()}},
         )
         notified = res.modified_count
         logger.info("Restock: notified %s subscriber(s) for product %s", notified, product_id)
-    updated = await db.products.find_one({"id": product_id})
     return {**product_out(updated), "restockNotified": notified}
 
 
@@ -1072,7 +1081,9 @@ async def admin_update_order_status(order_id: str, inp: OrderStatusInput, admin:
     )
     if not res.matched_count:
         raise HTTPException(status_code=404, detail="Order not found")
-    return order_response(await db.orders.find_one({"id": order_id}))
+    updated = await db.orders.find_one({"id": order_id})
+    asyncio.create_task(emails.send_status_update(updated, inp.status))
+    return order_response(updated)
 
 
 @api_router.put("/admin/orders/{order_id}/payment")
@@ -1090,7 +1101,10 @@ async def admin_update_order_payment(order_id: str, inp: PaymentStatusInput, adm
     if inp.paymentStatus == "refunded":
         await release_stock(o["items"])
     await db.orders.update_one({"id": order_id}, {"$set": updates})
-    return order_response(await db.orders.find_one({"id": order_id}))
+    updated = await db.orders.find_one({"id": order_id})
+    if "paidAt" in updates:
+        asyncio.create_task(emails.send_payment_received(updated))
+    return order_response(updated)
 
 
 @api_router.get("/admin/stats")
@@ -1117,6 +1131,15 @@ async def admin_stats(admin: dict = Depends(get_admin_user)):
         "pendingAlerts": pending_alerts,
         "customers": await db.users.count_documents({}),
     }
+
+
+@api_router.get("/admin/emails")
+async def admin_email_log(admin: dict = Depends(get_admin_user)):
+    logs = await db.email_log.find({}, {"_id": 0}).sort("createdAt", -1).to_list(200)
+    for l in logs:
+        if isinstance(l.get("createdAt"), datetime):
+            l["createdAt"] = l["createdAt"].isoformat()
+    return {"emails": logs, "enabled": emails.EMAIL_ENABLED, "from": emails.EMAIL_FROM}
 
 
 @api_router.get("/admin/stock-alerts")
@@ -1153,6 +1176,12 @@ async def create_indexes():
     await db.products.create_index("id", unique=True)
     await db.products.create_index("slug")
     await db.files.create_index("storage_path")
+
+
+@app.on_event("startup")
+async def configure_emails():
+    emails.configure(db, os.environ.get("PUBLIC_URL", ""))
+    logger.info("Email %s (from %s)", "enabled" if emails.EMAIL_ENABLED else "disabled", emails.EMAIL_FROM or "-")
 
 
 @app.on_event("startup")

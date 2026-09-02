@@ -27,6 +27,7 @@ import AdminProducts from "./pages/admin/AdminProducts";
 import AdminOrders from "./pages/admin/AdminOrders";
 import AdminAlerts from "./pages/admin/AdminAlerts";
 import AdminBanners from "./pages/admin/AdminBanners";
+import AdminEmails from "./pages/admin/AdminEmails";
 import NotFound from "./pages/NotFound";
 
 const ScrollToTop = () => {
@@ -60,6 +61,7 @@ const AppRoutes = () => {
         <Route path="orders" element={<AdminOrders />} />
         <Route path="alerts" element={<AdminAlerts />} />
         <Route path="banners" element={<AdminBanners />} />
+        <Route path="emails" element={<AdminEmails />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

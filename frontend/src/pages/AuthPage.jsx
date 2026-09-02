@@ -204,9 +204,10 @@ const AuthPage = () => {
           {forgotResult ? (
             <div data-testid="forgot-result" className="border border-emerald-200 bg-emerald-50 rounded-xl p-5 space-y-3">
               <p className="text-sm text-emerald-800 flex items-start gap-2"><KeyRound className="h-4 w-4 mt-0.5 shrink-0" /> {forgotResult.message}</p>
+              {forgotResult.emailSent && <p data-testid="forgot-email-sent" className="text-xs text-neutral-600">Check your inbox — the reset link is valid for {forgotResult.expiresInMinutes} minutes. Don't forget to look in spam.</p>}
               {resetLink && (
                 <>
-                  <p className="text-xs text-neutral-600">Email delivery isn't connected yet, so here is your one-time reset link (valid {forgotResult.expiresInMinutes} min):</p>
+                  <p className="text-xs text-neutral-600">We couldn't email you right now, so here is your one-time reset link (valid {forgotResult.expiresInMinutes} min):</p>
                   <Link to={`/my-account?reset_token=${forgotResult.resetToken}`} onClick={() => setMode("reset")} data-testid="reset-link" className="block break-all text-xs font-mono bg-white border border-emerald-200 rounded-lg p-3 text-emerald-700 hover:underline">{resetLink}</Link>
                 </>
               )}
