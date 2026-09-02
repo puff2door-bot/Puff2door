@@ -1,0 +1,11 @@
+.App {
+  min-height: 100vh;
+}
+
+.product-card-img {
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.hero-slide {
+  transition: opacity 0.8s ease;
+}

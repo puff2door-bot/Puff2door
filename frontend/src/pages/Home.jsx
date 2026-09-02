@@ -1,0 +1,173 @@
+import React, { useState } from "react";
+import { Link } from "react-router-dom";
+import { ArrowRight, Truck, ShieldCheck, Clock, BadgePercent } from "lucide-react";
+import HeroSlider from "../components/HeroSlider";
+import ProductCard from "../components/ProductCard";
+import {
+  promoBlocks,
+  newProducts,
+  categories,
+  brands,
+  getProductsByCategory,
+} from "../mock";
+
+const tabCats = [
+  { name: "Disposable Vapes", slug: "disposable" },
+  { name: "Delta Disposables", slug: "delta" },
+  { name: "Delta Cartridges", slug: "delta-cartridges" },
+  { name: "Delta Edibles", slug: "delta-edibles" },
+  { name: "Delta Smokeables", slug: "delta-smokeables" },
+];
+
+const features = [
+  { icon: Truck, title: "Fast Delivery", desc: "Discreet shipping nationwide" },
+  { icon: ShieldCheck, title: "Lab Tested", desc: "Verified & compliant products" },
+  { icon: Clock, title: "Same-Day Local", desc: "Orlando area delivery" },
+  { icon: BadgePercent, title: "Best Prices", desc: "Deals on top brands" },
+];
+
+const SectionHeader = ({ title, link }) => (
+  <div className="flex items-end justify-between mb-6">
+    <div>
+      <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full" />
+      <h2 className="font-heading text-3xl sm:text-4xl font-700 text-neutral-900 uppercase tracking-tight">
+        {title}
+      </h2>
+    </div>
+    {link && (
+      <Link to={link} className="hidden sm:inline-flex items-center gap-1 text-sm font-bold text-emerald-600 hover:gap-2 transition-all">
+        View All <ArrowRight className="h-4 w-4" />
+      </Link>
+    )}
+  </div>
+);
+
+const Home = () => {
+  const [activeTab, setActiveTab] = useState("disposable");
+  const tabProducts = getProductsByCategory(activeTab).slice(0, 12);
+
+  return (
+    <div>
+      <HeroSlider />
+
+      {/* Feature bar */}
+      <section className="bg-neutral-50 border-b">
+        <div className="max-w-[1280px] mx-auto px-4 grid grid-cols-2 lg:grid-cols-4 divide-x divide-neutral-200">
+          {features.map((f, i) => (
+            <div key={i} className="flex items-center gap-3 py-5 px-4">
+              <span className="grid place-items-center h-11 w-11 rounded-full bg-emerald-100 text-emerald-700 shrink-0">
+                <f.icon className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="font-semibold text-sm text-neutral-900">{f.title}</p>
+                <p className="text-xs text-neutral-500">{f.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Category pills */}
+      <section className="max-w-[1280px] mx-auto px-4 pt-10">
+        <div className="flex gap-2.5 overflow-x-auto no-scrollbar pb-2">
+          {categories.map((c) => (
+            <Link
+              key={c.slug}
+              to={`/product-category/${c.slug}`}
+              className="shrink-0 px-4 py-2 rounded-full border border-neutral-300 text-xs font-semibold text-neutral-700 hover:border-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors uppercase tracking-wide"
+            >
+              {c.name}
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* Promo blocks */}
+      <section className="max-w-[1280px] mx-auto px-4 pt-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {promoBlocks.map((b) => (
+            <Link key={b.id} to={b.link} className="group relative rounded-xl overflow-hidden aspect-[4/3]">
+              <img src={b.image} alt={b.label} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500" />
+              <div className="absolute inset-0 bg-gradient-to-t from-neutral-900/80 to-transparent" />
+              <div className="absolute bottom-0 left-0 p-4">
+                <p className="font-heading text-white text-lg uppercase tracking-wide">{b.label}</p>
+                <span className="inline-flex items-center gap-1 text-emerald-400 text-xs font-bold mt-1">Shop Now <ArrowRight className="h-3.5 w-3.5" /></span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* New Products */}
+      <section className="max-w-[1280px] mx-auto px-4 pt-14">
+        <SectionHeader title="New Products" link="/shop" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          {newProducts.slice(0, 15).map((p) => (
+            <ProductCard key={p.id} product={p} />
+          ))}
+        </div>
+      </section>
+
+      {/* Top Categories tabbed */}
+      <section className="max-w-[1280px] mx-auto px-4 pt-14">
+        <SectionHeader title="Top Categories" />
+        <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6 border-b">
+          {tabCats.map((t) => (
+            <button
+              key={t.slug}
+              onClick={() => setActiveTab(t.slug)}
+              className={`shrink-0 px-4 py-3 text-sm font-bold uppercase tracking-wide border-b-2 transition-colors ${
+                activeTab === t.slug
+                  ? "border-emerald-600 text-emerald-700"
+                  : "border-transparent text-neutral-500 hover:text-neutral-800"
+              }`}
+            >
+              {t.name}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          {tabProducts.map((p) => (
+            <ProductCard key={p.id} product={p} />
+          ))}
+        </div>
+        <div className="text-center mt-8">
+          <Link to={`/product-category/${activeTab}`} className="inline-flex items-center gap-2 px-7 py-3 border-2 border-neutral-900 text-neutral-900 font-bold rounded-full hover:bg-neutral-900 hover:text-white transition-colors uppercase text-sm tracking-wide">
+            View All <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </section>
+
+      {/* Brands */}
+      <section className="max-w-[1280px] mx-auto px-4 pt-14">
+        <SectionHeader title="Shop By Brand" link="/brands" />
+        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-4">
+          {brands.slice(0, 16).map((b) => (
+            <Link key={b.slug} to={`/brand/${b.slug}`} className="group aspect-square bg-white border border-neutral-200 rounded-lg grid place-items-center p-3 hover:shadow-lg hover:border-emerald-200 transition-all">
+              <img src={b.image} alt={b.name} className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform" />
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* CTA banner */}
+      <section className="max-w-[1280px] mx-auto px-4 pt-14">
+        <div className="relative overflow-hidden rounded-2xl bg-neutral-900 px-8 py-12 sm:px-14 sm:py-16">
+          <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-emerald-600/20 blur-2xl" />
+          <div className="relative max-w-lg">
+            <h3 className="font-heading text-3xl sm:text-4xl font-700 text-white uppercase leading-tight mb-3">
+              Get 10% off your first order
+            </h3>
+            <p className="text-neutral-300 mb-6">Join the Puff2Door club for exclusive deals, new drops and same-day delivery updates.</p>
+            <form onSubmit={(e) => e.preventDefault()} className="flex flex-col sm:flex-row gap-3 max-w-md">
+              <input type="email" required placeholder="Enter your email" className="flex-1 px-5 py-3 rounded-full text-sm outline-none" />
+              <button className="px-7 py-3 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors">Subscribe</button>
+            </form>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+};
+
+export default Home;
