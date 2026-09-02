@@ -28,6 +28,8 @@ import AdminOrders from "./pages/admin/AdminOrders";
 import AdminAlerts from "./pages/admin/AdminAlerts";
 import AdminBanners from "./pages/admin/AdminBanners";
 import AdminEmails from "./pages/admin/AdminEmails";
+import AdminPromos from "./pages/admin/AdminPromos";
+import AdminSettings from "./pages/admin/AdminSettings";
 import NotFound from "./pages/NotFound";
 
 const ScrollToTop = () => {
@@ -62,6 +64,8 @@ const AppRoutes = () => {
         <Route path="alerts" element={<AdminAlerts />} />
         <Route path="banners" element={<AdminBanners />} />
         <Route path="emails" element={<AdminEmails />} />
+        <Route path="promos" element={<AdminPromos />} />
+        <Route path="settings" element={<AdminSettings />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

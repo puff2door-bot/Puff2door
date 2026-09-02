@@ -37,6 +37,26 @@ const fromServerItem = (i) => ({
 
 export const CartProvider = ({ children }) => {
   const [items, setItems] = useState(readLocal);
+  const [pricing, setPricing] = useState(DEFAULT_PRICING);
+  const [promo, setPromo] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("p2d_promo")) || null; } catch { return null; }
+  });
+
+  useEffect(() => {
+    api.get("/settings").then(({ data }) => setPricing(data.pricing)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (promo) localStorage.setItem("p2d_promo", JSON.stringify(promo));
+    else localStorage.removeItem("p2d_promo");
+  }, [promo]);
+
+  const applyPromo = async (code) => {
+    const { data } = await api.post("/promo/validate", { code, items: items.map(toServerItem) });
+    setPromo(data);
+    return data;
+  };
+  const removePromo = () => setPromo(null);
   const syncTimer = useRef(null);
   const skipSync = useRef(false);
 
@@ -93,26 +113,34 @@ export const CartProvider = ({ children }) => {
   const removeItem = (id) => setItems((prev) => prev.filter((i) => i.id !== id));
   const updateQty = (id, qty) =>
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, qty: Math.max(1, qty) } : i)));
-  const clearCart = () => setItems([]);
+  const clearCart = () => { setItems([]); setPromo(null); };
 
   const count = items.reduce((s, i) => s + i.qty, 0);
   const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
+  const totals = computeTotals(subtotal, pricing, promo);
 
   return (
     <CartContext.Provider
-      value={{ items, addItem, removeItem, updateQty, clearCart, count, subtotal, toServerItem }}
+      value={{ items, addItem, removeItem, updateQty, clearCart, count, subtotal, toServerItem, pricing, promo, applyPromo, removePromo, totals }}
     >
       {children}
     </CartContext.Provider>
   );
 };
 
-export const PRICING = { taxRate: 0.065, taxLabel: "Sales tax (6.5%)", deliveryFee: 15, freeDeliveryMin: 75 };
+export const DEFAULT_PRICING = { taxRate: 0.065, taxLabel: "Sales tax (6.5%)", deliveryFee: 15, freeDeliveryMin: 75 };
 
-export const computeTotals = (subtotal, rules = PRICING) => {
+export const promoDiscount = (promo, subtotal) => {
+  if (!promo || subtotal < (promo.minSubtotal || 0)) return 0;
+  const d = promo.type === "percent" ? subtotal * Math.min(promo.value, 100) / 100 : Math.min(promo.value, subtotal);
+  return Math.round(d * 100) / 100;
+};
+
+export const computeTotals = (subtotal, rules = DEFAULT_PRICING, promo = null) => {
+  const discount = promoDiscount(promo, subtotal);
   const shipping = subtotal >= rules.freeDeliveryMin || subtotal === 0 ? 0 : rules.deliveryFee;
-  const tax = Math.round(subtotal * rules.taxRate * 100) / 100;
-  return { subtotal, shipping, tax, total: Math.round((subtotal + shipping + tax) * 100) / 100 };
+  const tax = Math.round((subtotal - discount) * rules.taxRate * 100) / 100;
+  return { subtotal, discount, shipping, tax, total: Math.round((subtotal - discount + shipping + tax) * 100) / 100 };
 };
 
 export const useCart = () => useContext(CartContext);

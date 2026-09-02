@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink, Link, Outlet } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 
 const nav = [
@@ -9,7 +9,9 @@ const nav = [
   { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
   { to: "/admin/alerts", label: "Restock Alerts", icon: Bell },
   { to: "/admin/banners", label: "Home Banners", icon: Images },
+  { to: "/admin/promos", label: "Promo Codes", icon: Ticket },
   { to: "/admin/emails", label: "Email Log", icon: Mail },
+  { to: "/admin/settings", label: "Store Settings", icon: Settings },
 ];
 
 const AdminLayout = () => {

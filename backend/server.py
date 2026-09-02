@@ -135,10 +135,12 @@ class OrderInput(BaseModel):
     paymentMethod: str = "test_card"
     paymentToken: str = ""
     paypalOrderId: str = ""
+    promoCode: str = ""
 
 
 class PayPalCreateInput(BaseModel):
     items: List[CartItem]
+    promoCode: str = ""
 
 
 class PaymentStatusInput(BaseModel):
@@ -162,19 +164,98 @@ ZELLE_NAME = os.environ.get("ZELLE_NAME", "").strip()
 ZELLE_ENABLED = bool(ZELLE_EMAIL)
 TEST_CARD_ENABLED = not (SQUARE_ENABLED or PAYPAL_ENABLED)
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "zelle"}
-TAX_RATE = 0.065  # Orlando / Orange County FL: 6% state + 0.5% county, items only
-DELIVERY_FEE = 15.0
-FREE_DELIVERY_MIN = 75.0
+DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 75.0}
+_settings_cache: dict = {}
 
 
-def pricing_rules() -> dict:
-    return {"taxRate": TAX_RATE, "taxLabel": "Sales tax (6.5%)", "deliveryFee": DELIVERY_FEE, "freeDeliveryMin": FREE_DELIVERY_MIN}
+class StoreSettingsInput(BaseModel):
+    taxRate: float = Field(ge=0, le=0.5)
+    deliveryFee: float = Field(ge=0)
+    freeDeliveryMin: float = Field(ge=0)
 
 
-def compute_totals(subtotal: float) -> dict:
-    shipping_cost = 0.0 if subtotal >= FREE_DELIVERY_MIN or subtotal == 0 else DELIVERY_FEE
-    tax = round(subtotal * TAX_RATE, 2)
-    return {"subtotal": round(subtotal, 2), "shippingCost": shipping_cost, "tax": tax, "taxRate": TAX_RATE, "total": round(subtotal + shipping_cost + tax, 2)}
+class PromoInput(BaseModel):
+    code: str = Field(min_length=2, max_length=32)
+    type: str = "percent"  # percent | fixed
+    value: float = Field(gt=0)
+    minSubtotal: float = Field(default=0, ge=0)
+    maxUses: Optional[int] = Field(default=None, ge=1)
+    expiresAt: Optional[datetime] = None
+    active: bool = True
+
+    @field_validator("type")
+    @classmethod
+    def _type(cls, v):
+        if v not in ("percent", "fixed"):
+            raise ValueError("type must be percent or fixed")
+        return v
+
+    @field_validator("code")
+    @classmethod
+    def _code(cls, v):
+        v = re.sub(r"[^A-Za-z0-9_-]", "", v).upper()
+        if len(v) < 2:
+            raise ValueError("Code must be letters/numbers")
+        return v
+
+
+class PromoValidateInput(BaseModel):
+    code: str
+    items: List[CartItem] = []
+
+
+async def get_settings() -> dict:
+    global _settings_cache
+    if not _settings_cache:
+        doc = await db.site_settings.find_one({"key": "store"}, {"_id": 0, "key": 0, "updatedAt": 0, "updatedBy": 0})
+        _settings_cache = {**DEFAULT_SETTINGS, **(doc or {})}
+    return _settings_cache
+
+
+def pricing_rules(settings: dict) -> dict:
+    rate = settings["taxRate"]
+    return {"taxRate": rate, "taxLabel": f"Sales tax ({rate * 100:g}%)", "deliveryFee": settings["deliveryFee"], "freeDeliveryMin": settings["freeDeliveryMin"]}
+
+
+def promo_public(p: dict) -> dict:
+    return {
+        "id": p["id"], "code": p["code"], "type": p["type"], "value": p["value"], "minSubtotal": p.get("minSubtotal", 0),
+        "maxUses": p.get("maxUses"), "uses": p.get("uses", 0), "active": p.get("active", True),
+        "expiresAt": p["expiresAt"].isoformat() if isinstance(p.get("expiresAt"), datetime) else p.get("expiresAt"),
+        "createdAt": p["createdAt"].isoformat() if isinstance(p.get("createdAt"), datetime) else p.get("createdAt"),
+    }
+
+
+def promo_discount(promo: dict, subtotal: float) -> float:
+    if promo["type"] == "percent":
+        return round(subtotal * min(promo["value"], 100) / 100, 2)
+    return round(min(promo["value"], subtotal), 2)
+
+
+async def resolve_promo(code: str, subtotal: float) -> dict:
+    """Returns the promo doc or raises 400 with a customer-facing reason."""
+    promo = await db.promo_codes.find_one({"code": code.strip().upper()})
+    if not promo or not promo.get("active", True):
+        raise HTTPException(status_code=400, detail="That promo code isn't valid")
+    exp = promo.get("expiresAt")
+    if exp:
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if exp < now_utc():
+            raise HTTPException(status_code=400, detail="That promo code has expired")
+    if promo.get("maxUses") and promo.get("uses", 0) >= promo["maxUses"]:
+        raise HTTPException(status_code=400, detail="That promo code has reached its usage limit")
+    if subtotal < promo.get("minSubtotal", 0):
+        raise HTTPException(status_code=400, detail=f"Add ${promo['minSubtotal'] - subtotal:.2f} more to use {promo['code']} (min ${promo['minSubtotal']:.2f})")
+    return promo
+
+
+def compute_totals(subtotal: float, settings: dict, discount: float = 0.0) -> dict:
+    subtotal = round(subtotal, 2)
+    discount = round(min(discount, subtotal), 2)
+    shipping_cost = 0.0 if subtotal >= settings["freeDeliveryMin"] or subtotal == 0 else settings["deliveryFee"]
+    tax = round((subtotal - discount) * settings["taxRate"], 2)
+    return {"subtotal": subtotal, "discount": discount, "shippingCost": shipping_cost, "tax": tax, "taxRate": settings["taxRate"], "total": round(subtotal - discount + shipping_cost + tax, 2)}
 
 
 def payments_config() -> dict:
@@ -184,7 +265,6 @@ def payments_config() -> dict:
         "paypal": {"enabled": PAYPAL_ENABLED, "clientId": PAYPAL_CLIENT_ID if PAYPAL_ENABLED else None, "env": PAYPAL_ENV},
         "zelle": {"enabled": ZELLE_ENABLED, "email": ZELLE_EMAIL, "name": ZELLE_NAME},
         "testCard": {"enabled": TEST_CARD_ENABLED},
-        "pricing": pricing_rules(),
     }
 
 
@@ -232,7 +312,7 @@ async def paypal_request(method: str, path: str, body: Optional[dict] = None) ->
     return data
 
 
-async def price_cart(items: List[CartItem]):
+async def price_cart(items: List[CartItem], promo_code: str = ""):
     problems, priced = [], []
     for it in items:
         prod = await db.products.find_one({"id": it.productId})
@@ -253,7 +333,11 @@ async def price_cart(items: List[CartItem]):
         priced.append({**it.model_dump(), "name": prod["name"], "price": round(price, 2), "image": prod.get("image", ""), "slug": prod["slug"]})
     if problems:
         raise HTTPException(status_code=409, detail="; ".join(problems))
-    totals = compute_totals(sum(i["price"] * i["qty"] for i in priced))
+    settings = await get_settings()
+    subtotal = round(sum(i["price"] * i["qty"] for i in priced), 2)
+    promo = await resolve_promo(promo_code, subtotal) if promo_code.strip() else None
+    totals = compute_totals(subtotal, settings, promo_discount(promo, subtotal) if promo else 0.0)
+    totals["promoCode"] = promo["code"] if promo else ""
     return priced, totals
 
 
@@ -555,6 +639,7 @@ def order_response(o: dict) -> dict:
         "tax": o.get("tax", 0),
         "taxRate": o.get("taxRate", 0),
         "discount": o.get("discount", 0),
+        "promoCode": o.get("promoCode", ""),
         "total": o["total"],
         "paymentLast4": o.get("paymentLast4", ""),
         "paymentMethod": o.get("paymentMethod", "test_card"),
@@ -820,7 +905,7 @@ async def paypal_create_order(inp: PayPalCreateInput):
         raise HTTPException(status_code=503, detail="PayPal is not configured")
     if not inp.items:
         raise HTTPException(status_code=400, detail="Your cart is empty")
-    _, totals = await price_cart(inp.items)
+    _, totals = await price_cart(inp.items, inp.promoCode)
     total = totals["total"]
     data = await paypal_request("POST", "/v2/checkout/orders", {
         "intent": "CAPTURE",
@@ -853,7 +938,7 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
     enabled = {"test_card": TEST_CARD_ENABLED, "square": SQUARE_ENABLED, "cash_app": SQUARE_ENABLED, "paypal": PAYPAL_ENABLED, "zelle": ZELLE_ENABLED}
     if method not in PAYMENT_METHODS or not enabled[method]:
         raise HTTPException(status_code=400, detail="That payment method is not available")
-    priced_items, totals = await price_cart(inp.items)
+    priced_items, totals = await price_cart(inp.items, inp.promoCode)
     subtotal, shipping_cost, total = totals["subtotal"], totals["shippingCost"], totals["total"]
     await reserve_stock(priced_items)
     order_id = str(uuid.uuid4())
@@ -902,12 +987,15 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
         "shippingCost": shipping_cost,
         "tax": totals["tax"],
         "taxRate": totals["taxRate"],
-        "discount": 0,
+        "discount": totals["discount"],
+        "promoCode": totals["promoCode"],
         "total": total,
         **payment,
         "createdAt": now_utc(),
     }
     await db.orders.insert_one(order)
+    if totals["promoCode"]:
+        await db.promo_codes.update_one({"code": totals["promoCode"]}, {"$inc": {"uses": 1}})
     if user:
         await db.carts.update_one({"userId": user["id"]}, {"$set": {"items": []}}, upsert=True)
     resp = order_response(order)
@@ -959,6 +1047,28 @@ async def serve_file(path: str):
         raise HTTPException(status_code=404, detail="File not found")
     data, content_type = await get_object(path)
     return Response(content=data, media_type=record.get("content_type", content_type), headers={"Cache-Control": "public, max-age=86400"})
+
+
+# ---- Settings & promo codes ----
+@api_router.get("/settings")
+async def public_settings():
+    return {"pricing": pricing_rules(await get_settings())}
+
+
+@api_router.post("/promo/validate")
+async def validate_promo(inp: PromoValidateInput):
+    subtotal = 0.0
+    for it in inp.items:
+        prod = await db.products.find_one({"id": it.productId})
+        if not prod:
+            continue
+        sale = prod.get("salePrice")
+        base = min(prod["price"], sale) if sale and sale > 0 else prod["price"]
+        unit = min(it.price, base) if it.price > 0 else base
+        subtotal += unit * it.qty
+    subtotal = round(subtotal, 2)
+    promo = await resolve_promo(inp.code, subtotal)
+    return {"code": promo["code"], "type": promo["type"], "value": promo["value"], "minSubtotal": promo.get("minSubtotal", 0), "discount": promo_discount(promo, subtotal)}
 
 
 # ---- Admin ----
@@ -1125,6 +1235,55 @@ async def admin_update_order_payment(order_id: str, inp: PaymentStatusInput, adm
     return order_response(updated)
 
 
+@api_router.get("/admin/settings")
+async def admin_get_settings(admin: dict = Depends(get_admin_user)):
+    return await get_settings()
+
+
+@api_router.put("/admin/settings")
+async def admin_put_settings(inp: StoreSettingsInput, admin: dict = Depends(get_admin_user)):
+    global _settings_cache
+    data = inp.model_dump()
+    await db.site_settings.update_one({"key": "store"}, {"$set": {**data, "updatedAt": now_utc(), "updatedBy": admin["id"]}}, upsert=True)
+    _settings_cache = {}
+    return await get_settings()
+
+
+@api_router.get("/admin/promos")
+async def admin_list_promos(admin: dict = Depends(get_admin_user)):
+    promos = await db.promo_codes.find({}).sort("createdAt", -1).to_list(500)
+    return {"promos": [promo_public(p) for p in promos]}
+
+
+@api_router.post("/admin/promos")
+async def admin_create_promo(inp: PromoInput, admin: dict = Depends(get_admin_user)):
+    if await db.promo_codes.find_one({"code": inp.code}):
+        raise HTTPException(status_code=409, detail="A promo with that code already exists")
+    doc = {**inp.model_dump(), "id": str(uuid.uuid4()), "uses": 0, "createdAt": now_utc()}
+    await db.promo_codes.insert_one(doc)
+    return promo_public(doc)
+
+
+@api_router.put("/admin/promos/{promo_id}")
+async def admin_update_promo(promo_id: str, inp: PromoInput, admin: dict = Depends(get_admin_user)):
+    existing = await db.promo_codes.find_one({"id": promo_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Promo not found")
+    clash = await db.promo_codes.find_one({"code": inp.code, "id": {"$ne": promo_id}})
+    if clash:
+        raise HTTPException(status_code=409, detail="A promo with that code already exists")
+    await db.promo_codes.update_one({"id": promo_id}, {"$set": {**inp.model_dump(), "updatedAt": now_utc()}})
+    return promo_public(await db.promo_codes.find_one({"id": promo_id}))
+
+
+@api_router.delete("/admin/promos/{promo_id}")
+async def admin_delete_promo(promo_id: str, admin: dict = Depends(get_admin_user)):
+    res = await db.promo_codes.delete_one({"id": promo_id})
+    if not res.deleted_count:
+        raise HTTPException(status_code=404, detail="Promo not found")
+    return {"ok": True}
+
+
 @api_router.get("/admin/stats")
 async def admin_stats(admin: dict = Depends(get_admin_user)):
     orders = await db.orders.find({}, {"total": 1, "createdAt": 1, "manualStatus": 1, "items": 1}).to_list(5000)
@@ -1213,6 +1372,9 @@ async def seed_data():
                 it["updatedAt"] = now_utc()
             await db.products.insert_many(items)
             logger.info("Seeded %s products", len(items))
+    if await db.promo_codes.count_documents({}) == 0:
+        await db.promo_codes.insert_one({"id": str(uuid.uuid4()), "code": "PUFF10", "type": "percent", "value": 10, "minSubtotal": 0, "maxUses": None, "expiresAt": None, "active": True, "uses": 0, "createdAt": now_utc()})
+    await db.promo_codes.create_index("code", unique=True)
     admin_pw = os.environ.get("ADMIN_PASSWORD")
     if ADMIN_EMAILS and admin_pw:
         email = ADMIN_EMAILS[0]

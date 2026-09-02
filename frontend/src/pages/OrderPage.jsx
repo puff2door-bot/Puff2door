@@ -130,7 +130,7 @@ const OrderPage = () => {
               <div className="flex justify-between"><span className="text-neutral-500">Subtotal</span><span>${order.subtotal.toFixed(2)}</span></div>
               <div className="flex justify-between"><span className="text-neutral-500">Delivery</span><span>{order.shippingCost === 0 ? "FREE" : `$${order.shippingCost.toFixed(2)}`}</span></div>
               {order.tax > 0 && <div className="flex justify-between" data-testid="order-tax"><span className="text-neutral-500">Sales tax ({(order.taxRate * 100).toFixed(1).replace(/\.0$/, "")}%)</span><span>${order.tax.toFixed(2)}</span></div>}
-              {order.discount > 0 && <div className="flex justify-between text-emerald-600"><span>Discount</span><span>-${order.discount.toFixed(2)}</span></div>}
+              {order.discount > 0 && <div className="flex justify-between text-emerald-600" data-testid="order-discount"><span>Discount{order.promoCode ? ` (${order.promoCode})` : ""}</span><span>-${order.discount.toFixed(2)}</span></div>}
               <div className="flex justify-between font-heading text-lg border-t pt-2 mt-2"><span>Total</span><span>${order.total.toFixed(2)}</span></div>
               <p className="text-xs text-neutral-400 pt-1" data-testid="order-payment-info">
                 {order.paymentStatus === "awaiting_payment" ? `Awaiting ${PAY_LABEL[order.paymentMethod]} payment` : order.paymentStatus === "refunded" ? "Refunded" : `Paid via ${order.paymentBrand || PAY_LABEL[order.paymentMethod]}${order.paymentLast4 && order.paymentMethod !== "paypal" ? ` •••• ${order.paymentLast4}` : ""}`}

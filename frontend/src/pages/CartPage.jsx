@@ -2,26 +2,27 @@ import { imgUrl } from "../api";
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Trash2, Minus, Plus, ShoppingBag, ArrowRight, Tag } from "lucide-react";
-import { useCart, computeTotals, PRICING } from "../context/CartContext";
+import { useCart } from "../context/CartContext";
 import { useToast } from "../hooks/use-toast";
 
 const CartPage = () => {
-  const { items, updateQty, removeItem, subtotal, clearCart } = useCart();
+  const { items, updateQty, removeItem, subtotal, clearCart, pricing, promo, applyPromo, removePromo, totals } = useCart();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [promo, setPromo] = useState("");
-  const [discount, setDiscount] = useState(0);
+  const [code, setCode] = useState("");
+  const [applying, setApplying] = useState(false);
+  const { shipping, tax, discount, total } = totals;
 
-  const { shipping, tax, total: grossTotal } = computeTotals(subtotal);
-  const total = grossTotal - discount;
-
-  const applyPromo = () => {
-    if (promo.trim().toUpperCase() === "PUFF10") {
-      setDiscount(subtotal * 0.1);
-      toast({ title: "Promo applied", description: "10% off with PUFF10" });
-    } else {
-      toast({ title: "Invalid code", description: "Try PUFF10", variant: "destructive" });
-    }
+  const onApply = async () => {
+    if (!code.trim()) return;
+    setApplying(true);
+    try {
+      const p = await applyPromo(code);
+      toast({ title: "Promo applied", description: p.type === "percent" ? `${p.value}% off with ${p.code}` : `$${p.value.toFixed(2)} off with ${p.code}` });
+      setCode("");
+    } catch (err) {
+      toast({ title: "Invalid code", description: err?.response?.data?.detail || "Try again", variant: "destructive" });
+    } finally { setApplying(false); }
   };
 
   if (items.length === 0) {
@@ -76,19 +77,26 @@ const CartPage = () => {
         <div className="lg:sticky lg:top-[180px] h-fit">
           <div className="border border-neutral-200 rounded-xl p-6">
             <h2 className="font-heading text-xl uppercase tracking-wide mb-5">Order Summary</h2>
-            <div className="flex gap-2 mb-5">
-              <div className="flex-1 flex items-center border border-neutral-300 rounded-lg px-3">
-                <Tag className="h-4 w-4 text-neutral-400" />
-                <input value={promo} onChange={(e) => setPromo(e.target.value)} placeholder="Promo code (PUFF10)" className="flex-1 px-2 py-2.5 text-sm outline-none" />
+            {promo ? (
+              <div data-testid="promo-applied" className="flex items-center justify-between gap-2 mb-5 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5">
+                <span className="flex items-center gap-2 text-sm text-emerald-800"><Tag className="h-4 w-4" /> <span className="font-bold">{promo.code}</span> applied · {promo.type === "percent" ? `${promo.value}% off` : `$${promo.value.toFixed(2)} off`}</span>
+                <button onClick={removePromo} data-testid="promo-remove" className="text-xs font-bold text-neutral-500 hover:text-red-500">Remove</button>
               </div>
-              <button onClick={applyPromo} className="px-4 bg-neutral-900 text-white text-sm font-bold rounded-lg hover:bg-emerald-600 transition-colors">Apply</button>
-            </div>
+            ) : (
+              <div className="flex gap-2 mb-5">
+                <div className="flex-1 flex items-center border border-neutral-300 rounded-lg px-3">
+                  <Tag className="h-4 w-4 text-neutral-400" />
+                  <input data-testid="promo-input" value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onApply()} placeholder="Promo code" className="flex-1 px-2 py-2.5 text-sm outline-none uppercase" />
+                </div>
+                <button onClick={onApply} disabled={applying} data-testid="promo-apply" className="px-4 bg-neutral-900 text-white text-sm font-bold rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-60">{applying ? "..." : "Apply"}</button>
+              </div>
+            )}
             <div className="space-y-3 text-sm border-t pt-4">
               <div className="flex justify-between"><span className="text-neutral-500">Subtotal</span><span className="font-semibold">${subtotal.toFixed(2)}</span></div>
+              {discount > 0 && (<div className="flex justify-between text-emerald-600" data-testid="cart-discount"><span>Discount ({promo.code})</span><span className="font-semibold">-${discount.toFixed(2)}</span></div>)}
               <div className="flex justify-between"><span className="text-neutral-500">Delivery</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
-              <div className="flex justify-between" data-testid="cart-tax"><span className="text-neutral-500">{PRICING.taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>
-              {discount > 0 && (<div className="flex justify-between text-emerald-600"><span>Discount</span><span className="font-semibold">-${discount.toFixed(2)}</span></div>)}
-              {subtotal < 75 && (<p className="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">Add ${(PRICING.freeDeliveryMin - subtotal).toFixed(2)} more for FREE delivery!</p>)}
+              <div className="flex justify-between" data-testid="cart-tax"><span className="text-neutral-500">{pricing.taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>
+              {subtotal < pricing.freeDeliveryMin && (<p className="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">Add ${(pricing.freeDeliveryMin - subtotal).toFixed(2)} more for FREE delivery!</p>)}
             </div>
             <div className="flex justify-between items-center border-t mt-4 pt-4">
               <span className="font-heading text-lg uppercase">Total</span>

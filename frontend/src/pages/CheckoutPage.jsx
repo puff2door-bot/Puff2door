@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { CreditCard, Lock, ChevronRight, ShieldCheck } from "lucide-react";
-import { useCart, computeTotals, PRICING } from "../context/CartContext";
+import { useCart } from "../context/CartContext";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../hooks/use-toast";
 import { usStates } from "../mock";
@@ -12,16 +12,14 @@ import PayPalCheckout from "../components/checkout/PayPalCheckout";
 import ZelleInstructions from "../components/checkout/ZelleInstructions";
 
 const CheckoutPage = () => {
-  const { items, subtotal, clearCart, toServerItem } = useCart();
+  const { items, subtotal, clearCart, toServerItem, pricing, promo, totals } = useCart();
   const { user } = useApp();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [placed, setPlaced] = useState(false);
-  const [discount] = useState(0);
 
-  const { shipping, tax, total: grossTotal } = computeTotals(subtotal);
-  const total = grossTotal - discount;
+  const { shipping, tax, discount, total } = totals;
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
@@ -67,7 +65,7 @@ const CheckoutPage = () => {
   const submitOrder = useCallback(async (extra) => {
     setBusy(true);
     try {
-      const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: form, paymentMethod: method, ...extra });
+      const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: form, paymentMethod: method, promoCode: promo?.code || "", ...extra });
       setPlaced(true);
       clearCart();
       toast({ title: data.paymentStatus === "awaiting_payment" ? "Order placed — awaiting payment" : "Order placed!", description: `Order ${data.orderNumber}${data.paymentStatus === "awaiting_payment" ? ". Send your Zelle payment to complete it." : " confirmed."}` });
@@ -80,7 +78,7 @@ const CheckoutPage = () => {
       throw err;
     } finally { setBusy(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, method, toServerItem, clearCart, navigate, toast]);
+  }, [form, method, promo, toServerItem, clearCart, navigate, toast]);
 
   const validateShipping = () => {
     if (formRef.current?.reportValidity()) return true;
@@ -110,7 +108,7 @@ const CheckoutPage = () => {
   };
 
   const paypalCreate = async () => {
-    const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem) });
+    const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "" });
     return data.id;
   };
 
@@ -204,8 +202,9 @@ const CheckoutPage = () => {
             </div>
             <div className="space-y-2 text-sm border-t pt-4">
               <div className="flex justify-between"><span className="text-neutral-500">Subtotal</span><span className="font-semibold">${subtotal.toFixed(2)}</span></div>
+              {discount > 0 && <div className="flex justify-between text-emerald-600" data-testid="checkout-discount"><span>Discount ({promo.code})</span><span className="font-semibold">-${discount.toFixed(2)}</span></div>}
               <div className="flex justify-between"><span className="text-neutral-500">Delivery</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
-              <div className="flex justify-between" data-testid="checkout-tax"><span className="text-neutral-500">{PRICING.taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>
+              <div className="flex justify-between" data-testid="checkout-tax"><span className="text-neutral-500">{pricing.taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>
             </div>
             <div className="flex justify-between items-center border-t mt-4 pt-4">
               <span className="font-heading text-lg uppercase">Total</span>
