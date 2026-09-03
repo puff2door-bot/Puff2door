@@ -40,7 +40,8 @@ def layout(title: str, body: str, preheader: str = "") -> str:
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f4f5;padding:32px 12px;"><tr><td align="center">
 <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;">
 <tr><td style="background:#0a0a0a;padding:22px 32px;">
-  <span style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">Puff<span style="color:#10b981;">2</span>Door</span>
+  <img src="{_public_url}/img/logo.png" alt="" width="40" height="40" style="vertical-align:middle;border-radius:50%;margin-right:10px;">
+  <span style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;vertical-align:middle;">Puff<span style="color:#10b981;">2</span>Door</span>
   <span style="display:block;font-size:10px;letter-spacing:3px;color:#a3a3a3;text-transform:uppercase;margin-top:2px;">Puffs delivered to your door</span>
 </td></tr>
 <tr><td style="padding:32px;">

@@ -7,7 +7,6 @@ import {
   Menu,
   X,
   ChevronDown,
-  Leaf,
   Phone,
   MapPin,
   Heart,
@@ -61,9 +60,7 @@ const Header = () => {
             </button>
 
             <Link to="/" className="flex items-center gap-2 shrink-0">
-              <span className="grid place-items-center h-10 w-10 rounded-full bg-emerald-600">
-                <Leaf className="h-6 w-6 text-white" />
-              </span>
+              <img src="/img/logo.png" alt="Puff2Door logo" data-testid="header-logo" className="h-11 w-11 rounded-full object-contain" />
               <span className="leading-none">
                 <span className="block font-heading font-700 text-[22px] tracking-tight text-neutral-900">
                   Puff<span className="text-emerald-600">2</span>Door

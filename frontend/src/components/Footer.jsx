@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Leaf, Phone, Mail, MapPin, Facebook, Instagram, Twitter } from "lucide-react";
+import { Phone, Mail, MapPin, Facebook, Instagram, Twitter } from "lucide-react";
 
 const SOCIALS = [
   { name: "Facebook", href: "https://www.facebook.com/puff2doors", Icon: Facebook },
@@ -25,9 +25,7 @@ const Footer = () => {
       <div className="max-w-[1280px] mx-auto px-4 py-14 grid grid-cols-1 md:grid-cols-4 gap-10">
         <div>
           <div className="flex items-center gap-2 mb-4">
-            <span className="grid place-items-center h-9 w-9 rounded-full bg-emerald-600">
-              <Leaf className="h-5 w-5 text-white" />
-            </span>
+            <img src="/img/logo.png" alt="Puff2Door logo" data-testid="footer-logo" className="h-10 w-10 rounded-full object-contain" />
             <span className="font-heading font-700 text-xl text-white">
               Puff<span className="text-emerald-500">2</span>Door
             </span>
