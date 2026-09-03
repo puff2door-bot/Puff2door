@@ -1,0 +1,37 @@
+{
+  "summary": "Backend-only validation of the URL-only sitemap rewrite. New suite /app/backend/tests/test_sitemap_urlonly.py (11 tests, all passing): preview /sitemap.xml with normal + Googlebot UA, preview /api/sitemap.xml, robots.txt, read-only production report, and a quick admin/catalog regression. Preview static /sitemap.xml returns 200 application/xml, starts with the XML declaration + <urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">, ends </urlset>, parses cleanly, exactly 87 unique <loc> (/, /shop, /about, /contact, /brands + 7 /product-category/*, 8 /brand/*, 67 /shop/<slug>), every url has loc + lastmod (YYYY-MM-DD), all locs https://puff2door.com/, no image: elements, no 'nonaonlinesmokeshop', no query strings, no /cart /checkout /admin /my-account /wishlist /track /order/. /api/sitemap.xml returns 200 application/xml with an identical URL set. robots.txt (Puff2door block) has exactly one Sitemap line = https://puff2door.com/sitemap.xml, no /api/sitemap.xml reference, no blanket Disallow: / for * . Regression: admin login OK, PUT /api/admin/products/<id> with unchanged full payload -> 200, product data unchanged, static frontend/public/sitemap.xml still valid 87-URL image-free XML afterwards, /api/products still 67, home page title correct. Existing test_seo_regression.py (iteration 6) still 11/11 passing. Production is still on the previous deploy (see production_report).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/sitemap.xml", "issue": "Response sets X-Robots-Tag: noindex. Harmless for the non-submitted API copy, but if this route is ever exposed/submitted as the canonical sitemap, Google may refuse to read it. Consider dropping the header."},
+      {"endpoint": "build_sitemap()", "issue": "lastmod uses container clock (currently 2026-09-03, ahead of real-world date). Future-dated lastmod values are ignored by Google but can look inconsistent; not blocking."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "production_report": {
+    "https://puff2door.com/sitemap.xml": "200, application/xml; charset=utf-8, XML (not HTML), 87 urls, STILL CONTAINS <image:...> tags (previous deploy, expected), first5 = /, /shop, /brands, /about, /contact — both normal and Googlebot UA identical",
+    "https://puff2door.com/robots.txt": "200 text/plain, previous deploy: TWO Sitemap lines (https://puff2door.com/sitemap.xml and https://puff2door.com/api/sitemap.xml); will be single-line after redeploy",
+    "https://www.puff2door.com/sitemap.xml": "308 redirect -> https://puff2door.com/sitemap.xml (correct apex canonicalization)"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sitemap_urlonly.py",
+    "/app/backend/tests/test_seo_regression.py",
+    "/app/test_reports/pytest/iteration7.xml"
+  ],
+  "action_items": [
+    "Owner must redeploy so production serves the new URL-only sitemap + single-Sitemap robots.txt; then resubmit https://puff2door.com/sitemap.xml in Search Console (preview content is fully compliant).",
+    "Optional: remove X-Robots-Tag: noindex from GET /api/sitemap.xml."
+  ],
+  "critical_code_review_comments": [
+    "refresh_static_sitemap() writes into frontend/public at runtime; in the built/production container that directory may be read-only or already baked into the bundle, so the shipped static sitemap is only as fresh as build time. Regenerating at build time (or serving /sitemap.xml through the backend/ingress) would be more robust.",
+    "Static /sitemap.xml is served by the frontend build while /api/sitemap.xml is dynamic — they can drift between product changes and the next deploy. Currently identical, worth a scheduled/asserted sync check."
+  ],
+  "updated_files": ["/app/backend/tests/test_sitemap_urlonly.py"],
+  "success_rate": {"backend": "100% (11/11 new + 11/11 existing SEO regression)", "frontend": "not tested (backend-only request)"},
+  "seed_data_creation": "None. Admin no-op PUT used an unchanged full payload; product name/price verified unchanged afterwards.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@puff2door.com / Puff2Door-Admin1 (from /app/memory/test_credentials.md) — login + /api/admin/products worked",
+  "context_for_next_testing_agent": "Preview sitemap rewrite is verified compliant (87 URLs, URL-only). Note: served robots.txt is prefixed by a Cloudflare-managed block containing 'Disallow: /' for AI crawlers (Amazonbot, GPTBot, ClaudeBot, etc.) — assert only within the '# Puff2door' section. Admin PUT /api/admin/products/{id} requires the full ProductInput body (name, category, categorySlug, price, ...), partial payloads return 422. Production remains on the pre-rewrite deploy until the owner redeploys.",
+  "rca_of_the_issue": "Original 'Couldn't fetch' was attributed to the non-standard image-extension sitemap referencing external hosts. The rewrite produces a minimal loc+lastmod sitemap that validates against the 0.9 schema and is served as application/xml with 200 for both normal and Googlebot user agents in preview; only a redeploy is pending for production."
+}

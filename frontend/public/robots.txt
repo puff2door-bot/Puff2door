@@ -15,4 +15,3 @@ Disallow: /*?search=
 Disallow: /*?*session_id=
 
 Sitemap: https://puff2door.com/sitemap.xml
-Sitemap: https://puff2door.com/api/sitemap.xml

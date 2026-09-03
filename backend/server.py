@@ -1125,38 +1125,39 @@ async def public_settings():
 
 # ---- SEO: sitemap ----
 SITE_URL = os.environ.get("SITE_URL", "").strip().rstrip("/") or "https://puff2door.com"
-SITEMAP_STATIC = [("/", "daily", "1.0"), ("/shop", "daily", "0.9"), ("/brands", "weekly", "0.6"), ("/about", "monthly", "0.5"), ("/contact", "monthly", "0.5")]
+SITEMAP_STATIC = ["/", "/shop", "/brands", "/about", "/contact"]
 SITEMAP_FILE = ROOT_DIR.parent / "frontend" / "public" / "sitemap.xml"
 
 
 def _xml_escape(s: str) -> str:
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&apos;")
 
 
 async def build_sitemap() -> str:
-    prods = await db.products.find({"active": True}, {"slug": 1, "categorySlug": 1, "brand": 1, "updatedAt": 1, "image": 1, "name": 1}).sort("id", 1).to_list(5000)
+    """URL-only sitemap (loc + lastmod), canonical https://puff2door.com URLs only, no image/external data."""
+    prods = await db.products.find({"active": True}, {"slug": 1, "categorySlug": 1, "brand": 1, "updatedAt": 1}).sort("id", 1).to_list(5000)
     today = now_utc().date().isoformat()
-    rows = []
+    entries = []
+    seen = set()
 
-    def url(loc, freq, prio, lastmod=today, image=None, title=None):
-        img = f"<image:image><image:loc>{_xml_escape(image)}</image:loc><image:title>{_xml_escape(title or '')}</image:title></image:image>" if image else ""
-        rows.append(f"<url><loc>{_xml_escape(SITE_URL + loc)}</loc><lastmod>{lastmod}</lastmod><changefreq>{freq}</changefreq><priority>{prio}</priority>{img}</url>")
+    def add(path, lastmod=today):
+        loc = SITE_URL + path
+        if loc in seen:
+            return
+        seen.add(loc)
+        entries.append(f"  <url>\n    <loc>{_xml_escape(loc)}</loc>\n    <lastmod>{lastmod}</lastmod>\n  </url>")
 
-    for loc, freq, prio in SITEMAP_STATIC:
-        url(loc, freq, prio)
+    for path in SITEMAP_STATIC:
+        add(path)
     for cat in sorted({p.get("categorySlug") for p in prods if p.get("categorySlug")}):
-        url(f"/product-category/{cat}", "weekly", "0.8")
+        add(f"/product-category/{cat}")
     for brand in sorted({p.get("brand") for p in prods if p.get("brand")}):
-        url(f"/brand/{brand}", "weekly", "0.6")
+        add(f"/brand/{brand}")
     for p in prods:
         upd = p.get("updatedAt")
-        lastmod = upd.date().isoformat() if isinstance(upd, datetime) else today
-        image = p.get("image", "")
-        if image.startswith("/api/"):
-            image = SITE_URL + image
-        url(f"/shop/{p['slug']}", "weekly", "0.7", lastmod, image or None, p.get("name"))
-    return ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n'
-            + "\n".join(rows) + "\n</urlset>\n")
+        add(f"/shop/{p['slug']}", upd.date().isoformat() if isinstance(upd, datetime) else today)
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+            + "\n".join(entries) + "\n</urlset>\n")
 
 
 async def refresh_static_sitemap():
@@ -1171,7 +1172,7 @@ async def refresh_static_sitemap():
 
 @api_router.get("/sitemap.xml")
 async def sitemap_xml():
-    return Response(content=await build_sitemap(), media_type="application/xml", headers={"Cache-Control": "public, max-age=3600"})
+    return Response(content=await build_sitemap(), media_type="application/xml; charset=utf-8", headers={"Cache-Control": "public, max-age=3600"})
 
 
 @api_router.get("/delivery/check")
