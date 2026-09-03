@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 6 – full SEO verification (frontend head/JSON-LD/headings + static SEO files) plus light backend regression. Backend: 11/11 pytest passed (robots.txt, /sitemap.xml, /api/sitemap.xml, og-image.jpg, hero webp, /api/products=67, /api/content/home webp heroes, /api/settings, product-by-slug, zelle order zip 32801, admin login + PUT /api/admin/products/<id> with sitemap still valid). Frontend (Playwright, SPA head read after 2s): home, /shop, 3 category/brand pages, product page, /about /contact /brands, and 8 noindex routes all verified. All requested SEO assertions passed: exactly one <title> and one <h1> per page, unique titles/descriptions/canonicals (no duplicates), robots index/follow on public pages and 'noindex, nofollow' on cart/checkout/wishlist/my-account/track/admin/search/404, OG+Twitter tags present, Organization+WebSite site-wide, FAQPage on home, BreadcrumbList on shop/category/brand/static, valid Product JSON-LD (sku/brand/offers price 26.50 USD/InStock/url + aggregateRating when reviews exist), 70/70 images have alt, home-intro/home-delivery-section/home-faq present, FAQ accordion expands, product-specs table visible, breadcrumb nav (aria-label=Breadcrumb) links back to category, 'Browse all' related link present, Add to Cart works (badge 1, item shows on /checkout). No GA/gtag script and no google-site-verification meta (env empty) as expected. Hidden empty categories confirmed absent from header dropdown, footer and home pills (only 7 with-product categories); all 14 nav/category links resolve (no 404).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "HeroSlider.jsx:30 / ProductDetail.jsx:95", "issue": "React console warning: 'Invalid DOM property fetchpriority. Did you mean fetchPriority?' – lowercase attribute in JSX. Only console noise, but should be renamed to fetchPriority (or set via ref) to keep the console clean.", "selector": "img[fetchpriority]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home hero slider", "issues": ["During slide transition the outgoing slide's heading/paragraph text remains visible behind the incoming slide (ghost text overlap, see screenshot). Cosmetic; likely pre-existing crossfade with both slides' text at opacity>0."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_seo_regression.py", "/app/test_reports/pytest/seo_results.xml"],
+  "action_items": [
+    "LOW: rename JSX attribute fetchpriority -> fetchPriority in /app/frontend/src/components/HeroSlider.jsx:30 and /app/frontend/src/pages/ProductDetail.jsx:95 to remove the React DOM-property warning.",
+    "OPTIONAL: hero slider crossfade shows overlapping text of two slides during transition (cosmetic)."
+  ],
+  "critical_code_review_comments": [
+    "Seo.jsx is clean: single title/meta/canonical upsert with no duplicate tags across SPA navigations (verified titleTags==1 on 15 routes).",
+    "Search-results page canonicalises to https://puff2door.com/shop while being noindex,nofollow – intentional and correct, flagged only so it is not mistaken for a duplicate-canonical bug.",
+    "robots.txt served through the preview host is prefixed by Cloudflare-managed content (blanket 'Disallow: /' for AI bots only, plus a second 'User-agent: *' group with 'Allow: /'). The app's own block is intact; on the production domain the duplicate User-agent:* group may be worth consolidating, but nothing blocks search crawlers."
+  ],
+  "updated_files": ["/app/frontend/src/pages/Home.jsx", "/app/backend/tests/test_seo_regression.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "One TEST_ zelle order created via POST /api/orders (customer TEST Seo, test_seo@example.com, zip 32801). Admin PUT sent back the product's existing values, so no product data changed.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@puff2door.com / Puff2Door-Admin1 (from /app/memory/test_credentials.md)",
+  "context_for_next_testing_agent": "SEO layer is fully verified end-to-end; re-run /app/backend/tests/test_seo_regression.py for regressions (it also asserts sitemap regeneration after an admin product PUT). Note: /api/categories and /api/brands do NOT exist – categories/brands come from frontend mock/CatalogContext. Order payload requires a top-level 'shipping' object (not 'customer'). Cart badge testid is header-cart-count. Remember the age gate (data-testid=age-gate-yes) and ~2s wait before reading document.head on SPA navigation.",
+  "rca_of_the_issue": "Only defect fixed by me: Home.jsx delivery paragraph rendered '32832in the Orlando area' because a JSX newline directly after {delivery.zip} collapses without a space; added an explicit {\" \"} separator and verified in the browser."
+}

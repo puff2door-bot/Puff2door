@@ -1123,6 +1123,57 @@ async def public_settings():
     return {"pricing": pricing_rules(settings), "delivery": delivery_rules(settings)}
 
 
+# ---- SEO: sitemap ----
+SITE_URL = os.environ.get("SITE_URL", "").strip().rstrip("/") or "https://puff2door.com"
+SITEMAP_STATIC = [("/", "daily", "1.0"), ("/shop", "daily", "0.9"), ("/brands", "weekly", "0.6"), ("/about", "monthly", "0.5"), ("/contact", "monthly", "0.5")]
+SITEMAP_FILE = ROOT_DIR.parent / "frontend" / "public" / "sitemap.xml"
+
+
+def _xml_escape(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+async def build_sitemap() -> str:
+    prods = await db.products.find({"active": True}, {"slug": 1, "categorySlug": 1, "brand": 1, "updatedAt": 1, "image": 1, "name": 1}).sort("id", 1).to_list(5000)
+    today = now_utc().date().isoformat()
+    rows = []
+
+    def url(loc, freq, prio, lastmod=today, image=None, title=None):
+        img = f"<image:image><image:loc>{_xml_escape(image)}</image:loc><image:title>{_xml_escape(title or '')}</image:title></image:image>" if image else ""
+        rows.append(f"<url><loc>{_xml_escape(SITE_URL + loc)}</loc><lastmod>{lastmod}</lastmod><changefreq>{freq}</changefreq><priority>{prio}</priority>{img}</url>")
+
+    for loc, freq, prio in SITEMAP_STATIC:
+        url(loc, freq, prio)
+    for cat in sorted({p.get("categorySlug") for p in prods if p.get("categorySlug")}):
+        url(f"/product-category/{cat}", "weekly", "0.8")
+    for brand in sorted({p.get("brand") for p in prods if p.get("brand")}):
+        url(f"/brand/{brand}", "weekly", "0.6")
+    for p in prods:
+        upd = p.get("updatedAt")
+        lastmod = upd.date().isoformat() if isinstance(upd, datetime) else today
+        image = p.get("image", "")
+        if image.startswith("/api/"):
+            image = SITE_URL + image
+        url(f"/shop/{p['slug']}", "weekly", "0.7", lastmod, image or None, p.get("name"))
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n'
+            + "\n".join(rows) + "\n</urlset>\n")
+
+
+async def refresh_static_sitemap():
+    """Best-effort: keep frontend/public/sitemap.xml in sync so each deploy ships a current static sitemap."""
+    try:
+        xml = await build_sitemap()
+        if SITEMAP_FILE.parent.exists():
+            SITEMAP_FILE.write_text(xml)
+    except Exception as e:
+        logger.warning("Sitemap refresh failed: %s", e)
+
+
+@api_router.get("/sitemap.xml")
+async def sitemap_xml():
+    return Response(content=await build_sitemap(), media_type="application/xml", headers={"Cache-Control": "public, max-age=3600"})
+
+
 @api_router.get("/delivery/check")
 async def delivery_check(zip: str = ""):
     return delivery_zone_check(zip, await get_settings())
@@ -1202,6 +1253,7 @@ async def admin_create_product(inp: ProductInput, admin: dict = Depends(get_admi
         "updatedAt": now_utc(),
     })
     await db.products.insert_one(doc)
+    asyncio.create_task(refresh_static_sitemap())
     return product_out(doc)
 
 
@@ -1228,6 +1280,7 @@ async def admin_update_product(product_id: int, inp: ProductInput, admin: dict =
         )
         notified = res.modified_count
         logger.info("Restock: notified %s subscriber(s) for product %s", notified, product_id)
+    asyncio.create_task(refresh_static_sitemap())
     return {**product_out(updated), "restockNotified": notified}
 
 
@@ -1236,6 +1289,7 @@ async def admin_delete_product(product_id: int, admin: dict = Depends(get_admin_
     res = await db.products.update_one({"id": product_id}, {"$set": {"active": False, "updatedAt": now_utc()}})
     if not res.matched_count:
         raise HTTPException(status_code=404, detail="Product not found")
+    asyncio.create_task(refresh_static_sitemap())
     return {"ok": True}
 
 
@@ -1466,6 +1520,7 @@ async def seed_data():
         logger.info("Storage initialized")
     except Exception as e:
         logger.error("Storage init failed: %s", e)
+    await refresh_static_sitemap()
 
 
 @app.on_event("shutdown")

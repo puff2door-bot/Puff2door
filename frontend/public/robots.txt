@@ -1,0 +1,18 @@
+# Puff2door – https://puff2door.com
+User-agent: *
+Allow: /
+Allow: /api/files/
+Disallow: /admin
+Disallow: /admin/
+Disallow: /cart
+Disallow: /checkout
+Disallow: /wishlist
+Disallow: /my-account
+Disallow: /order/
+Disallow: /track
+Disallow: /api/
+Disallow: /*?search=
+Disallow: /*?*session_id=
+
+Sitemap: https://puff2door.com/sitemap.xml
+Sitemap: https://puff2door.com/api/sitemap.xml

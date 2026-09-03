@@ -11,7 +11,8 @@ import {
   MapPin,
   Heart,
 } from "lucide-react";
-import { categories, brands, announcements, BRAND } from "../mock";
+import { announcements, BRAND } from "../mock";
+import { useCatalog } from "../context/CatalogContext";
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
 import { useApp } from "../context/AppContext";
@@ -21,6 +22,7 @@ const Header = () => {
   const { count } = useCart();
   const { count: wishCount } = useWishlist();
   const { user } = useApp();
+  const { activeCategories: categories, activeBrands: brands } = useCatalog();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [query, setQuery] = useState("");

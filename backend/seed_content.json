@@ -2,7 +2,7 @@
  "heroSlides": [
   {
    "id": 1,
-   "image": "/img/hero-geekbar.jpg",
+   "image": "/img/hero-geekbar.webp",
    "tag": "Geek Bar Pulse 2",
    "title": "Geek Bar Pulse 2 25K Grape Hubba",
    "subtitle": "25,000 puffs, dual-mode display, bold grape bubblegum flavor.",
@@ -11,7 +11,7 @@
   },
   {
    "id": 2,
-   "image": "/img/hero-raz.jpg",
+   "image": "/img/hero-raz.webp",
    "tag": "RAZ Punch Edition",
    "title": "RAZ Bar 25000 Hawaiian Punch",
    "subtitle": "Mega HD screen, boost mode & juicy tropical punch flavor.",
@@ -20,7 +20,7 @@
   },
   {
    "id": 3,
-   "image": "/img/hero-nexa.jpg",
+   "image": "/img/hero-nexa.webp",
    "tag": "NEXA Ultra II",
    "title": "NEXA Ultra II 50K Georgia Peach Ice",
    "subtitle": "50,000 puffs with Juicy Lock and visible e-liquid window.",

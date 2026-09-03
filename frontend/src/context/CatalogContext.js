@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import api from "../api";
+import { categories, brands } from "../mock";
 
 const CatalogContext = createContext(null);
 
@@ -34,6 +35,10 @@ export const CatalogProvider = ({ children }) => {
       return isOnDeal(p) ? deal.dealPrice : p.price;
     };
     const byId = (id) => products.find((p) => p.id === Number(id));
+    const catSlugs = new Set(products.map((p) => p.categorySlug));
+    const brandSlugs = new Set(products.map((p) => p.brand).filter(Boolean));
+    const activeCategories = products.length ? categories.filter((c) => catSlugs.has(c.slug)) : categories;
+    const activeBrands = products.length ? brands.filter((b) => brandSlugs.has(b.slug)) : brands;
     const promoTiles = home.promoBlocks.map((b) => {
       const pr = b.productId ? byId(b.productId) : null;
       return {
@@ -48,6 +53,8 @@ export const CatalogProvider = ({ children }) => {
     return {
       products,
       home,
+      activeCategories,
+      activeBrands,
       heroSlides: home.heroSlides,
       promoTiles,
       setHome,

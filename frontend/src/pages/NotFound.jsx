@@ -1,9 +1,11 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { Compass } from "lucide-react";
+import Seo from "../seo/Seo";
 
 const NotFound = () => (
   <div className="max-w-[1280px] mx-auto px-4 py-24 text-center" data-testid="not-found-page">
+    <Seo noindex title="Page not found | Puff2door" description="The page you followed doesn't exist or has moved." />
     <Compass className="h-12 w-12 text-emerald-600 mx-auto mb-4" />
     <p className="text-xs font-bold tracking-[0.2em] uppercase text-neutral-400 mb-2">404</p>
     <h1 className="font-heading text-4xl sm:text-5xl mb-3">This page went up in smoke</h1>

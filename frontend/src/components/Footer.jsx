@@ -7,9 +7,11 @@ const SOCIALS = [
   { name: "Instagram", href: "https://www.instagram.com/puff2doors/", Icon: Instagram },
   { name: "Twitter", href: "https://twitter.com/puff2doors", Icon: Twitter },
 ];
-import { categories, BRAND } from "../mock";
+import { BRAND } from "../mock";
+import { useCatalog } from "../context/CatalogContext";
 
 const Footer = () => {
+  const { activeCategories: categories } = useCatalog();
   return (
     <footer className="bg-neutral-900 text-neutral-300 mt-16">
       {/* Age banner */}
@@ -52,7 +54,7 @@ const Footer = () => {
         </div>
 
         <div>
-          <h4 className="font-heading text-white text-base tracking-wide mb-4 uppercase">Shop</h4>
+          <p className="font-heading text-white text-base tracking-wide mb-4 uppercase">Shop</p>
           <ul className="space-y-2.5 text-sm">
             {categories.slice(0, 7).map((c) => (
               <li key={c.slug}>
@@ -63,7 +65,7 @@ const Footer = () => {
         </div>
 
         <div>
-          <h4 className="font-heading text-white text-base tracking-wide mb-4 uppercase">Company</h4>
+          <p className="font-heading text-white text-base tracking-wide mb-4 uppercase">Company</p>
           <ul className="space-y-2.5 text-sm">
             <li><Link to="/about" className="hover:text-emerald-400 transition-colors">About Us</Link></li>
             <li><Link to="/contact" className="hover:text-emerald-400 transition-colors">Contact</Link></li>
@@ -75,7 +77,7 @@ const Footer = () => {
         </div>
 
         <div>
-          <h4 className="font-heading text-white text-base tracking-wide mb-4 uppercase">Get In Touch</h4>
+          <p className="font-heading text-white text-base tracking-wide mb-4 uppercase">Get In Touch</p>
           <ul className="space-y-3 text-sm">
             <li className="flex items-start gap-3"><Phone className="h-4 w-4 text-emerald-500 mt-0.5" /> {BRAND.phone}</li>
             <li className="flex items-start gap-3"><Mail className="h-4 w-4 text-emerald-500 mt-0.5" /> {BRAND.email}</li>

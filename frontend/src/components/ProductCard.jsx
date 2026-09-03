@@ -38,13 +38,16 @@ const ProductCard = ({ product }) => {
       <Link to={`/shop/${product.slug}`} className="block relative aspect-square bg-neutral-50 overflow-hidden">
         <img
           src={imgUrl(product.image)}
-          alt={product.name}
+          alt={`${product.name} – ${product.category} from Puff2door`}
           loading="lazy"
+          width="300"
+          height="300"
           className={`product-card-img absolute inset-0 h-full w-full object-contain p-4 group-hover:opacity-0 ${product.inStock ? "" : "grayscale opacity-70"}`}
         />
         <img
           src={imgUrl(product.image2)}
-          alt={product.name}
+          alt=""
+          aria-hidden="true"
           loading="lazy"
           className="product-card-img absolute inset-0 h-full w-full object-contain p-4 opacity-0 group-hover:opacity-100 group-hover:scale-105"
         />

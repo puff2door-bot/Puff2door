@@ -9,3 +9,9 @@
 .hero-slide {
   transition: opacity 0.8s ease;
 }
+.hero-copy {
+  transition: opacity 0.25s ease;
+}
+.hero-slide.opacity-0 .hero-copy {
+  opacity: 0;
+}

@@ -31,6 +31,31 @@ import AdminEmails from "./pages/admin/AdminEmails";
 import AdminPromos from "./pages/admin/AdminPromos";
 import AdminSettings from "./pages/admin/AdminSettings";
 import NotFound from "./pages/NotFound";
+import Seo, { setJsonLd } from "./seo/Seo";
+import Analytics from "./seo/Analytics";
+import { organizationJsonLd, websiteJsonLd } from "./seo/config";
+
+const GSC_TOKEN = (process.env.REACT_APP_GOOGLE_SITE_VERIFICATION || "").trim();
+
+const SiteSeo = () => {
+  useEffect(() => {
+    setJsonLd("site", [organizationJsonLd(), websiteJsonLd()]);
+    if (GSC_TOKEN && !document.head.querySelector('meta[name="google-site-verification"]')) {
+      const m = document.createElement("meta");
+      m.name = "google-site-verification";
+      m.content = GSC_TOKEN;
+      document.head.appendChild(m);
+    }
+  }, []);
+  return null;
+};
+
+const Private = ({ title, children }) => (
+  <>
+    <Seo noindex title={`${title} | Puff2door`} description={`${title} at Puff2door.`} />
+    {children}
+  </>
+);
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -51,13 +76,13 @@ const AppRoutes = () => {
       <Route path="/brands" element={<BrandsPage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/contact" element={<ContactPage />} />
-      <Route path="/cart" element={<CartPage />} />
-      <Route path="/wishlist" element={<WishlistPage />} />
-      <Route path="/checkout" element={<CheckoutPage />} />
-      <Route path="/order/:id" element={<OrderPage />} />
-      <Route path="/track" element={<TrackPage />} />
-      <Route path="/my-account" element={<AuthPage />} />
-      <Route path="/admin" element={<AdminLayout />}>
+      <Route path="/cart" element={<Private title="Your Cart"><CartPage /></Private>} />
+      <Route path="/wishlist" element={<Private title="Your Wishlist"><WishlistPage /></Private>} />
+      <Route path="/checkout" element={<Private title="Checkout"><CheckoutPage /></Private>} />
+      <Route path="/order/:id" element={<Private title="Order Details"><OrderPage /></Private>} />
+      <Route path="/track" element={<Private title="Track Your Order"><TrackPage /></Private>} />
+      <Route path="/my-account" element={<Private title="My Account"><AuthPage /></Private>} />
+      <Route path="/admin" element={<Private title="Admin"><AdminLayout /></Private>}>
         <Route index element={<AdminDashboard />} />
         <Route path="products" element={<AdminProducts />} />
         <Route path="orders" element={<AdminOrders />} />
@@ -80,6 +105,8 @@ function App() {
           <WishlistProvider>
             <CatalogProvider>
             <BrowserRouter>
+              <SiteSeo />
+              <Analytics />
               <ScrollToTop />
               <AgeGate />
               <Header />

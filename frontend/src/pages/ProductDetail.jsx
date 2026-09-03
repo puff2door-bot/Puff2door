@@ -9,6 +9,8 @@ import { useWishlist } from "../context/WishlistContext";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../hooks/use-toast";
 import api, { imgUrl } from "../api";
+import Seo from "../seo/Seo";
+import { absUrl, breadcrumbJsonLd, productJsonLd, productSeoDescription, productSpecs, titleCase } from "../seo/config";
 
 const ProductDetail = () => {
   const { slug } = useParams();
@@ -30,6 +32,7 @@ const ProductDetail = () => {
   if (!product) {
     return (
       <div className="max-w-[1280px] mx-auto px-4 py-24 text-center">
+        <Seo noindex title="Product not found | Puff2door" description="This product is no longer available." />
         <h1 className="font-heading text-3xl mb-3">Product not found</h1>
         <Link to="/shop" className="text-emerald-600 font-bold">Back to Shop</Link>
       </div>
@@ -41,6 +44,11 @@ const ProductDetail = () => {
   const price = getPrice(product);
   const wished = has(product.id);
   const alertSet = Boolean(wishItems.find((i) => i.productId === product.id)?.notify);
+  const imgAbs = (u) => { const r = imgUrl(u); return r?.startsWith("http") ? r : absUrl(r); };
+  const jsonLd = [
+    productJsonLd(product, price, imgAbs, reviewSummary),
+    breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: titleCase(product.category), path: `/product-category/${product.categorySlug}` }, { name: titleCase(product.name), path: `/shop/${product.slug}` }]),
+  ];
 
   const handleAdd = () => {
     addItem({ ...product, price }, qty);
@@ -71,7 +79,8 @@ const ProductDetail = () => {
 
   return (
     <div className="max-w-[1280px] mx-auto px-4 py-8">
-      <nav className="flex items-center gap-1.5 text-xs text-neutral-500 mb-6 flex-wrap">
+      <Seo title={`${titleCase(product.name)} | Puff2door`} description={productSeoDescription(product)} path={`/shop/${product.slug}`} image={imgAbs(product.image)} type="product" jsonLd={jsonLd} />
+      <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-neutral-500 mb-6 flex-wrap">
         <Link to="/" className="hover:text-emerald-600">Home</Link>
         <ChevronRight className="h-3.5 w-3.5" />
         <Link to={`/product-category/${product.categorySlug}`} className="hover:text-emerald-600">{product.category}</Link>
@@ -83,13 +92,13 @@ const ProductDetail = () => {
         {/* Gallery */}
         <div>
           <div className="aspect-square bg-neutral-50 border border-neutral-200 rounded-xl overflow-hidden grid place-items-center p-6">
-            <img src={imgUrl(gallery[activeImg])} alt={product.name} className="max-h-full max-w-full object-contain" />
+            <img src={imgUrl(gallery[activeImg])} alt={`${titleCase(product.name)} – ${titleCase(product.category)} from Puff2door`} width="600" height="600" fetchPriority="high" className="max-h-full max-w-full object-contain" />
           </div>
           {gallery.length > 1 && (
             <div className="flex gap-3 mt-4">
               {gallery.map((g, i) => (
-                <button key={i} onClick={() => setActiveImg(i)} className={`h-20 w-20 rounded-lg border-2 overflow-hidden bg-neutral-50 p-2 ${activeImg === i ? "border-emerald-600" : "border-neutral-200"}`}>
-                  <img src={imgUrl(g)} alt="" className="h-full w-full object-contain" />
+                <button key={i} onClick={() => setActiveImg(i)} aria-label={`Show image ${i + 1}`} className={`h-20 w-20 rounded-lg border-2 overflow-hidden bg-neutral-50 p-2 ${activeImg === i ? "border-emerald-600" : "border-neutral-200"}`}>
+                  <img src={imgUrl(g)} alt={`${titleCase(product.name)} thumbnail ${i + 1}`} loading="lazy" className="h-full w-full object-contain" />
                 </button>
               ))}
             </div>
@@ -131,7 +140,15 @@ const ProductDetail = () => {
               </>
             )}
           </div>
-          <p className="text-neutral-600 leading-relaxed mb-7">{product.description}</p>
+          <p className="text-neutral-600 leading-relaxed mb-5">{product.description}</p>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm mb-7 border border-neutral-200 rounded-xl p-4 bg-neutral-50" data-testid="product-specs">
+            {productSpecs(product).map(([k, v]) => (
+              <div key={k} className="flex justify-between gap-3 border-b border-neutral-200/70 last:border-0 sm:[&:nth-last-child(2)]:border-0 pb-1.5">
+                <dt className="text-neutral-500">{k}</dt>
+                <dd className="font-medium text-neutral-800 text-right">{v}</dd>
+              </div>
+            ))}
+          </dl>
 
           {product.inStock ? (
             <div className="flex items-center gap-3 mb-6">
@@ -166,7 +183,7 @@ const ProductDetail = () => {
           )}
 
           <div className="grid grid-cols-3 gap-3 border-t pt-6">
-            {[{ icon: Truck, t: "Fast Shipping" }, { icon: ShieldCheck, t: "Lab Tested" }, { icon: RotateCcw, t: "Easy Returns" }].map((f, i) => (
+            {[{ icon: Truck, t: "Fast Local Delivery" }, { icon: ShieldCheck, t: "21+ ID Verified" }, { icon: RotateCcw, t: "Order Tracking" }].map((f, i) => (
               <div key={i} className="flex flex-col items-center text-center gap-2">
                 <f.icon className="h-6 w-6 text-emerald-600" />
                 <span className="text-xs text-neutral-600 font-medium">{f.t}</span>
@@ -180,9 +197,12 @@ const ProductDetail = () => {
 
       {related.length > 0 && (
         <section className="pt-16">
-          <h2 className="font-heading text-2xl sm:text-3xl font-700 uppercase tracking-tight mb-6">You May Also Like</h2>
+          <h2 className="font-heading text-2xl sm:text-3xl font-700 uppercase tracking-tight mb-6">More {titleCase(product.category)}</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             {related.map((p) => (<ProductCard key={p.id} product={p} />))}
+          </div>
+          <div className="mt-6">
+            <Link to={`/product-category/${product.categorySlug}`} className="inline-flex items-center gap-1 text-sm font-bold text-emerald-600 hover:underline">Browse all {titleCase(product.category)} <ChevronRight className="h-4 w-4" /></Link>
           </div>
         </section>
       )}

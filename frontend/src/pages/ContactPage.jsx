@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { Phone, Mail, MapPin, Clock, Send } from "lucide-react";
 import { BRAND } from "../mock";
 import { useToast } from "../hooks/use-toast";
+import Seo from "../seo/Seo";
+import { breadcrumbJsonLd } from "../seo/config";
 
 const ContactPage = () => {
   const { toast } = useToast();
@@ -20,6 +22,12 @@ const ContactPage = () => {
   ];
   return (
     <div className="max-w-[1280px] mx-auto px-4 py-10">
+      <Seo
+        title="Contact Puff2door | Orlando Vape Delivery Support"
+        description={`Questions about an order or product? Contact Puff2door by phone at ${BRAND.phone} or email ${BRAND.email}. Online smoke shop with local delivery in the Orlando, FL area.`}
+        path="/contact"
+        jsonLd={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Contact", path: "/contact" }])}
+      />
       <div className="relative overflow-hidden rounded-xl bg-neutral-900 px-8 py-12 mb-10 text-center">
         <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-emerald-600/20 blur-2xl" />
         <h1 className="font-heading text-4xl font-700 text-white uppercase tracking-tight relative">Contact Us</h1>
