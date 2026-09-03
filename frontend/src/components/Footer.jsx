@@ -1,6 +1,12 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { Leaf, Phone, Mail, MapPin, Facebook, Instagram, Twitter } from "lucide-react";
+
+const SOCIALS = [
+  { name: "Facebook", href: "https://www.facebook.com/puff2doors", Icon: Facebook },
+  { name: "Instagram", href: "https://www.instagram.com/puff2doors/", Icon: Instagram },
+  { name: "Twitter", href: "https://twitter.com/puff2doors", Icon: Twitter },
+];
 import { categories, BRAND } from "../mock";
 
 const Footer = () => {
@@ -31,8 +37,16 @@ const Footer = () => {
             accessories — delivered fast and discreet, right to your door.
           </p>
           <div className="flex gap-3 mt-5">
-            {[Facebook, Instagram, Twitter].map((Icon, i) => (
-              <a key={i} href="#" className="grid place-items-center h-9 w-9 rounded-full bg-neutral-800 hover:bg-emerald-600 transition-colors">
+            {SOCIALS.map(({ name, href, Icon }) => (
+              <a
+                key={name}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Puff2Door on ${name}`}
+                data-testid={`social-${name.toLowerCase()}`}
+                className="grid place-items-center h-9 w-9 rounded-full bg-neutral-800 hover:bg-emerald-600 transition-colors"
+              >
                 <Icon className="h-4 w-4 text-white" />
               </a>
             ))}
