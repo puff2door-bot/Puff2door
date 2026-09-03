@@ -124,4 +124,5 @@ uvicorn==0.25.0
 watchfiles==1.2.0
 websockets==16.1.1
 yarl==1.24.5
+zipcodes==3.0.0
 zipp==4.1.0

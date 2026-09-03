@@ -27,12 +27,14 @@ const AgeGate = () => {
           </p>
           <div className="flex gap-3">
             <button
+              data-testid="age-gate-no"
               onClick={() => verifyAge(false)}
               className="flex-1 py-3 rounded-full border-2 border-neutral-300 font-bold text-neutral-700 hover:bg-neutral-100 transition-colors"
             >
               No
             </button>
             <button
+              data-testid="age-gate-yes"
               onClick={() => verifyAge(true)}
               className="flex-1 py-3 rounded-full bg-emerald-600 text-white font-bold hover:bg-emerald-700 transition-colors"
             >

@@ -38,12 +38,13 @@ const fromServerItem = (i) => ({
 export const CartProvider = ({ children }) => {
   const [items, setItems] = useState(readLocal);
   const [pricing, setPricing] = useState(DEFAULT_PRICING);
+  const [delivery, setDelivery] = useState(DEFAULT_DELIVERY);
   const [promo, setPromo] = useState(() => {
     try { return JSON.parse(localStorage.getItem("p2d_promo")) || null; } catch { return null; }
   });
 
   useEffect(() => {
-    api.get("/settings").then(({ data }) => setPricing(data.pricing)).catch(() => {});
+    api.get("/settings").then(({ data }) => { setPricing(data.pricing); if (data.delivery) setDelivery(data.delivery); }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -121,14 +122,15 @@ export const CartProvider = ({ children }) => {
 
   return (
     <CartContext.Provider
-      value={{ items, addItem, removeItem, updateQty, clearCart, count, subtotal, toServerItem, pricing, promo, applyPromo, removePromo, totals }}
+      value={{ items, addItem, removeItem, updateQty, clearCart, count, subtotal, toServerItem, pricing, delivery, promo, applyPromo, removePromo, totals }}
     >
       {children}
     </CartContext.Provider>
   );
 };
 
-export const DEFAULT_PRICING = { taxRate: 0.065, taxLabel: "Sales tax (6.5%)", deliveryFee: 15, freeDeliveryMin: 75 };
+export const DEFAULT_PRICING = { taxRate: 0.065, taxLabel: "Sales tax (6.5%)", deliveryFee: 15, freeDeliveryMin: 99 };
+export const DEFAULT_DELIVERY = { zip: "32832", radiusMiles: 20 };
 
 export const promoDiscount = (promo, subtotal) => {
   if (!promo || subtotal < (promo.minSubtotal || 0)) return 0;

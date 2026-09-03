@@ -4,6 +4,7 @@ import { ArrowRight, Truck, ShieldCheck, Clock, BadgePercent } from "lucide-reac
 import HeroSlider from "../components/HeroSlider";
 import DealOfTheDay from "../components/DealOfTheDay";
 import ProductCard from "../components/ProductCard";
+import { DeliveryBanner, DeliveryChecker } from "../components/DeliveryZone";
 import { categories, brands } from "../mock";
 import { useCatalog } from "../context/CatalogContext";
 import { imgUrl } from "../api";
@@ -46,6 +47,8 @@ const Home = () => {
 
   return (
     <div>
+      <DeliveryBanner />
+      <DeliveryChecker />
       <HeroSlider />
 
       {/* Feature bar */}

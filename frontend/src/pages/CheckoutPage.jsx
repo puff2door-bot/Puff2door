@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { CreditCard, Lock, ChevronRight, ShieldCheck } from "lucide-react";
+import { CreditCard, Lock, ChevronRight, ShieldCheck, MapPin, CheckCircle2, XCircle } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../hooks/use-toast";
@@ -12,7 +12,7 @@ import PayPalCheckout from "../components/checkout/PayPalCheckout";
 import ZelleInstructions from "../components/checkout/ZelleInstructions";
 
 const CheckoutPage = () => {
-  const { items, subtotal, clearCart, toServerItem, pricing, promo, totals } = useCart();
+  const { items, subtotal, clearCart, toServerItem, pricing, delivery, promo, totals } = useCart();
   const { user } = useApp();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -28,10 +28,23 @@ const CheckoutPage = () => {
   const [card, setCard] = useState({ number: "", name: "", expiry: "", cvc: "" });
   const [payConfig, setPayConfig] = useState(null);
   const [method, setMethod] = useState("");
+  const [zone, setZone] = useState(null);
   const formRef = useRef(null);
   const tokenizeRef = useRef(null);
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  const zoneRef = useRef(zone);
+  zoneRef.current = zone;
+
+  useEffect(() => {
+    const zip = form.zip.replace(/\D/g, "");
+    if (zip.length !== 5) { setZone(null); return; }
+    let live = true;
+    const t = setTimeout(() => {
+      api.get("/delivery/check", { params: { zip } }).then(({ data }) => { if (live) setZone(data); }).catch(() => {});
+    }, 300);
+    return () => { live = false; clearTimeout(t); };
+  }, [form.zip]);
 
   useEffect(() => {
     api.get("/payments/config").then(({ data }) => {
@@ -81,13 +94,20 @@ const CheckoutPage = () => {
   }, [form, method, promo, toServerItem, clearCart, navigate, toast]);
 
   const validateShipping = () => {
-    if (formRef.current?.reportValidity()) return true;
-    toast({ title: "Missing delivery details", description: "Please fill in all delivery fields first.", variant: "destructive" });
-    return false;
+    if (!formRef.current?.reportValidity()) {
+      toast({ title: "Missing delivery details", description: "Please fill in all delivery fields first.", variant: "destructive" });
+      return false;
+    }
+    if (!zoneRef.current?.eligible) {
+      toast({ title: "Outside delivery area", description: zoneRef.current?.message || `Sorry, we only deliver within ${delivery.radiusMiles} miles of ${delivery.zip}.`, variant: "destructive" });
+      return false;
+    }
+    return true;
   };
 
   const placeOrder = async (e) => {
     e.preventDefault();
+    if (!validateShipping()) return;
     if (method === "test_card") {
       const digits = card.number.replace(/\s/g, "");
       if (digits.length < 15) return toast({ title: "Invalid card", description: "Enter a valid card number (try 4242...)", variant: "destructive" });
@@ -108,13 +128,14 @@ const CheckoutPage = () => {
   };
 
   const paypalCreate = async () => {
-    const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "" });
+    const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "", zip: form.zip });
     return data.id;
   };
 
   const payError = (msg) => toast({ title: "Payment problem", description: msg, variant: "destructive" });
   const methods = payConfig ? enabledMethods(payConfig) : [];
   const buttonDriven = method === "paypal" || method === "cash_app";
+  const outOfZone = Boolean(zone && !zone.eligible);
 
   const inputCls = "w-full border border-neutral-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-600 transition-colors";
 
@@ -142,15 +163,24 @@ const CheckoutPage = () => {
               <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">Street Address *</label><input required data-testid="checkout-address" className={inputCls} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
               <div><label className="block text-sm font-medium mb-1.5">City *</label><input required data-testid="checkout-city" className={inputCls} value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></div>
               <div><label className="block text-sm font-medium mb-1.5">State *</label><select required data-testid="checkout-state" className={inputCls} value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })}><option value="">Select...</option>{usStates.map((s) => (<option key={s} value={s}>{s}</option>))}</select></div>
-              <div><label className="block text-sm font-medium mb-1.5">ZIP *</label><input required data-testid="checkout-zip" className={inputCls} value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value })} /></div>
+              <div><label className="block text-sm font-medium mb-1.5">ZIP *</label><input required data-testid="checkout-zip" inputMode="numeric" className={`${inputCls} ${outOfZone ? "border-red-400" : zone?.eligible ? "border-emerald-500" : ""}`} value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value.replace(/\D/g, "").slice(0, 5) })} /></div>
             </div>
+            <p className="mt-3 text-xs text-neutral-500 flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-emerald-600" /> We deliver within {delivery.radiusMiles} miles of {delivery.zip} only.</p>
+            {zone && (
+              <div data-testid="checkout-zone-status" className={`mt-2 flex items-start gap-2 rounded-lg px-4 py-3 text-sm font-semibold ${zone.eligible ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+                {zone.eligible ? <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" /> : <XCircle className="h-4 w-4 mt-0.5 shrink-0" />}
+                <span>{zone.message}</span>
+              </div>
+            )}
           </section>
 
           {/* Payment */}
           <section>
             <h2 className="font-heading text-xl uppercase tracking-wide mb-1 flex items-center gap-2"><CreditCard className="h-5 w-5 text-emerald-600" /> Payment</h2>
             <p className="text-xs text-neutral-500 mb-4">Choose how you'd like to pay.</p>
-            {!payConfig ? (
+            {outOfZone ? (
+              <p data-testid="payment-blocked" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">Sorry, we only deliver within {delivery.radiusMiles} miles of {delivery.zip}. Enter an eligible ZIP code to continue to payment.</p>
+            ) : !payConfig ? (
               <p className="text-sm text-neutral-500">Loading payment options...</p>
             ) : methods.length === 0 ? (
               <p className="text-sm text-red-500">No payment methods are available right now. Please contact us.</p>
@@ -210,10 +240,12 @@ const CheckoutPage = () => {
               <span className="font-heading text-lg uppercase">Total</span>
               <span className="font-heading text-2xl">${total.toFixed(2)}</span>
             </div>
-            {buttonDriven ? (
+            {outOfZone ? (
+              <p data-testid="checkout-submit-blocked" className="mt-5 text-center text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-full py-3 px-4">Outside our {delivery.radiusMiles}-mile delivery area</p>
+            ) : buttonDriven ? (
               <p data-testid="checkout-button-hint" className="mt-5 text-center text-xs text-neutral-500 border border-dashed rounded-full py-3 px-4">Complete your payment with the {method === "paypal" ? "PayPal" : "Cash App Pay"} button in the Payment section.</p>
             ) : (
-              <button disabled={busy || !method} data-testid="checkout-submit" className="w-full mt-5 py-3.5 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+              <button disabled={busy || !method || outOfZone} data-testid="checkout-submit" className="w-full mt-5 py-3.5 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
                 <ShieldCheck className="h-5 w-5" /> {busy ? "Processing..." : method === "zelle" ? "Place Order — Pay via Zelle" : `Pay $${total.toFixed(2)}`}
               </button>
             )}

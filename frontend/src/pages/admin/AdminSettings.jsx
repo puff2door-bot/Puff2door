@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Save, Percent, Truck, Gift } from "lucide-react";
+import { Save, Percent, Truck, Gift, MapPin, Radius } from "lucide-react";
 import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
 
@@ -18,17 +18,19 @@ const AdminSettings = () => {
   const [busy, setBusy] = useState(false);
   const { toast } = useToast();
 
+  const toForm = (data) => ({ taxPercent: +(data.taxRate * 100).toFixed(3), deliveryFee: data.deliveryFee, freeDeliveryMin: data.freeDeliveryMin, deliveryZip: data.deliveryZip || "32832", deliveryRadiusMiles: data.deliveryRadiusMiles ?? 20 });
+
   useEffect(() => {
-    api.get("/admin/settings").then(({ data }) => setF({ taxPercent: +(data.taxRate * 100).toFixed(3), deliveryFee: data.deliveryFee, freeDeliveryMin: data.freeDeliveryMin }));
+    api.get("/admin/settings").then(({ data }) => setF(toForm(data)));
   }, []);
 
   const save = async (e) => {
     e.preventDefault();
     setBusy(true);
     try {
-      const { data } = await api.put("/admin/settings", { taxRate: Number(f.taxPercent) / 100, deliveryFee: Number(f.deliveryFee), freeDeliveryMin: Number(f.freeDeliveryMin) });
-      setF({ taxPercent: +(data.taxRate * 100).toFixed(3), deliveryFee: data.deliveryFee, freeDeliveryMin: data.freeDeliveryMin });
-      toast({ title: "Settings saved", description: "New rates apply to all new carts and orders immediately." });
+      const { data } = await api.put("/admin/settings", { taxRate: Number(f.taxPercent) / 100, deliveryFee: Number(f.deliveryFee), freeDeliveryMin: Number(f.freeDeliveryMin), deliveryZip: f.deliveryZip, deliveryRadiusMiles: Number(f.deliveryRadiusMiles) });
+      setF(toForm(data));
+      toast({ title: "Settings saved", description: "New rates and delivery zone apply to all new carts and orders immediately." });
     } catch (err) {
       const d = err?.response?.data?.detail;
       toast({ title: "Save failed", description: Array.isArray(d) ? d.map((x) => x.msg).join(", ") : d || "Try again", variant: "destructive" });
@@ -59,6 +61,15 @@ const AdminSettings = () => {
         </Field>
         <Field icon={Gift} label="Free delivery from ($)" hint="Carts at or above this subtotal get free delivery. Set 0 to always deliver free.">
           <input required type="number" min="0" step="0.01" data-testid="settings-free-min" className={inputCls} value={f.freeDeliveryMin} onChange={(e) => setF({ ...f, freeDeliveryMin: e.target.value })} />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <Field icon={MapPin} label="Delivery center ZIP" hint="Distances are measured from the center of this ZIP code (your store location).">
+          <input required inputMode="numeric" pattern="\d{5}" data-testid="settings-delivery-zip" className={inputCls} value={f.deliveryZip} onChange={(e) => setF({ ...f, deliveryZip: e.target.value.replace(/\D/g, "").slice(0, 5) })} />
+        </Field>
+        <Field icon={Radius} label="Delivery radius (miles)" hint="Orders with a delivery ZIP farther than this are blocked at checkout. Shown in the homepage banner.">
+          <input required type="number" min="1" max="500" step="1" data-testid="settings-delivery-radius" className={inputCls} value={f.deliveryRadiusMiles} onChange={(e) => setF({ ...f, deliveryRadiusMiles: e.target.value })} />
         </Field>
       </div>
 

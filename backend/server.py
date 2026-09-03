@@ -14,7 +14,9 @@ import uuid
 import random
 import re
 import json
+import math
 import secrets
+import zipcodes
 from datetime import datetime, timedelta, timezone
 import jwt
 from passlib.context import CryptContext
@@ -141,6 +143,7 @@ class OrderInput(BaseModel):
 class PayPalCreateInput(BaseModel):
     items: List[CartItem]
     promoCode: str = ""
+    zip: str = ""
 
 
 class PaymentStatusInput(BaseModel):
@@ -166,14 +169,62 @@ REAL_CARD_PROVIDER = SQUARE_ENABLED or PAYPAL_ENABLED
 # ALLOW_TEST_CARD=true keeps the simulated card usable for QA even when a real provider exists (hidden in UI). Leave unset in production.
 TEST_CARD_ENABLED = (not REAL_CARD_PROVIDER) or os.environ.get("ALLOW_TEST_CARD", "").lower() == "true"
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "zelle"}
-DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0}
+DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32832", "deliveryRadiusMiles": 20.0}
 _settings_cache: dict = {}
+
+
+def zip_lookup(zip_code: str) -> Optional[dict]:
+    z = re.sub(r"\D", "", zip_code or "")[:5]
+    if len(z) != 5:
+        return None
+    hits = zipcodes.matching(z)
+    if not hits or not hits[0].get("lat"):
+        return None
+    h = hits[0]
+    return {"zip": z, "city": h.get("city", ""), "state": h.get("state", ""), "lat": float(h["lat"]), "lng": float(h["long"])}
+
+
+def miles_between(a: dict, b: dict) -> float:
+    lat1, lng1, lat2, lng2 = map(math.radians, (a["lat"], a["lng"], b["lat"], b["lng"]))
+    h = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lng2 - lng1) / 2) ** 2
+    return 3958.8 * 2 * math.asin(math.sqrt(h))
+
+
+def delivery_zone_check(zip_code: str, settings: dict) -> dict:
+    center_zip, radius = settings["deliveryZip"], float(settings["deliveryRadiusMiles"])
+    base = {"zip": re.sub(r"\D", "", zip_code or "")[:5], "centerZip": center_zip, "radiusMiles": radius, "eligible": False, "distanceMiles": None, "city": "", "state": ""}
+    target = zip_lookup(zip_code)
+    if not target:
+        return {**base, "message": "Please enter a valid 5-digit US ZIP code."}
+    center = zip_lookup(center_zip)
+    if not center:
+        return {**base, "city": target["city"], "state": target["state"], "message": "Delivery area is not configured. Please contact us."}
+    dist = round(miles_between(center, target), 1)
+    ok = dist <= radius
+    msg = f"Great news! We deliver to {target['city']}, {target['state']} {target['zip']} ({dist:g} mi away)." if ok else f"Sorry, we only deliver within {radius:g} miles of {center_zip}. {target['city']}, {target['state']} {target['zip']} is about {dist:g} miles away."
+    return {**base, "city": target["city"], "state": target["state"], "eligible": ok, "distanceMiles": dist, "message": msg}
+
+
+def require_delivery_zone(zip_code: str, settings: dict):
+    res = delivery_zone_check(zip_code, settings)
+    if not res["eligible"]:
+        raise HTTPException(status_code=400, detail=res["message"])
+    return res
 
 
 class StoreSettingsInput(BaseModel):
     taxRate: float = Field(ge=0, le=0.5)
     deliveryFee: float = Field(ge=0)
     freeDeliveryMin: float = Field(ge=0)
+    deliveryZip: str = "32832"
+    deliveryRadiusMiles: float = Field(default=20.0, gt=0, le=500)
+
+    @field_validator("deliveryZip")
+    @classmethod
+    def _zip(cls, v):
+        if not zip_lookup(v):
+            raise ValueError("Delivery ZIP must be a valid US ZIP code")
+        return re.sub(r"\D", "", v)[:5]
 
 
 class PromoInput(BaseModel):
@@ -217,6 +268,10 @@ async def get_settings() -> dict:
 def pricing_rules(settings: dict) -> dict:
     rate = settings["taxRate"]
     return {"taxRate": rate, "taxLabel": f"Sales tax ({rate * 100:g}%)", "deliveryFee": settings["deliveryFee"], "freeDeliveryMin": settings["freeDeliveryMin"]}
+
+
+def delivery_rules(settings: dict) -> dict:
+    return {"zip": settings["deliveryZip"], "radiusMiles": float(settings["deliveryRadiusMiles"])}
 
 
 def promo_public(p: dict) -> dict:
@@ -914,6 +969,7 @@ async def paypal_create_order(inp: PayPalCreateInput):
         raise HTTPException(status_code=503, detail="PayPal is not configured")
     if not inp.items:
         raise HTTPException(status_code=400, detail="Your cart is empty")
+    require_delivery_zone(inp.zip, await get_settings())
     _, totals = await price_cart(inp.items, inp.promoCode)
     total = totals["total"]
     data = await paypal_request("POST", "/v2/checkout/orders", {
@@ -947,6 +1003,7 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
     enabled = {"test_card": TEST_CARD_ENABLED, "square": SQUARE_ENABLED, "cash_app": SQUARE_ENABLED, "paypal": PAYPAL_ENABLED, "zelle": ZELLE_ENABLED}
     if method not in PAYMENT_METHODS or not enabled[method]:
         raise HTTPException(status_code=400, detail="That payment method is not available")
+    zone = require_delivery_zone(inp.shipping.zip, await get_settings())
     priced_items, totals = await price_cart(inp.items, inp.promoCode)
     subtotal, shipping_cost, total = totals["subtotal"], totals["shippingCost"], totals["total"]
     await reserve_stock(priced_items)
@@ -992,6 +1049,7 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
         "userId": user["id"] if user else None,
         "items": priced_items,
         "shipping": inp.shipping.model_dump(),
+        "deliveryDistanceMiles": zone["distanceMiles"],
         "subtotal": subtotal,
         "shippingCost": shipping_cost,
         "tax": totals["tax"],
@@ -1061,7 +1119,13 @@ async def serve_file(path: str):
 # ---- Settings & promo codes ----
 @api_router.get("/settings")
 async def public_settings():
-    return {"pricing": pricing_rules(await get_settings())}
+    settings = await get_settings()
+    return {"pricing": pricing_rules(settings), "delivery": delivery_rules(settings)}
+
+
+@api_router.get("/delivery/check")
+async def delivery_check(zip: str = ""):
+    return delivery_zone_check(zip, await get_settings())
 
 
 @api_router.post("/promo/validate")
