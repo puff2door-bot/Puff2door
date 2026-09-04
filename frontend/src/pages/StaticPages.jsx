@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { Truck, ShieldCheck, Award, Heart } from "lucide-react";
 import { useCatalog } from "../context/CatalogContext";
+import BrandLogo from "../components/BrandLogo";
 import { useCart } from "../context/CartContext";
 import Seo from "../seo/Seo";
 import { breadcrumbJsonLd } from "../seo/config";
@@ -24,14 +25,7 @@ export const BrandsPage = () => {
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4" data-testid="brands-grid">
         {brands.map((b) => (
           <Link key={b.slug} to={`/brand/${b.slug}`} title={`Shop ${b.name} products`} data-testid={`brand-tile-${b.slug}`} className="group aspect-square bg-white border border-neutral-200 rounded-lg grid place-items-center p-4 hover:shadow-lg hover:border-emerald-200 transition-all text-center">
-            {b.image ? (
-              <img src={b.image} alt={`${b.name} logo`} loading="lazy" className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform" />
-            ) : (
-              <span>
-                <span className="block font-heading text-lg sm:text-xl uppercase text-neutral-900 leading-tight group-hover:text-emerald-700 transition-colors">{b.name}</span>
-                <span className="block text-xs text-neutral-500 mt-1">{b.count} product{b.count === 1 ? "" : "s"}</span>
-              </span>
-            )}
+            <BrandLogo brand={b} showCount />
           </Link>
         ))}
       </div>

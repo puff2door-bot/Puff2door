@@ -2,6 +2,20 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import api from "../api";
 import { categories, brands } from "../mock";
 
+const norm = (s) => (s || "").toString().toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// Resolve a catalog brand (slug + display name, any casing/spacing) to the original logo entry in mock.js
+export const findBrandAsset = (slug, brandName) => {
+  const keys = [norm(slug), norm(brandName)].filter(Boolean);
+  if (!keys.length) return null;
+  const exact = brands.find((b) => keys.includes(norm(b.slug)) || keys.includes(norm(b.name)));
+  if (exact) return exact;
+  return brands.find((b) => {
+    const bk = norm(b.slug);
+    return bk.length >= 3 && keys.some((k) => k.length >= 3 && (k.startsWith(bk) || bk.startsWith(k)));
+  }) || null;
+};
+
 const CatalogContext = createContext(null);
 
 export const CatalogProvider = ({ children }) => {
@@ -48,8 +62,8 @@ export const CatalogProvider = ({ children }) => {
     const activeCategories = products.length ? [...knownCats, ...extraCats] : categories;
     const activeBrands = products.length
       ? Object.keys(brandCounts).map((slug) => {
-          const known = brands.find((b) => b.slug === slug);
-          return { slug, name: known?.name || (brandNames[slug] || slug).toUpperCase(), image: known?.image || "", count: brandCounts[slug] };
+          const known = findBrandAsset(slug, brandNames[slug]);
+          return { slug, name: (brandNames[slug] || known?.name || slug).toUpperCase(), image: known?.image || "", count: brandCounts[slug] };
         }).sort((a, b) => a.name.localeCompare(b.name))
       : brands;
     const promoTiles = home.promoBlocks.map((b) => {

@@ -1,0 +1,28 @@
+{
+  "summary": "Frontend-focused verification of the brand-logo fix (CatalogContext.findBrandAsset + BrandLogo.jsx) plus the requested SEO/GA4/API regressions. /brands: exactly 35 brand-tile-<slug> tiles matching the expected slug list; the 6 brands with original assets (apex, geek-bar, mellow-fellow, modus, raz, red-devil) each render an <img alt='<BRAND> logo'> that actually loaded (naturalWidth=280 for all 6); the other 29 tiles render brand-text-<slug> with the uppercase name and 'N product(s)'; all 35 hrefs are exactly /brand/<slug>. Brand pages spot-checked: raz h1=RAZ 6 products/6 cards, muha h1=MUHA 7/7, geek-bar h1='GEEK BAR' 1/1. Home 'Shop By Brand': 16 home-brand-tile-<slug> tiles, raz renders the real logo (naturalWidth=280 after scroll; it is loading=lazy so it is 0 until scrolled into view), muha and the other 15 fall back to text, tile click navigates to /brand/muha with correct h1. Header at 1920px: Brands dropdown = 35 nav-brand-* links, Shop dropdown = 7 nav-cat-* links (unchanged). Regressions via curl: GET /api/products = 67 products; /sitemap.xml = 200 application/xml with 114 <url>; robots.txt contains 'Sitemap: https://puff2door.com/sitemap.xml'; home title 'Online Smoke Shop & Vape Delivery | Puff2door'; GA4 gtag script for G-9QTQEC7EPH present exactly once at runtime (injected by JS, window.gtag=function, dataLayer populated). No console errors observed. No code changes made.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "report_only_observations": [
+    "/brand/RAZ (uppercase slug) does NOT resolve to the RAZ brand page: it renders the generic shop layout with h1 'SHOP ALL' and '0 products available' / 'No products found'. Not a regression of this fix and not required to pass, but a case-insensitive slug lookup (or a redirect to the lowercase slug) in the brand route would avoid an empty, indexable page. All in-app links use lowercase slugs, so users are not affected.",
+    "findBrandAsset()'s prefix-match fallback is loose (any >=3 char prefix in either direction). With the current 24 mock entries and 35 catalog brands it produces no false positives (verified: the 6 matches are all exact), but e.g. a future brand named 'RAWX'/'PURO-x' could pick up an unrelated logo. Consider restricting the fallback to a whitelist or exact matches only.",
+    "Home logo <img> uses loading='lazy'; automated checks must scroll the tile into view before asserting naturalWidth>0."
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Optional: make the /brand/:slug route case-insensitive or redirect uppercase slugs to lowercase to avoid empty 'SHOP ALL / 0 products' pages.",
+    "Optional: tighten findBrandAsset() prefix fallback to prevent future mismatched logos."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (regression curls: products/sitemap/robots/title all pass)", "frontend": "100% (all requested /brands, home, header and brand-page checks pass)"},
+  "seed_data_creation": "None. Read-only testing.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "Not needed (all public pages).",
+  "context_for_next_testing_agent": "Brand logo fix fully verified in iteration 9. 6 of 35 brands have logos (apex, geek-bar, mellow-fellow, modus, raz, red-devil) hot-linked from nonaonlinesmokeshop.com and all load (naturalWidth 280). Remember: age gate data-testid=age-gate-yes then wait ~2.5s; home brand logos are lazy-loaded so scroll_into_view_if_needed before checking naturalWidth; GA4 gtag is injected at runtime so it is not in the static HTML (check via page.evaluate, not curl). Desktop dropdowns are hover-triggered on 'nav >> text=SHOP'/'BRANDS'.",
+  "rca_of_the_issue": "Original bug: after the nav refactor, activeBrands was derived from /api/products and carried no image URLs, so /brands lost all logos. Fix works: findBrandAsset() normalizes slug/brandName and matches the 24 mock.js logo entries, and BrandLogo.jsx renders the <img> with an onError text fallback. Verified 6/6 logo tiles load and 29/29 non-asset brands show the text+count fallback as designed."
+}
