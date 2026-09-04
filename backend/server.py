@@ -1146,7 +1146,7 @@ async def seed_brands():
     """Idempotent: import every brand referenced by products into the brands collection, preserving slug/name/logo."""
     existing = {b["slug"]: b for b in await db.brands.find({}).to_list(2000)}
     names: dict = {}
-    async for p in db.products.find({}, {"brand": 1, "brandName": 1, "name": 1}):
+    async for p in db.products.find({"active": True}, {"brand": 1, "brandName": 1, "name": 1}):
         sl = brand_slug(p)
         if sl and sl not in names:
             names[sl] = (p.get("brandName") or sl.replace("-", " ")).upper()
@@ -1182,6 +1182,65 @@ async def seed_brands():
 async def list_brands():
     rows, counts = await get_brand_map(), await brand_counts()
     return {"brands": [brand_out(b, counts.get(b["slug"], 0)) for b in rows.values() if b.get("active", True)]}
+
+
+# ---- Categories: centralized source of truth (id, slug, name, order, active) ----
+DEFAULT_CATEGORIES = [("disposable", "DISPOSABLE VAPES"), ("delta", "DELTA DISPOSABLES"), ("delta-cartridges", "DELTA CARTRIDGES"), ("delta-edibles", "DELTA EDIBLES"), ("delta-smokeables", "DELTA SMOKEABLES"), ("vape-accessories", "VAPE ACCESSORIES"), ("hemp-wraps", "HEMP WRAPS"), ("paper-cones", "PAPER & CONES"), ("kratom", "KRATOM"), ("glass-pipes", "GLASS PIPES"), ("lighter", "LIGHTER"), ("air-freshner", "AIR FRESHNER"), ("hookah-accessories", "HOOKAH ACCESSORIES"), ("miscellaneous", "MISCELLANEOUS")]
+
+
+class CategoryInput(BaseModel):
+    name: str = ""
+    active: bool = True
+
+
+class ReorderInput(BaseModel):
+    slugs: List[str]
+
+
+_category_cache: dict = {"list": None}
+
+
+def category_out(c: dict, count: int = 0) -> dict:
+    return {"id": c.get("id", c["slug"]), "slug": c["slug"], "name": c.get("name") or c["slug"].upper(), "order": c.get("order", 999), "active": c.get("active", True), "productCount": count}
+
+
+async def get_categories() -> list:
+    if _category_cache["list"] is None:
+        _category_cache["list"] = await db.categories.find({}, {"_id": 0}).sort("order", 1).to_list(500)
+    return _category_cache["list"]
+
+
+def invalidate_categories():
+    _category_cache["list"] = None
+
+
+async def category_counts() -> dict:
+    counts: dict = {}
+    async for p in db.products.find({"active": True}, {"categorySlug": 1}):
+        counts[p.get("categorySlug", "")] = counts.get(p.get("categorySlug", ""), 0) + 1
+    return counts
+
+
+async def seed_categories():
+    """Idempotent: default list + any category referenced by products, preserving slugs/names."""
+    existing = {c["slug"] for c in await db.categories.find({}, {"slug": 1}).to_list(500)}
+    wanted = list(DEFAULT_CATEGORIES)
+    async for p in db.products.find({"active": True}, {"categorySlug": 1, "category": 1}):
+        if p.get("categorySlug") and p["categorySlug"] not in {w[0] for w in wanted}:
+            wanted.append((p["categorySlug"], (p.get("category") or p["categorySlug"]).upper()))
+    for i, (slug, name) in enumerate(wanted):
+        if slug not in existing:
+            await db.categories.insert_one({"id": str(uuid.uuid4()), "slug": slug, "name": name, "order": i, "active": True, "createdAt": now_utc(), "updatedAt": now_utc()})
+    await db.categories.create_index("slug", unique=True)
+    invalidate_categories()
+
+
+@api_router.get("/categories")
+async def list_categories():
+    cats, counts = await get_categories(), await category_counts()
+    return {"categories": [category_out(c, counts.get(c["slug"], 0)) for c in cats if c.get("active", True)]}
+
+
 
 
 @api_router.get("/products/{slug}")
@@ -1253,7 +1312,7 @@ async def refresh_static_sitemap():
     """Best-effort: keep frontend/public/sitemap.xml in sync so each deploy ships a current static sitemap."""
     try:
         xml = await build_sitemap()
-        if SITEMAP_FILE.parent.exists():
+        if SITEMAP_FILE.parent.exists() and (not SITEMAP_FILE.exists() or SITEMAP_FILE.read_text() != xml):
             SITEMAP_FILE.write_text(xml)
     except Exception as e:
         logger.warning("Sitemap refresh failed: %s", e)
@@ -1384,6 +1443,64 @@ async def admin_delete_brand(slug: str, admin: dict = Depends(get_admin_user)):
     return {"ok": True}
 
 
+@api_router.get("/admin/categories")
+async def admin_list_categories(admin: dict = Depends(get_admin_user)):
+    cats, counts = await get_categories(), await category_counts()
+    return {"categories": [category_out(c, counts.get(c["slug"], 0)) for c in cats]}
+
+
+@api_router.post("/admin/categories")
+async def admin_create_category(inp: CategoryInput, admin: dict = Depends(get_admin_user)):
+    name = inp.name.strip()
+    slug = slugify(name)
+    if not slug:
+        raise HTTPException(status_code=400, detail="Category name is required")
+    if any(c["slug"] == slug for c in await get_categories()):
+        raise HTTPException(status_code=409, detail=f"A category with URL /product-category/{slug} already exists")
+    order = max([c.get("order", 0) for c in await get_categories()] + [-1]) + 1
+    doc = {"id": str(uuid.uuid4()), "slug": slug, "name": name, "order": order, "active": inp.active, "createdAt": now_utc(), "updatedAt": now_utc(), "updatedBy": admin["id"]}
+    await db.categories.insert_one(doc)
+    invalidate_categories()
+    return category_out(doc)
+
+
+@api_router.put("/admin/categories/reorder")
+async def admin_reorder_categories(inp: ReorderInput, admin: dict = Depends(get_admin_user)):
+    known = [c["slug"] for c in await get_categories()]
+    if sorted(inp.slugs) != sorted(known):
+        raise HTTPException(status_code=400, detail="Reorder must include every category slug exactly once")
+    for i, slug in enumerate(inp.slugs):
+        await db.categories.update_one({"slug": slug}, {"$set": {"order": i, "updatedAt": now_utc()}})
+    invalidate_categories()
+    return {"ok": True}
+
+
+@api_router.put("/admin/categories/{slug}")
+async def admin_update_category(slug: str, inp: CategoryInput, admin: dict = Depends(get_admin_user)):
+    """Renames / activates a category. The URL slug never changes (SEO-safe)."""
+    cat = next((c for c in await get_categories() if c["slug"] == slugify(slug)), None)
+    if not cat:
+        raise HTTPException(status_code=404, detail="Category not found")
+    name = inp.name.strip() or cat["name"]
+    await db.categories.update_one({"slug": cat["slug"]}, {"$set": {"name": name, "active": inp.active, "updatedAt": now_utc(), "updatedBy": admin["id"]}})
+    await db.products.update_many({"categorySlug": cat["slug"]}, {"$set": {"category": name}})
+    invalidate_categories()
+    counts = await category_counts()
+    asyncio.create_task(refresh_static_sitemap())
+    return category_out({**cat, "name": name, "active": inp.active}, counts.get(cat["slug"], 0))
+
+
+@api_router.delete("/admin/categories/{slug}")
+async def admin_delete_category(slug: str, admin: dict = Depends(get_admin_user)):
+    sl = slugify(slug)
+    counts = await category_counts()
+    if counts.get(sl):
+        raise HTTPException(status_code=400, detail=f"This category has {counts[sl]} product(s). Move them first or deactivate the category instead.")
+    await db.categories.delete_one({"slug": sl})
+    invalidate_categories()
+    return {"ok": True}
+
+
 # ---- Home content (hero slider / promo tiles) ----
 async def get_home_content() -> dict:
     doc = await db.site_content.find_one({"key": "home"}, {"_id": 0})
@@ -1438,6 +1555,11 @@ async def resolve_brand_name(inp: ProductInput) -> str:
     return bm[sl].get("displayName") or name.upper() if sl else name
 
 
+async def resolve_category_name(inp: ProductInput) -> str:
+    cat = next((c for c in await get_categories() if c["slug"] == inp.categorySlug), None)
+    return cat["name"] if cat else inp.category
+
+
 @api_router.post("/admin/products")
 async def admin_create_product(inp: ProductInput, admin: dict = Depends(get_admin_user)):
     pid = await next_product_id()
@@ -1447,6 +1569,7 @@ async def admin_create_product(inp: ProductInput, admin: dict = Depends(get_admi
         "slug": f"{slugify(inp.name)}-{pid}",
         "image2": inp.image2 or inp.image,
         "brandName": await resolve_brand_name(inp),
+        "category": await resolve_category_name(inp),
         "rating": 4.5,
         "createdAt": now_utc(),
         "updatedAt": now_utc(),
@@ -1464,6 +1587,7 @@ async def admin_update_product(product_id: int, inp: ProductInput, admin: dict =
     doc = inp.dict()
     doc["image2"] = inp.image2 or inp.image
     doc["brandName"] = await resolve_brand_name(inp)
+    doc["category"] = await resolve_category_name(inp)
     doc["updatedAt"] = now_utc()
     await db.products.update_one({"id": product_id}, {"$set": doc})
     restocked = int(existing.get("stock", 0)) == 0 and inp.stock > 0
@@ -1822,6 +1946,7 @@ async def seed_data():
     except Exception as e:
         logger.error("Storage init failed: %s", e)
     await seed_brands()
+    await seed_categories()
     await refresh_static_sitemap()
 
 

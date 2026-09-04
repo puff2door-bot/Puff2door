@@ -33,6 +33,7 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import NotFound from "./pages/NotFound";
 import DeliveryAreaPage from "./pages/DeliveryAreaPage";
 import AdminBrands from "./pages/admin/AdminBrands";
+import AdminCategories from "./pages/admin/AdminCategories";
 import Seo, { setJsonLd } from "./seo/Seo";
 import Analytics from "./seo/Analytics";
 import { organizationJsonLd, websiteJsonLd } from "./seo/config";
@@ -92,6 +93,7 @@ const AppRoutes = () => {
         <Route path="alerts" element={<AdminAlerts />} />
         <Route path="banners" element={<AdminBanners />} />
         <Route path="brands" element={<AdminBrands />} />
+        <Route path="categories" element={<AdminCategories />} />
         <Route path="emails" element={<AdminEmails />} />
         <Route path="promos" element={<AdminPromos />} />
         <Route path="settings" element={<AdminSettings />} />

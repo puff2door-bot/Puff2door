@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { X, Upload, Link2, Loader2, Trash2, Plus } from "lucide-react";
 import api, { imgUrl } from "../../api";
-import { categories, FLAVOR_KEYWORDS } from "../../mock";
+import { FLAVOR_KEYWORDS } from "../../mock";
 import { useToast } from "../../hooks/use-toast";
 
 const inputCls = "w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-600 transition-colors";
@@ -57,7 +57,7 @@ export const ImageField = ({ label, value, onChange, testId }) => {
 };
 
 export const emptyProduct = {
-  name: "", category: categories[0].name, categorySlug: categories[0].slug, price: "", salePrice: "", image: "", image2: "",
+  name: "", category: "", categorySlug: "", price: "", salePrice: "", image: "", image2: "",
   brand: "", brandName: "", flavors: [], puffs: "", stock: 0, active: true, description: "",
 };
 
@@ -68,8 +68,16 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
   const set = (k, v) => setF((prev) => ({ ...prev, [k]: v }));
   const [brandList, setBrandList] = useState([]);
   const [newBrand, setNewBrand] = useState(null);
+  const [categories, setCategories] = useState([]);
   const loadBrands = () => api.get("/admin/brands").then(({ data }) => setBrandList(data.brands)).catch(() => {});
-  useEffect(() => { loadBrands(); }, []);
+  useEffect(() => {
+    loadBrands();
+    api.get("/admin/categories").then(({ data }) => {
+      setCategories(data.categories);
+      if (!initial?.categorySlug && data.categories[0]) setF((prev) => ({ ...prev, categorySlug: prev.categorySlug || data.categories[0].slug, category: prev.category || data.categories[0].name }));
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const pickBrand = (slug) => {
     const b = brandList.find((x) => x.slug === slug);
     setF((prev) => ({ ...prev, brand: slug, brandName: b ? b.displayName : "" }));
@@ -129,7 +137,7 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
           <div>
             <label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Category *</label>
             <select data-testid="pf-category" className={inputCls} value={f.categorySlug} onChange={(e) => { const c = categories.find((x) => x.slug === e.target.value); set("categorySlug", c.slug); set("category", c.name); }}>
-              {categories.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
+              {categories.map((c) => <option key={c.slug} value={c.slug}>{c.name}{c.active ? "" : " (inactive)"}</option>)}
             </select>
           </div>
           <div>

@@ -1,6 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import api from "../api";
-import { categories } from "../mock";
 
 const CatalogContext = createContext(null);
 
@@ -9,10 +8,12 @@ export const CatalogProvider = ({ children }) => {
   const [home, setHome] = useState({ heroSlides: [], promoBlocks: [] });
   const [loading, setLoading] = useState(true);
   const [brandRecords, setBrandRecords] = useState([]);
+  const [categoryRecords, setCategoryRecords] = useState([]);
 
   const refresh = useCallback(async () => {
     try {
-      const [p, c, b] = await Promise.all([api.get("/products"), api.get("/content/home"), api.get("/brands").catch(() => ({ data: { brands: [] } }))]);
+      const [p, c, b, k] = await Promise.all([api.get("/products"), api.get("/content/home"), api.get("/brands").catch(() => ({ data: { brands: [] } })), api.get("/categories").catch(() => ({ data: { categories: [] } }))]);
+      setCategoryRecords(k.data.categories || []);
       setProducts(p.data.products || []);
       setHome({ heroSlides: c.data.heroSlides || [], promoBlocks: c.data.promoBlocks || [] });
       setBrandRecords(b.data.brands || []);
@@ -45,9 +46,9 @@ export const CatalogProvider = ({ children }) => {
       if (p.categorySlug) { catCounts[p.categorySlug] = (catCounts[p.categorySlug] || 0) + 1; catNames[p.categorySlug] = p.category; }
       if (p.brand) { brandCounts[p.brand] = (brandCounts[p.brand] || 0) + 1; brandNames[p.brand] = p.brandName; }
     });
-    const knownCats = categories.filter((c) => catCounts[c.slug]).map((c) => ({ ...c, count: catCounts[c.slug] }));
-    const extraCats = Object.keys(catCounts).filter((s) => !categories.some((c) => c.slug === s)).sort().map((s) => ({ slug: s, name: (catNames[s] || s).toUpperCase(), count: catCounts[s] }));
-    const activeCategories = products.length ? [...knownCats, ...extraCats] : categories;
+    const knownCats = categoryRecords.filter((c) => catCounts[c.slug]).map((c) => ({ slug: c.slug, name: c.name, count: catCounts[c.slug] }));
+    const extraCats = Object.keys(catCounts).filter((s) => !categoryRecords.some((c) => c.slug === s)).sort().map((s) => ({ slug: s, name: (catNames[s] || s).toUpperCase(), count: catCounts[s] }));
+    const activeCategories = [...knownCats, ...extraCats];
     const brandRecord = (slug) => brandRecords.find((r) => r.slug === slug);
     const toBrand = (slug, count) => {
       const r = brandRecord(slug);
@@ -72,7 +73,7 @@ export const CatalogProvider = ({ children }) => {
       home,
       activeCategories,
       activeBrands,
-      getCategory: (slug) => activeCategories.find((c) => c.slug === slug) || categories.find((c) => c.slug === slug) || null,
+      getCategory: (slug) => activeCategories.find((c) => c.slug === slug) || (categoryRecords.find((c) => c.slug === slug) ? { slug, name: categoryRecords.find((c) => c.slug === slug).name, count: 0 } : null),
       getBrand: (slug) => activeBrands.find((b) => b.slug === slug) || (brandRecord(slug) ? toBrand(slug, 0) : null),
       heroSlides: home.heroSlides,
       promoTiles,
@@ -81,6 +82,7 @@ export const CatalogProvider = ({ children }) => {
       refresh,
       brandRecords,
       setBrandRecords,
+      categoryRecords,
       getProductBySlug: (slug) => products.find((p) => p.slug === slug),
       getProductById: (id) => products.find((p) => p.id === Number(id)),
       getProductsByCategory: (slug) => products.filter((p) => p.categorySlug === slug),
@@ -89,7 +91,7 @@ export const CatalogProvider = ({ children }) => {
       isOnDeal,
       getPrice,
     };
-  }, [products, home, loading, refresh, brandRecords]);
+  }, [products, home, loading, refresh, brandRecords, categoryRecords]);
 
   return <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>;
 };
