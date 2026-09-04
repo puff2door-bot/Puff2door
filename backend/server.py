@@ -1256,6 +1256,22 @@ async def admin_set_brand_logo(slug: str, inp: BrandLogoInput, admin: dict = Dep
     return {"slug": slug, "name": doc["name"], "image": doc["image"]}
 
 
+@api_router.post("/admin/brands/{slug}/import")
+async def admin_import_brand_logo(slug: str, inp: BrandLogoInput, admin: dict = Depends(get_admin_user)):
+    """Copy an external logo URL into Puff2door storage and save it for the brand."""
+    slug = slugify(slug)
+    if not slug or not inp.image.startswith("http"):
+        raise HTTPException(status_code=400, detail="Provide a brand slug and an http(s) image URL")
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            url = await _fetch_and_store(client, inp.image, admin["id"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not import image: {str(e)[:120]}")
+    doc = {"slug": slug, "name": inp.name.strip(), "image": url, "imageOriginal": inp.image, "updatedAt": now_utc(), "updatedBy": admin["id"]}
+    await db.brands.update_one({"slug": slug}, {"$set": doc}, upsert=True)
+    return {"slug": slug, "name": doc["name"], "image": url}
+
+
 @api_router.delete("/admin/brands/{slug}")
 async def admin_delete_brand_logo(slug: str, admin: dict = Depends(get_admin_user)):
     await db.brands.delete_one({"slug": slugify(slug)})
@@ -1354,6 +1370,22 @@ async def admin_delete_product(product_id: int, admin: dict = Depends(get_admin_
     return {"ok": True}
 
 
+async def store_image(data: bytes, ext: str, filename: str, uploaded_by: str) -> str:
+    path = f"{APP_NAME}/products/{uuid.uuid4()}.{ext}"
+    result = await put_object(path, data, MIME_TYPES[ext])
+    await db.files.insert_one({
+        "id": str(uuid.uuid4()),
+        "storage_path": result["path"],
+        "original_filename": filename,
+        "content_type": MIME_TYPES[ext],
+        "size": result.get("size", len(data)),
+        "uploadedBy": uploaded_by,
+        "is_deleted": False,
+        "created_at": now_utc(),
+    })
+    return f"/api/files/{result['path']}"
+
+
 @api_router.post("/admin/upload")
 async def admin_upload(file: UploadFile = File(...), admin: dict = Depends(get_admin_user)):
     ext = (file.filename.rsplit(".", 1)[-1] if "." in (file.filename or "") else "bin").lower()
@@ -1362,23 +1394,107 @@ async def admin_upload(file: UploadFile = File(...), admin: dict = Depends(get_a
     data = await file.read()
     if len(data) > 6 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Image must be under 6MB")
-    path = f"{APP_NAME}/products/{uuid.uuid4()}.{ext}"
     try:
-        result = await put_object(path, data, MIME_TYPES[ext])
+        url = await store_image(data, ext, file.filename, admin["id"])
     except Exception as e:
         logger.error("Upload failed: %s", e)
         raise HTTPException(status_code=502, detail="Image storage is unavailable right now")
-    await db.files.insert_one({
-        "id": str(uuid.uuid4()),
-        "storage_path": result["path"],
-        "original_filename": file.filename,
-        "content_type": MIME_TYPES[ext],
-        "size": result.get("size", len(data)),
-        "uploadedBy": admin["id"],
-        "is_deleted": False,
-        "created_at": now_utc(),
-    })
-    return {"path": result["path"], "url": f"/api/files/{result['path']}"}
+    return {"path": url.replace("/api/files/", "", 1), "url": url}
+
+
+# ---- Image migration: copy hot-linked product photos into Puff2door storage ----
+_migration: dict = {"running": False, "total": 0, "done": 0, "migrated": 0, "skipped": 0, "failed": [], "startedAt": None, "finishedAt": None}
+
+
+def _to_webp(data: bytes) -> bytes:
+    from PIL import Image
+    from io import BytesIO
+    im = Image.open(BytesIO(data))
+    if getattr(im, "is_animated", False):
+        raise ValueError("animated")
+    im = im.convert("RGBA") if im.mode in ("RGBA", "LA", "P") else im.convert("RGB")
+    if max(im.size) > 1200:
+        im.thumbnail((1200, 1200))
+    out = BytesIO()
+    im.save(out, "WEBP", quality=82, method=6)
+    return out.getvalue()
+
+
+async def _fetch_and_store(client: httpx.AsyncClient, url: str, admin_id: str) -> str:
+    r = await client.get(url, headers={"User-Agent": "Mozilla/5.0 (Puff2Door image importer)", "Referer": SITE_URL + "/"})
+    r.raise_for_status()
+    if not r.headers.get("content-type", "").startswith("image/"):
+        raise ValueError(f"not an image ({r.headers.get('content-type')})")
+    try:
+        data, ext = _to_webp(r.content), "webp"
+    except Exception:
+        ext = url.rsplit(".", 1)[-1].split("?")[0].lower()
+        if ext not in MIME_TYPES:
+            raise
+        data = r.content
+    return await store_image(data, ext, url.rsplit("/", 1)[-1], admin_id)
+
+
+def _is_external(u: str) -> bool:
+    return bool(u) and u.startswith("http") and not u.startswith(SITE_URL) and "/api/files/" not in u
+
+
+async def run_image_migration(admin_id: str):
+    prods = await db.products.find({"active": True}).sort("id", 1).to_list(5000)
+    jobs = [(p, f) for p in prods for f in ("image", "image2") if _is_external(p.get(f, "")) and p.get(f) != (p.get("image") if f == "image2" else None)]
+    _migration.update({"running": True, "total": len(jobs), "done": 0, "migrated": 0, "skipped": 0, "failed": [], "startedAt": now_utc().isoformat(), "finishedAt": None})
+    cache: dict = {}
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            for p, field in jobs:
+                url = p[field]
+                try:
+                    local = p.get(f"{field}Local")
+                    if not local:
+                        if url not in cache:
+                            cache[url] = await _fetch_and_store(client, url, admin_id)
+                        local = cache[url]
+                    await db.products.update_one({"id": p["id"]}, {"$set": {field: local, f"{field}Original": url, f"{field}Local": local, "updatedAt": now_utc()}})
+                    _migration["migrated"] += 1
+                except Exception as e:
+                    _migration["failed"].append({"id": p["id"], "name": p["name"], "field": field, "url": url, "error": str(e)[:160]})
+                _migration["done"] += 1
+        # products whose image2 duplicated image: mirror the new URL
+        async for p in db.products.find({"active": True}):
+            if p.get("image2") and p.get("image2") == p.get("imageOriginal") and p.get("image"):
+                await db.products.update_one({"id": p["id"]}, {"$set": {"image2": p["image"], "image2Original": p["image2"]}})
+    finally:
+        _migration.update({"running": False, "finishedAt": now_utc().isoformat()})
+        asyncio.create_task(refresh_static_sitemap())
+
+
+@api_router.post("/admin/products/migrate-images")
+async def admin_migrate_images(admin: dict = Depends(get_admin_user)):
+    if _migration["running"]:
+        raise HTTPException(status_code=409, detail="Migration already running")
+    asyncio.create_task(run_image_migration(admin["id"]))
+    return {"started": True}
+
+
+@api_router.get("/admin/products/migrate-images/status")
+async def admin_migrate_images_status(admin: dict = Depends(get_admin_user)):
+    prods = await db.products.find({"active": True}, {"image": 1, "image2": 1, "imageOriginal": 1}).to_list(5000)
+    external = sum(1 for p in prods for f in ("image", "image2") if _is_external(p.get(f, "")))
+    migrated_products = sum(1 for p in prods if p.get("imageOriginal") and not _is_external(p.get("image", "")))
+    return {**_migration, "externalRemaining": external, "products": len(prods), "migratedProducts": migrated_products}
+
+
+@api_router.post("/admin/products/migrate-images/revert")
+async def admin_migrate_images_revert(admin: dict = Depends(get_admin_user)):
+    n = 0
+    async for p in db.products.find({"imageOriginal": {"$exists": True}}):
+        upd = {"image": p["imageOriginal"], "imageLocal": p.get("image", "")}
+        if p.get("image2Original"):
+            upd["image2"] = p["image2Original"]
+            upd["image2Local"] = p.get("image2", "")
+        await db.products.update_one({"id": p["id"]}, {"$set": upd, "$unset": {"imageOriginal": "", "image2Original": ""}})
+        n += 1
+    return {"reverted": n}
 
 
 @api_router.get("/admin/orders")

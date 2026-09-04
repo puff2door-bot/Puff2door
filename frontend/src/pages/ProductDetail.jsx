@@ -46,7 +46,7 @@ const ProductDetail = () => {
   const price = getPrice(product);
   const wished = has(product.id);
   const alertSet = Boolean(wishItems.find((i) => i.productId === product.id)?.notify);
-  const imgAbs = (u) => { const r = imgUrl(u); return r?.startsWith("http") ? r : absUrl(r); };
+  const imgAbs = (u) => (u && u.startsWith("/api/") ? absUrl(u) : imgUrl(u)?.startsWith("http") ? imgUrl(u) : absUrl(u));
   const jsonLd = [
     productJsonLd(product, price, imgAbs, reviewSummary),
     breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: titleCase(product.category), path: `/product-category/${product.categorySlug}` }, { name: titleCase(product.name), path: `/shop/${product.slug}` }]),

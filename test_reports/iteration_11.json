@@ -1,0 +1,54 @@
+{
+  "summary": "Tested product image migration (hot-link -> local WebP) and brand-logo import end to end. Backend: 13/13 pytest assertions pass (/app/backend/tests/test_image_migration.py) - 67 products, every image/image2 under /api/files/, no 'nonaonlinesmokeshop' anywhere, sampled images return 200 image/webp with max dim <=1200, product fields match seed_products.json (ignoring known drift on ids 1,2,14,15,16), admin status endpoint auth-gated (401 unauth), start with nothing external returns {started:true} and total 0 without crashing, brands = 6 with fetchable /api/files/ logos, brand import happy path + 400 on 'not-a-url' + DELETE cleanup back to 6. Also executed a full revert -> re-migrate cycle (with a DB backup safety net): revert restored 67 products (externalRemaining 134), re-migration copied 82/82 images with 0 failures back to externalRemaining 0, and a concurrent start correctly returned 409. Frontend: home (60 imgs), /shop (30 imgs) and PDP all load /api/files/ images with naturalWidth>0, 0 console errors, /brands renders 35 tiles with 6 loaded local logos, Brands dropdown 35 / Shop dropdown 7, add-to-cart works (cart badge 1), checkout with ZIP 32801 shows 'Great news! We deliver...' plus PayPal/Zelle payment options, sitemap.xml 200 with 115 <loc>, robots.txt OK. Admin: /admin/products shows image-migration-panel in green migration-done state; /admin/brands rows show 'custom logo' for apex/geek-bar, and pasting an external URL for 'muha' imported it (POST /admin/brands/muha/import 200, row preview src became /api/files/..., toast 'Logo saved') and Remove+Save cleaned it up (brands back to 6). Catalog left in the fully migrated all-local state.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/admin/products/migrate-images/status", "issue": "Job state (_migration) is an in-memory module dict. After any backend restart, or after POSTing migrate-images when nothing is external (total resets to 0), migrated/total/finishedAt are lost even though 67 products still carry imageOriginal. Observed migrated=0 in a done catalog. Derive from DB (count imageOriginal) or persist the job doc."},
+      {"endpoint": "POST /api/admin/products/migrate-images/revert", "issue": "Revert overwrites image/image2 with the original external URLs and $unsets imageOriginal/image2Original, discarding the local /api/files/ URLs. If the third-party host is unreachable during re-migration the catalog is left with broken/hot-linked images and no way back. Keep the local URL (e.g. imageLocal) so revert is reversible."},
+      {"endpoint": "POST /api/admin/products/migrate-images", "issue": "Each migration run re-downloads and stores fresh copies (82 new objects + db.files rows per cycle) and never removes the previous ones -> storage/DB bloat with orphaned files after revert+re-migrate."},
+      {"endpoint": "GET /api/admin/products/migrate-images/status", "issue": "externalRemaining only counts active products; hidden/inactive products (94 total vs 67 active) could keep hot-linked images while the panel reports 'all local'. Currently 0 external in DB, so no impact today."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ImageMigrationPanel", "issue": "Done state renders 'Last import: 0 image(s) copied.' and hides the 'Restore original links' button whenever the in-memory counter is 0 (post-restart / after a no-op start), so the revert action is unreachable although imageOriginal exists for all 67 products", "selector": "[data-testid=\"migration-done\"], [data-testid=\"migration-revert\"]", "priority": "MEDIUM"},
+      {"component": "ProductDetail gallery", "issue": "Gallery thumbnail buttons have no data-testid (only aria-label 'Show image N'); additionally 52/67 products now have image2 === image so most PDPs (incl. geek-bar-pulse-2-25k-grape-hubba-14) render no thumbnails at all - confirm this dedupe is intended", "selector": "button[aria-label^=\"Show image\"]", "priority": "LOW"},
+      {"component": "AuthPage login form", "issue": "Login submit button has neither data-testid nor type=submit, so [data-testid=\"login-form\"] button[type=submit] does not resolve; tests must fall back to text 'Log In'", "selector": "[data-testid=\"login-form\"] button", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Admin -> Brand Logos -> paste external URL + Save", "issue": "Import takes ~5-6s with only a button spinner; the row preview/'custom logo' label and the 'Logo saved' toast appear only after it returns (a 6s test wait was borderline). Functionally correct, but consider optimistic feedback/progress text", "affected_selectors": ["[data-testid=\"brand-save-muha\"]", "[data-testid=\"brand-logo-muha-url\"]"]}
+    ],
+    "design_issues": [
+      {"screen": "Product JSON-LD / SEO", "issues": ["productJsonLd image[] is built from imgUrl() which prefixes REACT_APP_BACKEND_URL, so structured-data image URLs are https://puff2door-preview.preview.emergentagent.com/api/files/... instead of the canonical https://puff2door.com/api/files/...; use SITE_URL (absUrl) for /api/files paths in JSON-LD and og:image"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_image_migration.py",
+    "/app/backend/tests/manual_revert_remigrate.py",
+    "/app/test_reports/pytest/iteration_11.xml"
+  ],
+  "action_items": [
+    "Derive migration 'done/last import' state and revert-button visibility from DB (count of products with imageOriginal) instead of the in-memory _migration dict, so the panel survives backend restarts and no-op starts",
+    "Make revert non-destructive: keep the local /api/files/ URL (e.g. imageLocal) so a failed re-migration cannot permanently lose the local copies",
+    "Clean up / reuse stored copies so repeated migrations do not create orphaned files objects",
+    "Use canonical SITE_URL for /api/files image URLs in Product JSON-LD and og:image",
+    "Add data-testid to PDP gallery thumbnails and to the login submit button"
+  ],
+  "critical_code_review_comments": [
+    "server.py: _migration global is not restart-safe and is mutated by concurrent jobs; a persisted job document (or DB-derived status) would avoid the misleading 'Last import: 0 image(s)' state.",
+    "admin_migrate_images_revert unsets imageOriginal/image2Original without retaining the local URL - one-way, lossy operation on 67 products.",
+    "migrate status counts only active:true products; hidden products are excluded from externalRemaining, so the 'all local' claim can be false.",
+    "server.py is 1701 lines - consider splitting admin/migration/file-storage routers into modules (>700 line guideline)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_image_migration.py",
+    "/app/backend/tests/manual_revert_remigrate.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Temporary brand 'testbrand' (API) and 'muha' logo (UI) created and deleted; /api/brands verified back to the 6 defaults. One cart item added in the browser session only. Product image fields backed up to /tmp/img_backup.json before the revert test (not needed - re-migration succeeded).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@puff2door.com / Puff2Door-Admin1 (from /app/memory/test_credentials.md)",
+  "context_for_next_testing_agent": "Catalog is left fully migrated (all 67 products image/image2 under /api/files/, 67 imageOriginal rows in DB, 0 external). NOTE: the in-memory migrated counter is currently 0 because test_start_migration_when_nothing_external resets it, so /admin/products shows 'Last import: 0 image(s) copied.' and no 'Restore original links' button - this is the reported state bug, not a data problem. /api/brands must stay at exactly 6 (apex, geek-bar, mellow-fellow, modus, raz, red-devil). Use /app/backend/tests/test_image_migration.py for regression; run migrate/revert only with /app/backend/tests/manual_revert_remigrate.py (it backs up image fields to /tmp/img_backup.json first). Login submit button must be clicked via text 'Log In'; age gate button is 'Yes, I am 21+'.",
+  "rca_of_the_issue": "Migration panel misreporting: run_image_migration writes progress into a module-level dict (_migration) that the status endpoint merges with live DB counts. Any backend restart, or a start call with zero external images (which resets total/migrated to 0), wipes those counters; ImageMigrationPanel gates the revert button on status.migrated > 0 and prints status.migrated in the done message, so a fully migrated catalog can report 'Last import: 0 image(s) copied.' with no revert option. Fix: compute lastImport/revertAvailable from db.products count where imageOriginal exists, or persist the job document."
+}

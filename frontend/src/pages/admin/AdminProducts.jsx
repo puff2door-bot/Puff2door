@@ -5,6 +5,7 @@ import api, { imgUrl } from "../../api";
 import { useToast } from "../../hooks/use-toast";
 import { useCatalog } from "../../context/CatalogContext";
 import ProductForm from "./ProductForm";
+import ImageMigrationPanel from "./ImageMigrationPanel";
 
 const AdminProducts = () => {
   const [products, setProducts] = useState([]);
@@ -58,6 +59,8 @@ const AdminProducts = () => {
           <button onClick={() => setEditing({})} data-testid="admin-add-product" className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-full hover:bg-emerald-700"><Plus className="h-4 w-4" /> Add Product</button>
         </div>
       </div>
+
+      <ImageMigrationPanel onChanged={() => { load(); refresh(); }} />
 
       {loading ? (
         <p className="text-neutral-500">Loading products...</p>

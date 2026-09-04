@@ -14,12 +14,15 @@ const BrandRow = ({ brand, onSaved }) => {
   const save = async () => {
     setBusy(true);
     try {
-      if (image) {
-        await api.put(`/admin/brands/${brand.slug}`, { image, name: brand.name });
+      let saved = "";
+      if (image && /^https?:\/\//.test(image) && !image.includes("/api/files/")) {
+        saved = (await api.post(`/admin/brands/${brand.slug}/import`, { image, name: brand.name })).data.image;
+      } else if (image) {
+        saved = (await api.put(`/admin/brands/${brand.slug}`, { image, name: brand.name })).data.image;
       } else {
         await api.delete(`/admin/brands/${brand.slug}`);
       }
-      onSaved(brand.slug, image);
+      onSaved(brand.slug, saved);
       toast({ title: image ? "Logo saved" : "Custom logo removed", description: brand.name });
     } catch (e) {
       toast({ title: "Save failed", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
