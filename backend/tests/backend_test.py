@@ -203,7 +203,7 @@ class TestOrders:
         payload = {
             "items": [{"productId": 14, "name": "Geek Bar", "price": 19.99, "qty": 1, "slug": "geek-bar-14"}],
             "shipping": {"firstName": "TEST", "lastName": "Buyer", "email": "test@example.com",
-                         "phone": "5551234567", "address": "1 Main St", "city": "Reno", "state": "NV", "zip": "89501"},
+                         "phone": "5551234567", "address": "1 Main St", "city": "Orlando", "state": "FL", "zip": "32801"},
             "subtotal": 19.99, "shippingCost": 0, "discount": 0, "total": 19.99, "paymentLast4": "4242",
         }
         r = client.post(f"{API}/orders", json=payload)
@@ -240,7 +240,7 @@ class TestOrders:
             {"productId": 1, "name": "x", "price": 5, "qty": 1}]})
         payload = {
             "items": [{"productId": 1, "name": "x", "price": 5, "qty": 1}],
-            "shipping": {"firstName": "TEST", "email": jwt_account["email"]},
+            "shipping": {"firstName": "TEST", "email": jwt_account["email"], "zip": "32801"},
             "subtotal": 5, "total": 5,
         }
         r = client.post(f"{API}/orders", headers=h, json=payload)

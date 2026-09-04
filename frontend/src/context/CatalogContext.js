@@ -1,20 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import api from "../api";
-import { categories, brands } from "../mock";
-
-const norm = (s) => (s || "").toString().toLowerCase().replace(/[^a-z0-9]/g, "");
-
-// Resolve a catalog brand (slug + display name, any casing/spacing) to the original logo entry in mock.js
-export const findBrandAsset = (slug, brandName) => {
-  const keys = [norm(slug), norm(brandName)].filter(Boolean);
-  if (!keys.length) return null;
-  const exact = brands.find((b) => keys.includes(norm(b.slug)) || keys.includes(norm(b.name)));
-  if (exact) return exact;
-  return brands.find((b) => {
-    const bk = norm(b.slug);
-    return bk.length >= 3 && keys.some((k) => k.length >= 3 && (k.startsWith(bk) || bk.startsWith(k)));
-  }) || null;
-};
+import { categories } from "../mock";
 
 const CatalogContext = createContext(null);
 
@@ -22,14 +8,14 @@ export const CatalogProvider = ({ children }) => {
   const [products, setProducts] = useState([]);
   const [home, setHome] = useState({ heroSlides: [], promoBlocks: [] });
   const [loading, setLoading] = useState(true);
-  const [brandLogos, setBrandLogos] = useState([]);
+  const [brandRecords, setBrandRecords] = useState([]);
 
   const refresh = useCallback(async () => {
     try {
       const [p, c, b] = await Promise.all([api.get("/products"), api.get("/content/home"), api.get("/brands").catch(() => ({ data: { brands: [] } }))]);
       setProducts(p.data.products || []);
       setHome({ heroSlides: c.data.heroSlides || [], promoBlocks: c.data.promoBlocks || [] });
-      setBrandLogos(b.data.brands || []);
+      setBrandRecords(b.data.brands || []);
     } finally {
       setLoading(false);
     }
@@ -62,13 +48,14 @@ export const CatalogProvider = ({ children }) => {
     const knownCats = categories.filter((c) => catCounts[c.slug]).map((c) => ({ ...c, count: catCounts[c.slug] }));
     const extraCats = Object.keys(catCounts).filter((s) => !categories.some((c) => c.slug === s)).sort().map((s) => ({ slug: s, name: (catNames[s] || s).toUpperCase(), count: catCounts[s] }));
     const activeCategories = products.length ? [...knownCats, ...extraCats] : categories;
+    const brandRecord = (slug) => brandRecords.find((r) => r.slug === slug);
+    const toBrand = (slug, count) => {
+      const r = brandRecord(slug);
+      return { id: r?.id || slug, slug, name: r?.displayName || (brandNames[slug] || slug).toUpperCase(), image: r?.logo || "", count };
+    };
     const activeBrands = products.length
-      ? Object.keys(brandCounts).map((slug) => {
-          const known = findBrandAsset(slug, brandNames[slug]);
-          const custom = brandLogos.find((l) => l.slug === slug);
-          return { slug, name: (brandNames[slug] || known?.name || slug).toUpperCase(), image: custom?.image || known?.image || "", customImage: custom?.image || "", count: brandCounts[slug] };
-        }).sort((a, b) => a.name.localeCompare(b.name))
-      : brands;
+      ? Object.keys(brandCounts).map((slug) => toBrand(slug, brandCounts[slug])).sort((a, b) => a.name.localeCompare(b.name))
+      : [];
     const promoTiles = home.promoBlocks.map((b) => {
       const pr = b.productId ? byId(b.productId) : null;
       return {
@@ -86,14 +73,14 @@ export const CatalogProvider = ({ children }) => {
       activeCategories,
       activeBrands,
       getCategory: (slug) => activeCategories.find((c) => c.slug === slug) || categories.find((c) => c.slug === slug) || null,
-      getBrand: (slug) => activeBrands.find((b) => b.slug === slug) || brands.find((b) => b.slug === slug) || null,
+      getBrand: (slug) => activeBrands.find((b) => b.slug === slug) || (brandRecord(slug) ? toBrand(slug, 0) : null),
       heroSlides: home.heroSlides,
       promoTiles,
       setHome,
       loading,
       refresh,
-      brandLogos,
-      setBrandLogos,
+      brandRecords,
+      setBrandRecords,
       getProductBySlug: (slug) => products.find((p) => p.slug === slug),
       getProductById: (id) => products.find((p) => p.id === Number(id)),
       getProductsByCategory: (slug) => products.filter((p) => p.categorySlug === slug),
@@ -102,7 +89,7 @@ export const CatalogProvider = ({ children }) => {
       isOnDeal,
       getPrice,
     };
-  }, [products, home, loading, refresh, brandLogos]);
+  }, [products, home, loading, refresh, brandRecords]);
 
   return <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>;
 };

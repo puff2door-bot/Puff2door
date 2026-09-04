@@ -19,7 +19,7 @@ def client():
     return httpx.AsyncClient(transport=transport, base_url="http://test")
 
 
-CART = {"items": [{"productId": 14, "name": "x", "price": 26.5, "qty": 1}], "shipping": {"firstName": "A", "lastName": "B"}}
+CART = {"items": [{"productId": 14, "name": "x", "price": 26.5, "qty": 1}], "shipping": {"firstName": "A", "lastName": "B", "zip": "32801"}}
 
 
 def test_square_mocked_success_and_decline(client, monkeypatch):
@@ -63,7 +63,7 @@ def test_paypal_mocked_flow(client, monkeypatch):
     monkeypatch.setattr(server, "paypal_request", fake_paypal)
 
     async def go():
-        r = await client.post("/api/payments/paypal/create-order", json={"items": CART["items"]})
+        r = await client.post("/api/payments/paypal/create-order", json={"items": CART["items"], "zip": "32801"})
         assert r.status_code == 200 and r.json()["id"] == "PP-ORDER-1"
         r2 = await client.post("/api/orders", json={**CART, "paymentMethod": "paypal", "paypalOrderId": "PP-ORDER-1"})
         assert r2.status_code == 200, r2.text

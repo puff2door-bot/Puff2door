@@ -1,0 +1,49 @@
+{
+  "summary": "Full backend + frontend verification of centralized Brand Management. New pytest suite /app/backend/tests/test_brand_management.py (15 tests, 15 passed) covers GET /api/products (67 products, every product has non-empty brand slug + brandName, 35 distinct slugs, no drift vs seed_products.json except ids 1,2,14,15,16), GET /api/brands (fields id/slug/name/displayName/logo/active/productCount, no _id, exactly 6 logos on apex/geek-bar/mellow-fellow/modus/raz/red-devil starting /api/files/), admin brand CRUD (list w/ productCount, PUT keeps slug + syncs brandName on all 7 muha products + public displayName, create/409 duplicate/update/delete, DELETE in-use → 400, import with 'not-a-url' → 400, unauthenticated PUT/POST/DELETE → 403), POST /api/admin/products with brand:'raz' → brand 'raz'/brandName 'RAZ' + soft delete, sitemap.xml 200 with 115 URLs incl. 35 /brand/ URLs, robots.txt, /api/settings, POST /api/orders zelle zip 32801. Frontend (Playwright, public + admin): /brands 35 tiles with 6 loaded logo <img> (naturalWidth>0) and text fallback otherwise, header Brands dropdown 35 nav-brand-<slug>, /brand/raz h1 + 6 products, PDP brand row, displayName propagation (raz→'Raz Vapes' and muha→'Muha Meds' reflected in tiles/alt/dropdown/h1/PDP/card, URL slug unchanged, both restored), /admin/brands page (summary, 38 rows at the time, brand-name-/display-/active-/slug- '/brand/<slug>'/logo ImageField/save disabled-until-dirty, toast 'Brand updated'), logo paste-URL flow (preview before save → imported to /api/files/... → public tile shows <img> → Remove logo + Update → back to text, brand intact), + Add Brand → row with slug exotic-test + Delete (0 products) → gone, search filter, ProductForm pf-brand is a <select> of 38 brands by display name, inline pf-add-brand creates 'Zzz Test Brand' and auto-selects it (brand deleted afterwards), edit product pre-selects existing brand ('silly-dots'), both forms cancelled without saving any product. No blocking defects found in the Brand Management feature.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/files/{path}", "issue": "serve_file() awaits get_object() without try/except; when the Emergent object store transiently returns 503 the raw httpx.HTTPStatusError escapes and the request 500s (multiple 'Exception in ASGI application' tracebacks in backend.err.log during /brands load). Brand logos/product images then break for that request. Wrap in try/except and return 502/404 with a message (or serve a placeholder)."},
+      {"endpoint": "POST /api/admin/brands/{slug}/import", "issue": "Response returns both legacy 'image' and new 'logo' keys with the same value — drop 'image' to avoid two sources of truth. Also imports any URL that resolves; a very large remote file has no explicit size cap (the /admin/upload path caps at 6MB)."},
+      {"endpoint": "DELETE /api/admin/products/{id}", "issue": "Soft delete only (active:false). 28 hidden 'TEST_*' products had accumulated from earlier iterations, inflating Admin → Products count to 95 vs 67 public and causing seed_brands() to keep re-importing junk brands ('test','test-upload','testbrand'). I hard-removed the TEST_ products and those 3 junk brands; DB is now 67 products / 35 brands. Consider an admin hard-delete or at least excluding inactive products from brand seeding."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Brand logo import (paste URL → Update Brand)", "issue": "Not a failure, but the two chained requests (import ~6s + PUT) take 7-10s with no busy indicator on the row beyond the small spinner in the button and no optimistic feedback; a tester/user can think it failed. Consider a clearer 'Importing logo…' state.", "affected_selectors": ["brand-save-muha", "brand-logo-muha-url"]}
+    ],
+    "design_issues": [
+      {"screen": "Product detail (brand row)", "issues": ["Brand value is rendered through titleCase(p.brandName) in /app/frontend/src/seo/config.js, so an all-caps displayName is shown as 'Raz' instead of 'RAZ' (multi-word names like 'Raz Vapes'/'Muha Meds' render correctly). If displayName is meant to be authoritative everywhere, drop titleCase for the brand row/JSON-LD."]},
+      {"screen": "Admin → Brands", "issues": ["Sidebar label is 'Brand Logos' while the page heading is 'Brands' — inconsistent naming for the same route (/admin/brands)."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_brand_management.py",
+    "/app/test_reports/pytest/brand_mgmt.xml",
+    "/app/test_reports/pytest/all_results.xml"
+  ],
+  "action_items": [
+    "IMPORTANT — brand counts changed: the DB now has 35 brands (all with >=1 product) and 6 logos, because the junk hidden brands 'test','test-upload','testbrand' and 28 leftover hidden TEST_ products were removed. Any code/docs/tests asserting '38 brands' (incl. Admin → Brands summary expectation) should now expect 35. seed_brands() was verified idempotent across a backend restart (imported 0, logos + displayNames preserved).",
+    "Add try/except around get_object() in GET /api/files/{path} so object-store 503s do not surface as 500s.",
+    "Legacy test files are stale AND mutate live data: tests/test_delivery_area_brands.py::TestBrandLogos wiped raz's logo and deleted a brand (old {slug,name,image} contract), tests/test_image_migration.py::TestBrands still expects 6-7 brand records, tests/test_catalog_brands.py expects 114 sitemap URLs and pre-migration image URLs, and tests/test_puff2door_full.py / test_payments_content.py / test_payments_mock.py / test_sitemap_urlonly.py use out-of-zone addresses (NY/Miami) that the delivery-zone rule now rejects → 35 stale failures. Please update or delete them; I restored raz's logo and re-deleted the products they created.",
+    "Optional: drop titleCase() on the PDP brand row so displayName casing is preserved; rename the sidebar 'Brand Logos' → 'Brands'."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1824 lines — split into routers (catalog/brands/admin/orders/payments/seo) for maintainability.",
+    "GET /api/files/{path}: unguarded await get_object(path) → unhandled httpx.HTTPStatusError → 500 (only real bug found).",
+    "seed_brands() derives brands from ALL products including inactive/hidden ones, so soft-deleted test products keep resurrecting junk brands; filter on {'active': True} or on non-TEST names.",
+    "admin_update_brand() correctly never touches slug and fans displayName out to products.brandName; brand cache invalidation (invalidate_brands) is called on every mutation — verified end-to-end.",
+    "brand_out() excludes _id and all brand endpoints returned clean JSON (verified via assertions)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_brand_management.py (new regression suite)"
+  ],
+  "success_rate": {"backend": "100% (15/15 new brand-management tests; 35 pre-existing failures are stale legacy tests, not regressions)", "frontend": "100% of brand-management flows verified"},
+  "seed_data_creation": "Created and removed: brand 'Exotic Test' (API + UI), brand 'Zzz Test Brand' (ProductForm inline creator), one hidden product 'TEST_ Brand Slug Product' (hard-removed), one TEST_ zelle order (left in orders, 3 such orders exist from earlier iterations). Renamed muha→'Muha Meds' and raz→'Raz Vapes' for propagation testing and restored both to 'MUHA'/'RAZ'; muha logo was set then removed; raz logo restored to its original /api/files/... asset.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@puff2door.com / Puff2Door-Admin1 (from /app/memory/test_credentials.md) — login and admin gating worked",
+  "context_for_next_testing_agent": "Brand Management is fully verified. Current DB baseline: 67 active products, 35 brands (== 35 product brand slugs), 6 with logos (apex, geek-bar, mellow-fellow, modus, raz, red-devil), sitemap 115 URLs incl. 35 /brand/ URLs. Use /app/backend/tests/test_brand_management.py as the brand regression suite (run with `python -m pytest tests/test_brand_management.py -p xdist -n 0`; pytest.ini requires xdist). DO NOT run tests/test_delivery_area_brands.py or tests/test_image_migration.py unmodified — they use the removed {slug,name,image} brand contract and destroy real brand logos. Playwright notes: header 'Brands' is an <a href=\"/brands\">, not a button (hover it to open the dropdown); admin login uses data-testid login-email/login-password/login-submit; the admin product edit button is data-testid=admin-edit-<id>; brand logo import takes 7-10s so wait >=8s after clicking brand-save-<slug>.",
+  "rca_of_the_issue": "No functional defect in Brand Management. The two apparent failures during testing were: (1) my first logo-save assertion failed only because the import+save round trip takes ~9s (>my 5s wait) — the logo was in fact persisted; (2) GET /api/files/{path} 500s are caused by serve_file() not handling httpx errors when the Emergent object store answers 503 (transient upstream). Separately, hidden TEST_ products left behind by earlier iterations' soft deletes were the reason the brands collection contained 3 product-less junk brands (38 instead of 35): seed_brands() derives brands from all products regardless of active flag."
+}

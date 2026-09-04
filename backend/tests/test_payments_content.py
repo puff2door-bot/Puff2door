@@ -72,9 +72,9 @@ SHIPPING = {
     "email": "test_payments@example.com",
     "phone": "5551234567",
     "address": "1 Test St",
-    "city": "Miami",
+    "city": "Orlando",
     "state": "FL",
-    "zip": "33101",
+    "zip": "32801",
 }
 
 
@@ -131,7 +131,7 @@ class TestDisabledMethods:
 
     def test_paypal_create_order(self, client, product):
         cfg = client.get(f"{API}/payments/config").json()
-        r = client.post(f"{API}/payments/paypal/create-order", json={"items": [cart_item(product)]})
+        r = client.post(f"{API}/payments/paypal/create-order", json={"items": [cart_item(product)], "zip": "32801"})
         if cfg["paypal"]["enabled"]:
             assert r.status_code == 200, r.text
             assert r.json()["id"] and r.json()["total"] > 0

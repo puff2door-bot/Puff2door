@@ -86,7 +86,7 @@ const fmtPuffs = (n) => (n >= 1000 ? `${Math.round(n / 1000)}K` : String(n));
 
 export const productSeoDescription = (p) => {
   const cat = titleCase(p.category || "").replace(/s$/, "");
-  const parts = [`${titleCase(p.name)}${p.brandName ? ` by ${titleCase(p.brandName)}` : ""}`];
+  const parts = [`${titleCase(p.name)}${p.brandName ? ` by ${p.brandName}` : ""}`];
   const specs = [];
   if (p.puffs) specs.push(`up to ${fmtPuffs(p.puffs)} puffs`);
   if (p.flavors?.length) specs.push(`${p.flavors.slice(0, 3).join(", ")} flavor${p.flavors.length > 1 ? "s" : ""}`);
@@ -97,7 +97,7 @@ export const productSeoDescription = (p) => {
 
 export const productSpecs = (p) => {
   const rows = [];
-  if (p.brandName) rows.push(["Brand", titleCase(p.brandName)]);
+  if (p.brandName) rows.push(["Brand", p.brandName]);
   if (p.category) rows.push(["Category", titleCase(p.category)]);
   if (p.puffs) rows.push(["Puff count", `Up to ${p.puffs.toLocaleString()} puffs`]);
   if (p.flavors?.length) rows.push(["Flavor", p.flavors.join(", ")]);
@@ -159,7 +159,7 @@ export const productJsonLd = (p, price, imgAbs, reviews) => {
       seller: { "@id": `${SITE_URL}/#organization` },
     },
   };
-  if (p.brandName) data.brand = { "@type": "Brand", name: titleCase(p.brandName) };
+  if (p.brandName) data.brand = { "@type": "Brand", name: p.brandName };
   if (reviews && reviews.count > 0) data.aggregateRating = { "@type": "AggregateRating", ratingValue: reviews.average, reviewCount: reviews.count, bestRating: 5, worstRating: 1 };
   return data;
 };

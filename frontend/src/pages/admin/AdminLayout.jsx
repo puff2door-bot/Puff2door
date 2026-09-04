@@ -9,7 +9,7 @@ const nav = [
   { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
   { to: "/admin/alerts", label: "Restock Alerts", icon: Bell },
   { to: "/admin/banners", label: "Home Banners", icon: Images },
-  { to: "/admin/brands", label: "Brand Logos", icon: Tag },
+  { to: "/admin/brands", label: "Brands", icon: Tag },
   { to: "/admin/promos", label: "Promo Codes", icon: Ticket },
   { to: "/admin/emails", label: "Email Log", icon: Mail },
   { to: "/admin/settings", label: "Store Settings", icon: Settings },

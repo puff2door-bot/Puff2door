@@ -1,5 +1,5 @@
-import React, { useRef, useState } from "react";
-import { X, Upload, Link2, Loader2, Trash2 } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { X, Upload, Link2, Loader2, Trash2, Plus } from "lucide-react";
 import api, { imgUrl } from "../../api";
 import { categories, FLAVOR_KEYWORDS } from "../../mock";
 import { useToast } from "../../hooks/use-toast";
@@ -66,6 +66,26 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
   const [busy, setBusy] = useState(false);
   const { toast } = useToast();
   const set = (k, v) => setF((prev) => ({ ...prev, [k]: v }));
+  const [brandList, setBrandList] = useState([]);
+  const [newBrand, setNewBrand] = useState(null);
+  const loadBrands = () => api.get("/admin/brands").then(({ data }) => setBrandList(data.brands)).catch(() => {});
+  useEffect(() => { loadBrands(); }, []);
+  const pickBrand = (slug) => {
+    const b = brandList.find((x) => x.slug === slug);
+    setF((prev) => ({ ...prev, brand: slug, brandName: b ? b.displayName : "" }));
+  };
+  const createBrand = async () => {
+    if (!newBrand?.name?.trim()) return;
+    try {
+      const { data } = await api.post("/admin/brands", { name: newBrand.name, displayName: newBrand.displayName || newBrand.name });
+      setBrandList((prev) => [...prev, data].sort((a, c) => a.displayName.localeCompare(c.displayName)));
+      setF((prev) => ({ ...prev, brand: data.slug, brandName: data.displayName }));
+      setNewBrand(null);
+      toast({ title: "Brand created", description: `${data.displayName} · /brand/${data.slug}` });
+    } catch (e) {
+      toast({ title: "Could not create brand", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
+    }
+  };
   const isEdit = Boolean(initial?.id);
 
   const submit = async (e) => {
@@ -113,8 +133,21 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Brand name</label>
-            <input data-testid="pf-brand" className={inputCls} placeholder="e.g. GEEK BAR" value={f.brandName} onChange={(e) => set("brandName", e.target.value.toUpperCase())} />
+            <label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Brand</label>
+            <div className="flex gap-2">
+              <select data-testid="pf-brand" className={inputCls} value={f.brand || ""} onChange={(e) => pickBrand(e.target.value)}>
+                <option value="">— Select brand —</option>
+                {brandList.map((b) => <option key={b.slug} value={b.slug}>{b.displayName}{b.active ? "" : " (inactive)"}</option>)}
+              </select>
+              <button type="button" data-testid="pf-add-brand" onClick={() => setNewBrand(newBrand ? null : { name: "", displayName: "" })} className="shrink-0 inline-flex items-center gap-1 px-3 py-2 border border-neutral-300 rounded-lg text-xs font-bold hover:bg-neutral-50 whitespace-nowrap"><Plus className="h-3.5 w-3.5" /> Add New Brand</button>
+            </div>
+            {newBrand && (
+              <div data-testid="pf-new-brand" className="mt-2 border border-emerald-200 bg-emerald-50/60 rounded-lg p-3 grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-end">
+                <div><label className="block text-[11px] font-bold uppercase text-neutral-500 mb-1">Brand name *</label><input data-testid="pf-new-brand-name" className={inputCls} placeholder="e.g. Exotic" value={newBrand.name} onChange={(e) => setNewBrand({ ...newBrand, name: e.target.value })} /></div>
+                <div><label className="block text-[11px] font-bold uppercase text-neutral-500 mb-1">Display name</label><input data-testid="pf-new-brand-display" className={inputCls} placeholder="Defaults to name" value={newBrand.displayName} onChange={(e) => setNewBrand({ ...newBrand, displayName: e.target.value })} /></div>
+                <button type="button" data-testid="pf-new-brand-save" onClick={createBrand} className="px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700">Create</button>
+              </div>
+            )}
           </div>
         </div>
 

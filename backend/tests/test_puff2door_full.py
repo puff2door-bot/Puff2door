@@ -196,7 +196,7 @@ class TestWishlistAlerts:
 def make_order_payload(prod, qty):
     return {
         "items": [{"productId": prod["id"], "name": prod["name"], "price": prod["price"], "slug": prod["slug"], "qty": qty}],
-        "shipping": {"firstName": "T", "lastName": "T", "email": "t@t.com", "phone": "1", "address": "a", "city": "c", "state": "NY", "zip": "10001"},
+        "shipping": {"firstName": "T", "lastName": "T", "email": "t@t.com", "phone": "1", "address": "a", "city": "c", "state": "FL", "zip": "32801"},
         "subtotal": prod["price"] * qty, "shippingCost": 0, "discount": 0, "total": prod["price"] * qty,
         "paymentLast4": "4242",
     }

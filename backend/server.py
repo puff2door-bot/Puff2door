@@ -1103,16 +1103,85 @@ async def list_products():
     return {"products": [product_out(p) for p in prods]}
 
 
-# ---- Brand logos (admin-managed, keyed by brand slug) ----
+# ---- Brands: centralized source of truth (id, name, displayName, slug, logo, active) ----
+class BrandInput(BaseModel):
+    name: str = ""
+    displayName: str = ""
+    logo: str = ""
+    active: bool = True
+
+
 class BrandLogoInput(BaseModel):
     image: str = ""
     name: str = ""
 
 
+_brand_cache: dict = {"map": None}
+
+
+def brand_out(b: dict, count: int = 0) -> dict:
+    return {"id": b.get("id", b["slug"]), "slug": b["slug"], "name": b.get("name") or b["slug"].upper(), "displayName": b.get("displayName") or b.get("name") or b["slug"].upper(), "logo": b.get("logo") or b.get("image") or "", "active": b.get("active", True), "productCount": count}
+
+
+async def get_brand_map() -> dict:
+    if _brand_cache["map"] is None:
+        rows = await db.brands.find({}, {"_id": 0}).to_list(2000)
+        _brand_cache["map"] = {r["slug"]: r for r in rows}
+    return _brand_cache["map"]
+
+
+def invalidate_brands():
+    _brand_cache["map"] = None
+
+
+async def brand_counts() -> dict:
+    counts: dict = {}
+    async for p in db.products.find({"active": True}, {"brand": 1, "brandName": 1, "name": 1}):
+        sl = brand_slug(p)
+        counts[sl] = counts.get(sl, 0) + 1
+    return counts
+
+
+async def seed_brands():
+    """Idempotent: import every brand referenced by products into the brands collection, preserving slug/name/logo."""
+    existing = {b["slug"]: b for b in await db.brands.find({}).to_list(2000)}
+    names: dict = {}
+    async for p in db.products.find({}, {"brand": 1, "brandName": 1, "name": 1}):
+        sl = brand_slug(p)
+        if sl and sl not in names:
+            names[sl] = (p.get("brandName") or sl.replace("-", " ")).upper()
+    async for p in db.products.find({"$or": [{"brand": ""}, {"brand": {"$exists": False}}]}, {"brand": 1, "brandName": 1, "name": 1}):
+        await db.products.update_one({"_id": p["_id"]}, {"$set": {"brand": brand_slug(p)}})
+    created = 0
+    for sl, nm in names.items():
+        b = existing.get(sl)
+        if not b:
+            await db.brands.insert_one({"id": str(uuid.uuid4()), "slug": sl, "name": nm, "displayName": nm, "logo": "", "active": True, "createdAt": now_utc(), "updatedAt": now_utc()})
+            created += 1
+        else:
+            fix = {}
+            if not b.get("id"):
+                fix["id"] = str(uuid.uuid4())
+            if not b.get("name"):
+                fix["name"] = nm
+            if not b.get("displayName"):
+                fix["displayName"] = b.get("name") or nm
+            if "logo" not in b and b.get("image"):
+                fix["logo"] = b["image"]
+            if "active" not in b:
+                fix["active"] = True
+            if fix:
+                await db.brands.update_one({"slug": sl}, {"$set": fix})
+    await db.brands.create_index("slug", unique=True)
+    invalidate_brands()
+    if created:
+        logger.info("Brands: imported %s brand(s) from products", created)
+
+
 @api_router.get("/brands")
-async def list_brand_logos():
-    rows = await db.brands.find({}, {"_id": 0, "slug": 1, "name": 1, "image": 1}).to_list(1000)
-    return {"brands": rows}
+async def list_brands():
+    rows, counts = await get_brand_map(), await brand_counts()
+    return {"brands": [brand_out(b, counts.get(b["slug"], 0)) for b in rows.values() if b.get("active", True)]}
 
 
 @api_router.get("/products/{slug}")
@@ -1128,7 +1197,11 @@ async def serve_file(path: str):
     record = await db.files.find_one({"storage_path": path, "is_deleted": False})
     if not record:
         raise HTTPException(status_code=404, detail="File not found")
-    data, content_type = await get_object(path)
+    try:
+        data, content_type = await get_object(path)
+    except Exception as e:
+        logger.warning("Object store unavailable for %s: %s", path, e)
+        raise HTTPException(status_code=502, detail="Image storage is temporarily unavailable")
     return Response(content=data, media_type=record.get("content_type", content_type), headers={"Cache-Control": "public, max-age=86400"})
 
 
@@ -1246,37 +1319,69 @@ async def get_admin_user(user: dict = Depends(get_current_user)):
     return user
 
 
-@api_router.put("/admin/brands/{slug}")
-async def admin_set_brand_logo(slug: str, inp: BrandLogoInput, admin: dict = Depends(get_admin_user)):
-    slug = slugify(slug)
+@api_router.get("/admin/brands")
+async def admin_list_brands(admin: dict = Depends(get_admin_user)):
+    rows, counts = await get_brand_map(), await brand_counts()
+    out = [brand_out(b, counts.get(b["slug"], 0)) for b in rows.values()]
+    out.sort(key=lambda x: x["displayName"].lower())
+    return {"brands": out}
+
+
+@api_router.post("/admin/brands")
+async def admin_create_brand(inp: BrandInput, admin: dict = Depends(get_admin_user)):
+    name = inp.name.strip() or inp.displayName.strip()
+    slug = slugify(name)
     if not slug:
-        raise HTTPException(status_code=400, detail="Invalid brand")
-    doc = {"slug": slug, "name": inp.name.strip(), "image": inp.image.strip(), "updatedAt": now_utc(), "updatedBy": admin["id"]}
-    await db.brands.update_one({"slug": slug}, {"$set": doc}, upsert=True)
-    return {"slug": slug, "name": doc["name"], "image": doc["image"]}
+        raise HTTPException(status_code=400, detail="Brand name is required")
+    if slug in await get_brand_map():
+        raise HTTPException(status_code=409, detail=f"A brand with URL /brand/{slug} already exists")
+    doc = {"id": str(uuid.uuid4()), "slug": slug, "name": name, "displayName": inp.displayName.strip() or name, "logo": inp.logo.strip(), "active": inp.active, "createdAt": now_utc(), "updatedAt": now_utc(), "updatedBy": admin["id"]}
+    await db.brands.insert_one(doc)
+    invalidate_brands()
+    return brand_out(doc)
+
+
+@api_router.put("/admin/brands/{slug}")
+async def admin_update_brand(slug: str, inp: BrandInput, admin: dict = Depends(get_admin_user)):
+    """Edits name/displayName/logo/active. The URL slug is intentionally never changed (SEO-safe)."""
+    b = (await get_brand_map()).get(slugify(slug))
+    if not b:
+        raise HTTPException(status_code=404, detail="Brand not found")
+    name = inp.name.strip() or b.get("name") or slug.upper()
+    upd = {"name": name, "displayName": inp.displayName.strip() or name, "logo": inp.logo.strip(), "active": inp.active, "updatedAt": now_utc(), "updatedBy": admin["id"]}
+    await db.brands.update_one({"slug": b["slug"]}, {"$set": upd, "$unset": {"image": ""}})
+    await db.products.update_many({"brand": b["slug"]}, {"$set": {"brandName": upd["displayName"]}})
+    invalidate_brands()
+    counts = await brand_counts()
+    return brand_out({**b, **upd}, counts.get(b["slug"], 0))
 
 
 @api_router.post("/admin/brands/{slug}/import")
 async def admin_import_brand_logo(slug: str, inp: BrandLogoInput, admin: dict = Depends(get_admin_user)):
-    """Copy an external logo URL into Puff2door storage and save it for the brand."""
-    slug = slugify(slug)
-    if not slug or not inp.image.startswith("http"):
-        raise HTTPException(status_code=400, detail="Provide a brand slug and an http(s) image URL")
+    """Copy an external logo URL into Puff2door storage; returns the stored URL (does not save unless brand exists)."""
+    if not inp.image.startswith("http"):
+        raise HTTPException(status_code=400, detail="Provide an http(s) image URL")
     try:
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
             url = await _fetch_and_store(client, inp.image, admin["id"])
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not import image: {str(e)[:120]}")
-    doc = {"slug": slug, "name": inp.name.strip(), "image": url, "imageOriginal": inp.image, "updatedAt": now_utc(), "updatedBy": admin["id"]}
-    await db.brands.update_one({"slug": slug}, {"$set": doc}, upsert=True)
-    return {"slug": slug, "name": doc["name"], "image": url}
+    b = (await get_brand_map()).get(slugify(slug))
+    if b:
+        await db.brands.update_one({"slug": b["slug"]}, {"$set": {"logo": url, "updatedAt": now_utc()}, "$unset": {"image": ""}})
+        invalidate_brands()
+    return {"slug": slugify(slug), "logo": url}
 
 
 @api_router.delete("/admin/brands/{slug}")
-async def admin_delete_brand_logo(slug: str, admin: dict = Depends(get_admin_user)):
-    await db.brands.delete_one({"slug": slugify(slug)})
+async def admin_delete_brand(slug: str, admin: dict = Depends(get_admin_user)):
+    sl = slugify(slug)
+    counts = await brand_counts()
+    if counts.get(sl):
+        raise HTTPException(status_code=400, detail=f"This brand is used by {counts[sl]} product(s). Reassign them first or deactivate the brand instead.")
+    await db.brands.delete_one({"slug": sl})
+    invalidate_brands()
     return {"ok": True}
-
 
 
 # ---- Home content (hero slider / promo tiles) ----
@@ -1316,6 +1421,23 @@ async def admin_list_products(admin: dict = Depends(get_admin_user)):
     return {"products": [product_out(p) for p in prods]}
 
 
+async def resolve_brand_name(inp: ProductInput) -> str:
+    """Brand slug from Brand Management wins; falls back to typed brandName (auto-registering it as a brand)."""
+    bm = await get_brand_map()
+    if inp.brand and slugify(inp.brand) in bm:
+        b = bm[slugify(inp.brand)]
+        inp.brand = b["slug"]
+        return b.get("displayName") or b.get("name") or inp.brand.upper()
+    name = (inp.brandName or inp.name.split(" ")[0]).strip()
+    sl = slugify(name)
+    inp.brand = sl
+    if sl and sl not in bm:
+        await db.brands.insert_one({"id": str(uuid.uuid4()), "slug": sl, "name": name.upper(), "displayName": name.upper(), "logo": "", "active": True, "createdAt": now_utc(), "updatedAt": now_utc()})
+        invalidate_brands()
+        return name.upper()
+    return bm[sl].get("displayName") or name.upper() if sl else name
+
+
 @api_router.post("/admin/products")
 async def admin_create_product(inp: ProductInput, admin: dict = Depends(get_admin_user)):
     pid = await next_product_id()
@@ -1324,7 +1446,7 @@ async def admin_create_product(inp: ProductInput, admin: dict = Depends(get_admi
         "id": pid,
         "slug": f"{slugify(inp.name)}-{pid}",
         "image2": inp.image2 or inp.image,
-        "brandName": inp.brandName or inp.name.split(" ")[0],
+        "brandName": await resolve_brand_name(inp),
         "rating": 4.5,
         "createdAt": now_utc(),
         "updatedAt": now_utc(),
@@ -1341,7 +1463,7 @@ async def admin_update_product(product_id: int, inp: ProductInput, admin: dict =
         raise HTTPException(status_code=404, detail="Product not found")
     doc = inp.dict()
     doc["image2"] = inp.image2 or inp.image
-    doc["brandName"] = inp.brandName or inp.name.split(" ")[0]
+    doc["brandName"] = await resolve_brand_name(inp)
     doc["updatedAt"] = now_utc()
     await db.products.update_one({"id": product_id}, {"$set": doc})
     restocked = int(existing.get("stock", 0)) == 0 and inp.stock > 0
@@ -1425,6 +1547,8 @@ async def _fetch_and_store(client: httpx.AsyncClient, url: str, admin_id: str) -
     r.raise_for_status()
     if not r.headers.get("content-type", "").startswith("image/"):
         raise ValueError(f"not an image ({r.headers.get('content-type')})")
+    if len(r.content) > 8 * 1024 * 1024:
+        raise ValueError("image larger than 8MB")
     try:
         data, ext = _to_webp(r.content), "webp"
     except Exception:
@@ -1697,6 +1821,7 @@ async def seed_data():
         logger.info("Storage initialized")
     except Exception as e:
         logger.error("Storage init failed: %s", e)
+    await seed_brands()
     await refresh_static_sitemap()
 
 
