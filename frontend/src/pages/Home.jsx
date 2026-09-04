@@ -4,7 +4,7 @@ import { ArrowRight, Truck, ShieldCheck, Clock, BadgePercent, MapPin } from "luc
 import HeroSlider from "../components/HeroSlider";
 import DealOfTheDay from "../components/DealOfTheDay";
 import ProductCard from "../components/ProductCard";
-import { DeliveryBanner, DeliveryChecker } from "../components/DeliveryZone";
+import { DeliveryBanner } from "../components/DeliveryZone";
 import BrandLogo from "../components/BrandLogo";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import { useCatalog } from "../context/CatalogContext";
@@ -55,7 +55,6 @@ const Home = () => {
     <div>
       <Seo title={DEFAULT_TITLE} description={DEFAULT_DESCRIPTION} path="/" jsonLd={faqJsonLd(HOME_FAQS)} />
       <DeliveryBanner />
-      <DeliveryChecker />
       <HeroSlider />
 
       {/* Intro / H1 */}
