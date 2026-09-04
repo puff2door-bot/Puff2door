@@ -1,0 +1,42 @@
+{
+  "summary": "Full backend + frontend validation of the brand-slug backfill fix (SHOP/BRANDS dropdowns). Backend: new suite /app/backend/tests/test_catalog_brands.py (16 tests) + updated test_sitemap_urlonly.py (11 tests) -> 27/27 passing. GET /api/products returns exactly 67 products, every product now has a non-empty kebab-case `brand` slug, 35 distinct brand slugs, 7 distinct categorySlug, no _id leak; brandName set matches the 35 expected brands exactly. Sitemap (/sitemap.xml static and /api/sitemap.xml) = 200 application/xml, valid urlset, 114 unique <url> each with loc+lastmod, all https://puff2door.com/, split 5 static + 7 /product-category + 35 /brand + 67 /shop, brand slugs identical to product brand slugs, no image tags, no external hosts, no query strings, no cart/checkout/admin/account/wishlist/track/order URLs; both copies identical; robots.txt 200 with 'Sitemap: https://puff2door.com/sitemap.xml'. Frontend desktop 1920: Shop dropdown shows exactly the 7 expected categories (nav-cat-*), Brands dropdown shows exactly 35 brands alphabetically (nav-brand-*) matching the expected list. All 7 category pages: correct h1 + banner 'N products available' == backend count == rendered card count. 8 brand pages (muha, twenty-one, glass-tobacco-pipe, geek-bar, raz, silly-dots, wild-hemp, apex): correct h1, counts match backend, cards rendered, title '<Brand> Products Online | Puff2door'. /brands grid = 35 tiles, logo-less tiles show name + 'N products', tile click navigates. Home 'Shop By Brand' = 16 tiles with text fallback, navigates to brand page. Mobile 390x844: hamburger -> 7 mobile-cat-*, mobile-brands <details> summary -> 35 mobile-brand-*, brand and category clicks navigate and close the menu. Regression: PDP /shop/muha-cartridge-1g-hybrid-apple-gelato-ice-31 loads with breadcrumb + Organization/WebSite/Product/BreadcrumbList JSON-LD, add-to-cart increments header cart count to 1, home title 'Online Smoke Shop & Vape Delivery | Puff2door', footer shows 7 category links.",
+  "product_counts": {
+    "per_category": {"disposable (DISPOSABLE VAPES)": 13, "delta (DELTA DISPOSABLES)": 11, "delta-cartridges (DELTA CARTRIDGES)": 12, "delta-edibles (DELTA EDIBLES)": 12, "delta-smokeables (DELTA SMOKEABLES)": 11, "glass-pipes (GLASS PIPES)": 6, "kratom (KRATOM)": 2},
+    "per_brand": {"apex (APEX)": 1, "bangbang (BANGBANG)": 2, "black-sheep (BLACK SHEEP)": 2, "boutiq (BOUTIQ)": 1, "cake (CAKE)": 2, "ckarats (CKARATS)": 1, "dankleaf (DANKLEAF)": 1, "fiery-cubes (FIERY CUBES)": 2, "flying-horse (FLYING HORSE)": 2, "flying-monkey (FLYING MONKEY)": 1, "foger (FOGER)": 3, "geek-bar (GEEK BAR)": 1, "glass-tobacco-pipe (GLASS TOBACCO PIPE)": 6, "hc8 (HC8)": 1, "magic-trip (MAGIC TRIP)": 1, "meadow (MEADOW)": 3, "mellow-fellow (MELLOW FELLOW)": 1, "mints (MINTS)": 1, "modus (MODUS)": 1, "muha (MUHA)": 7, "nexa (NEXA)": 1, "nugg-life (NUGG LIFE)": 1, "prsnls (PRSNLS)": 1, "pure-gram (PURE GRAM)": 1, "pure-zen (PURE ZEN)": 1, "raz (RAZ)": 6, "red-devil (RED DEVIL)": 1, "red-dragon (RED DRAGON)": 2, "red-triangle (RED TRIANGLE)": 3, "silly-dots (SILLY DOTS)": 1, "smogger (SMOGGER)": 2, "twenty-one (TWENTY ONE)": 2, "university (UNIVERSITY)": 2, "venom (VENOM)": 2, "wild-hemp (WILD HEMP)": 1}
+  },
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/products", "issue": "Pre-existing DB drift vs /app/backend/seed_products.json (NOT caused by this fix, brand/identity fields all match): id 1 stock 25->98, id 2 stock 25->7, id 14 price 27->26.5 & stock 25->100, id 15 stock 25->100, id 16 stock 0->100 AND description overwritten to the literal string 'x' (leftover from an earlier admin CRUD test). Recommend restoring product 16's description."},
+      {"endpoint": "GET /api/sitemap.xml", "issue": "Still returns X-Robots-Tag: noindex (carried over from iteration 7; harmless for the non-canonical API copy)."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_catalog_brands.py",
+    "/app/backend/tests/test_sitemap_urlonly.py",
+    "/app/test_reports/pytest/iteration8.xml"
+  ],
+  "action_items": [
+    "Restore product id 16 description (currently 'x') and review stock/price drift on ids 1, 2, 14, 15, 16 if the seed values are the intended ones.",
+    "Optional: drop X-Robots-Tag: noindex on GET /api/sitemap.xml.",
+    "Redeploy so production serves the 114-URL sitemap (preview verified)."
+  ],
+  "critical_code_review_comments": [
+    "brand_slug() falls back to slugify(name.split(' ')[0]) when both brand and brandName are empty — this can silently mint junk brand pages/sitemap URLs from a product's first word. Consider omitting the brand instead of guessing, or enforce brandName at write time in ProductInput.",
+    "CatalogContext derives brands/categories client-side from the full /api/products payload; fine at 67 products but will not scale if the catalog grows or /api/products becomes paginated — a /api/facets (categories+brands with counts) endpoint would be safer.",
+    "The stored `brand` field remains empty for 59/67 products; the slug exists only in the API projection, so any consumer reading Mongo directly (admin filters, future queries) still sees blanks. A one-time backfill migration would remove the divergence."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_catalog_brands.py",
+    "/app/backend/tests/test_sitemap_urlonly.py",
+    "/app/frontend/src/pages/Home.jsx"
+  ],
+  "success_rate": {"backend": "100% (27/27)", "frontend": "100% (all requested desktop, mobile and regression flows passed)"},
+  "seed_data_creation": "None. Read-only testing; one add-to-cart on the PDP (client-side cart only).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "Not needed (all public pages). admin@puff2door.com / Puff2Door-Admin1 available in /app/memory/test_credentials.md.",
+  "context_for_next_testing_agent": "test_sitemap_urlonly.py expectations updated to 114 URLs / 35 brands. New suite test_catalog_brands.py asserts 67 products, 35 brand slugs, 7 categories, seed identity fields (name/slug/category/image/brandName) — it intentionally does NOT assert price/stock/description because of pre-existing DB drift on ids 1,2,14,15,16. Only frontend change I made: added data-testid=home-brand-tile-<slug> to the Home 'Shop By Brand' tiles. Desktop dropdowns are hover-triggered on 'Shop'/'Brands' (nav >> text=Shop); the brands dropdown stays open while the cursor is over the header and will intercept clicks on page content — move the mouse away before clicking below the header.",
+  "rca_of_the_issue": "Fix verified: product_out() now emits brand = brand slug or slugify(brandName), so all 67 products expose a brand slug and CatalogContext's product-derived activeCategories/activeBrands repopulate the Shop (7) and Brands (35) dropdowns, brand/category pages, /brands grid, home tiles, footer and the 114-URL sitemap. No regressions found."
+}

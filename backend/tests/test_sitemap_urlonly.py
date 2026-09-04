@@ -83,9 +83,9 @@ class TestPreviewStaticSitemap:
         brands = [p for p in paths if p.startswith("/brand/")]
         prods = [p for p in paths if p.startswith("/shop/")]
         assert len(cats) == 7, f"categories={len(cats)}"
-        assert len(brands) == 8, f"brands={len(brands)}"
+        assert len(brands) == 35, f"brands={len(brands)}"
         assert len(prods) == 67, f"products={len(prods)}"
-        assert len(locs) == 87, f"total={len(locs)}"
+        assert len(locs) == 114, f"total={len(locs)}"
 
 
 # --- PREVIEW: dynamic /api/sitemap.xml + robots.txt ---
@@ -184,7 +184,7 @@ class TestRegression:
         static = Path("/app/frontend/public/sitemap.xml").read_bytes()
         assert static.decode().startswith('<?xml version="1.0" encoding="UTF-8"?>')
         locs = parse_locs(static)
-        assert len(locs) == 87, len(locs)
+        assert len(locs) == 114, len(locs)
         assert b"<image:" not in static
 
         # product data unchanged

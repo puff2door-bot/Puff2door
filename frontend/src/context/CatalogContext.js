@@ -35,10 +35,23 @@ export const CatalogProvider = ({ children }) => {
       return isOnDeal(p) ? deal.dealPrice : p.price;
     };
     const byId = (id) => products.find((p) => p.id === Number(id));
-    const catSlugs = new Set(products.map((p) => p.categorySlug));
-    const brandSlugs = new Set(products.map((p) => p.brand).filter(Boolean));
-    const activeCategories = products.length ? categories.filter((c) => catSlugs.has(c.slug)) : categories;
-    const activeBrands = products.length ? brands.filter((b) => brandSlugs.has(b.slug)) : brands;
+    const catCounts = {};
+    const brandCounts = {};
+    const brandNames = {};
+    const catNames = {};
+    products.forEach((p) => {
+      if (p.categorySlug) { catCounts[p.categorySlug] = (catCounts[p.categorySlug] || 0) + 1; catNames[p.categorySlug] = p.category; }
+      if (p.brand) { brandCounts[p.brand] = (brandCounts[p.brand] || 0) + 1; brandNames[p.brand] = p.brandName; }
+    });
+    const knownCats = categories.filter((c) => catCounts[c.slug]).map((c) => ({ ...c, count: catCounts[c.slug] }));
+    const extraCats = Object.keys(catCounts).filter((s) => !categories.some((c) => c.slug === s)).sort().map((s) => ({ slug: s, name: (catNames[s] || s).toUpperCase(), count: catCounts[s] }));
+    const activeCategories = products.length ? [...knownCats, ...extraCats] : categories;
+    const activeBrands = products.length
+      ? Object.keys(brandCounts).map((slug) => {
+          const known = brands.find((b) => b.slug === slug);
+          return { slug, name: known?.name || (brandNames[slug] || slug).toUpperCase(), image: known?.image || "", count: brandCounts[slug] };
+        }).sort((a, b) => a.name.localeCompare(b.name))
+      : brands;
     const promoTiles = home.promoBlocks.map((b) => {
       const pr = b.productId ? byId(b.productId) : null;
       return {
@@ -55,6 +68,8 @@ export const CatalogProvider = ({ children }) => {
       home,
       activeCategories,
       activeBrands,
+      getCategory: (slug) => activeCategories.find((c) => c.slug === slug) || categories.find((c) => c.slug === slug) || null,
+      getBrand: (slug) => activeBrands.find((b) => b.slug === slug) || brands.find((b) => b.slug === slug) || null,
       heroSlides: home.heroSlides,
       promoTiles,
       setHome,

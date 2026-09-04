@@ -3,7 +3,6 @@ import { useParams, useSearchParams, useLocation, Link } from "react-router-dom"
 import { SlidersHorizontal, ChevronRight, Filter } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import ShopFilters, { buildFilterOptions, applyFilters } from "../components/ShopFilters";
-import { categories, brands } from "../mock";
 import { useCatalog } from "../context/CatalogContext";
 import Seo from "../seo/Seo";
 import { brandSeo, breadcrumbJsonLd, categorySeo, titleCase } from "../seo/config";
@@ -19,7 +18,7 @@ const EMPTY_FILTERS = { brands: [], flavors: [], puffs: [] };
 
 const ShopPage = () => {
   const { slug } = useParams();
-  const { products, getProductsByCategory, loading, activeCategories } = useCatalog();
+  const { products, getProductsByCategory, loading, activeCategories, getCategory, getBrand } = useCatalog();
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const isBrand = location.pathname.startsWith("/brand/");
@@ -32,8 +31,8 @@ const ShopPage = () => {
 
   useEffect(() => { setFilters(EMPTY_FILTERS); setPage(1); }, [slug, searchQuery, isBrand]);
 
-  const currentCat = categories.find((c) => c.slug === slug);
-  const currentBrand = brands.find((b) => b.slug === slug);
+  const currentCat = !isBrand ? getCategory(slug) : null;
+  const currentBrand = isBrand ? getBrand(slug) : null;
 
   const scopeList = useMemo(() => {
     let list;

@@ -172,9 +172,13 @@ const Home = () => {
       <section className="max-w-[1280px] mx-auto px-4 pt-14">
         <SectionHeader title="Shop By Brand" link="/brands" linkLabel="All Brands" />
         <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-4">
-          {activeBrands.slice(0, 16).map((b) => (
-            <Link key={b.slug} to={`/brand/${b.slug}`} title={`Shop ${b.name} products`} className="group aspect-square bg-white border border-neutral-200 rounded-lg grid place-items-center p-3 hover:shadow-lg hover:border-emerald-200 transition-all">
-              <img src={b.image} alt={`${b.name} logo`} loading="lazy" className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform" />
+          {[...activeBrands].sort((a, b) => b.count - a.count).slice(0, 16).map((b) => (
+            <Link key={b.slug} to={`/brand/${b.slug}`} title={`Shop ${b.name} products`} data-testid={`home-brand-tile-${b.slug}`} className="group aspect-square bg-white border border-neutral-200 rounded-lg grid place-items-center p-3 hover:shadow-lg hover:border-emerald-200 transition-all text-center">
+              {b.image ? (
+                <img src={b.image} alt={`${b.name} logo`} loading="lazy" className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform" />
+              ) : (
+                <span className="font-heading text-sm sm:text-base uppercase text-neutral-900 leading-tight group-hover:text-emerald-700 transition-colors">{b.name}</span>
+              )}
             </Link>
           ))}
         </div>

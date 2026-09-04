@@ -520,6 +520,10 @@ def slugify(name: str) -> str:
     return re.sub(r"(^-|-$)", "", re.sub(r"[^a-z0-9]+", "-", name.lower()))[:60]
 
 
+def brand_slug(p: dict) -> str:
+    return p.get("brand") or slugify(p.get("brandName") or (p.get("name") or "").split(" ")[0])
+
+
 def product_out(p: dict) -> dict:
     stock = int(p.get("stock", 0))
     return {
@@ -532,7 +536,7 @@ def product_out(p: dict) -> dict:
         "salePrice": p.get("salePrice"),
         "image": p.get("image", ""),
         "image2": p.get("image2") or p.get("image", ""),
-        "brand": p.get("brand", ""),
+        "brand": brand_slug(p),
         "brandName": p.get("brandName", ""),
         "flavors": p.get("flavors", []),
         "puffs": p.get("puffs"),
@@ -1135,7 +1139,7 @@ def _xml_escape(s: str) -> str:
 
 async def build_sitemap() -> str:
     """URL-only sitemap (loc + lastmod), canonical https://puff2door.com URLs only, no image/external data."""
-    prods = await db.products.find({"active": True}, {"slug": 1, "categorySlug": 1, "brand": 1, "updatedAt": 1}).sort("id", 1).to_list(5000)
+    prods = await db.products.find({"active": True}, {"slug": 1, "categorySlug": 1, "brand": 1, "brandName": 1, "name": 1, "updatedAt": 1}).sort("id", 1).to_list(5000)
     today = now_utc().date().isoformat()
     entries = []
     seen = set()
@@ -1151,7 +1155,7 @@ async def build_sitemap() -> str:
         add(path)
     for cat in sorted({p.get("categorySlug") for p in prods if p.get("categorySlug")}):
         add(f"/product-category/{cat}")
-    for brand in sorted({p.get("brand") for p in prods if p.get("brand")}):
+    for brand in sorted({brand_slug(p) for p in prods if brand_slug(p)}):
         add(f"/brand/{brand}")
     for p in prods:
         upd = p.get("updatedAt")

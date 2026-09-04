@@ -150,11 +150,12 @@ const Header = () => {
                   Shop <ChevronDown className="h-4 w-4" />
                 </Link>
                 {openMenu === "shop" && (
-                  <div className="absolute left-0 top-full w-[560px] bg-white text-neutral-800 shadow-2xl rounded-b-lg p-5 grid grid-cols-2 gap-1 animate-fade-up">
+                  <div data-testid="shop-dropdown" className="absolute left-0 top-full w-[560px] bg-white text-neutral-800 shadow-2xl rounded-b-lg p-5 grid grid-cols-2 gap-1 animate-fade-up">
                     {categories.map((c) => (
                       <Link
                         key={c.slug}
                         to={`/product-category/${c.slug}`}
+                        data-testid={`nav-cat-${c.slug}`}
                         className="px-3 py-2 rounded text-[13px] font-medium hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
                       >
                         {c.name}
@@ -173,11 +174,12 @@ const Header = () => {
                   Brands <ChevronDown className="h-4 w-4" />
                 </Link>
                 {openMenu === "brands" && (
-                  <div className="absolute left-0 top-full w-[620px] bg-white text-neutral-800 shadow-2xl rounded-b-lg p-5 grid grid-cols-3 gap-1 animate-fade-up">
-                    {brands.slice(0, 18).map((b) => (
+                  <div data-testid="brands-dropdown" className="absolute left-0 top-full w-[720px] max-h-[70vh] overflow-y-auto bg-white text-neutral-800 shadow-2xl rounded-b-lg p-5 grid grid-cols-4 gap-1 animate-fade-up">
+                    {brands.map((b) => (
                       <Link
                         key={b.slug}
                         to={`/brand/${b.slug}`}
+                        data-testid={`nav-brand-${b.slug}`}
                         className="px-3 py-2 rounded text-[13px] font-medium hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
                       >
                         {b.name}
@@ -228,18 +230,28 @@ const Header = () => {
               <span className="font-heading font-700 text-xl">Puff<span className="text-emerald-600">2</span>Door</span>
               <button onClick={() => setMobileOpen(false)}><X className="h-6 w-6" /></button>
             </div>
-            <div className="p-4">
+            <div className="p-4" data-testid="mobile-menu">
               <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Categories</p>
-              <div className="flex flex-col">
+              <div className="flex flex-col" data-testid="mobile-categories">
                 {categories.map((c) => (
-                  <Link key={c.slug} to={`/product-category/${c.slug}`} onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100 hover:text-emerald-600">
+                  <Link key={c.slug} to={`/product-category/${c.slug}`} onClick={() => setMobileOpen(false)} data-testid={`mobile-cat-${c.slug}`} className="py-2.5 text-sm font-medium border-b border-neutral-100 hover:text-emerald-600">
                     {c.name}
                   </Link>
                 ))}
               </div>
+              <details className="mt-5" data-testid="mobile-brands">
+                <summary className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2 cursor-pointer list-none flex items-center justify-between">Brands ({brands.length}) <ChevronDown className="h-4 w-4" /></summary>
+                <div className="flex flex-col">
+                  {brands.map((b) => (
+                    <Link key={b.slug} to={`/brand/${b.slug}`} onClick={() => setMobileOpen(false)} data-testid={`mobile-brand-${b.slug}`} className="py-2.5 text-sm font-medium border-b border-neutral-100 hover:text-emerald-600">
+                      {b.name}
+                    </Link>
+                  ))}
+                </div>
+              </details>
               <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mt-5 mb-2">More</p>
               <div className="flex flex-col">
-                <Link to="/brands" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Brands</Link>
+                <Link to="/brands" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">All Brands</Link>
                 <Link to="/about" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">About</Link>
                 <Link to="/contact" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Contact</Link>
                 <Link to="/track" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Track Order</Link>
