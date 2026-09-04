@@ -191,7 +191,8 @@ const Home = () => {
               <h3 className="font-heading text-lg uppercase mb-2">Vape Delivery in Orlando, FL</h3>
               <p className="text-sm text-neutral-600 leading-relaxed">
                 Puff2door is an online store with local smoke shop delivery — we bring your order to addresses within {delivery.radiusMiles} miles of ZIP {delivery.zip}{" "}
-                in the Orlando area. Check your ZIP code at the top of this page to confirm we deliver to you.
+                in the Orlando area. Check your ZIP code at the top of this page, or see the full list of{" "}
+                <Link to="/delivery-area" className="text-emerald-600 font-semibold hover:underline">Orlando neighborhoods and ZIP codes we deliver to</Link>.
               </p>
             </div>
           </div>

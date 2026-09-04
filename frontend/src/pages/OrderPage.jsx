@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { CheckCircle2, Circle, Truck, Package, MapPin, Home, Clock, PartyPopper } from "lucide-react";
 import api, { imgUrl } from "../api";
+import { ecommerce } from "../seo/Analytics";
 import ZelleInstructions from "../components/checkout/ZelleInstructions";
 
 const PAY_LABEL = { square: "Card", cash_app: "Cash App Pay", paypal: "PayPal", zelle: "Zelle", test_card: "Test card" };
@@ -70,6 +71,7 @@ const OrderPage = () => {
   const load = useCallback(async () => {
     try {
       const { data } = await api.get(`/orders/${id}`);
+      if (Date.now() - new Date(data.createdAt).getTime() < 15 * 60 * 1000) ecommerce.purchase(data);
       setOrder(data);
     } catch {
       setError(true);

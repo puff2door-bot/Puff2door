@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import { MapPin, CheckCircle2, XCircle, Search } from "lucide-react";
 import api from "../api";
 import { useCart } from "../context/CartContext";
@@ -10,6 +11,7 @@ export const DeliveryBanner = () => {
       <p className="max-w-[1280px] mx-auto px-4 py-1.5 flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold tracking-wide text-center">
         <MapPin className="h-3.5 w-3.5 shrink-0" />
         We currently deliver within {delivery.radiusMiles} miles of {delivery.zip} only.
+        <Link to="/delivery-area" data-testid="delivery-banner-link" className="underline underline-offset-2 hover:text-emerald-100 font-medium">See delivery area</Link>
       </p>
     </div>
   );

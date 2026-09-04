@@ -31,6 +31,8 @@ import AdminEmails from "./pages/admin/AdminEmails";
 import AdminPromos from "./pages/admin/AdminPromos";
 import AdminSettings from "./pages/admin/AdminSettings";
 import NotFound from "./pages/NotFound";
+import DeliveryAreaPage from "./pages/DeliveryAreaPage";
+import AdminBrands from "./pages/admin/AdminBrands";
 import Seo, { setJsonLd } from "./seo/Seo";
 import Analytics from "./seo/Analytics";
 import { organizationJsonLd, websiteJsonLd } from "./seo/config";
@@ -74,6 +76,7 @@ const AppRoutes = () => {
       <Route path="/product-category/:slug" element={<ShopPage />} />
       <Route path="/brand/:slug" element={<ShopPage />} />
       <Route path="/brands" element={<BrandsPage />} />
+      <Route path="/delivery-area" element={<DeliveryAreaPage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/cart" element={<Private title="Your Cart"><CartPage /></Private>} />
@@ -88,6 +91,7 @@ const AppRoutes = () => {
         <Route path="orders" element={<AdminOrders />} />
         <Route path="alerts" element={<AdminAlerts />} />
         <Route path="banners" element={<AdminBanners />} />
+        <Route path="brands" element={<AdminBrands />} />
         <Route path="emails" element={<AdminEmails />} />
         <Route path="promos" element={<AdminPromos />} />
         <Route path="settings" element={<AdminSettings />} />

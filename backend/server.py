@@ -1103,6 +1103,18 @@ async def list_products():
     return {"products": [product_out(p) for p in prods]}
 
 
+# ---- Brand logos (admin-managed, keyed by brand slug) ----
+class BrandLogoInput(BaseModel):
+    image: str = ""
+    name: str = ""
+
+
+@api_router.get("/brands")
+async def list_brand_logos():
+    rows = await db.brands.find({}, {"_id": 0, "slug": 1, "name": 1, "image": 1}).to_list(1000)
+    return {"brands": rows}
+
+
 @api_router.get("/products/{slug}")
 async def get_product(slug: str):
     p = await db.products.find_one({"slug": slug, "active": True})
@@ -1129,7 +1141,7 @@ async def public_settings():
 
 # ---- SEO: sitemap ----
 SITE_URL = os.environ.get("SITE_URL", "").strip().rstrip("/") or "https://puff2door.com"
-SITEMAP_STATIC = ["/", "/shop", "/brands", "/about", "/contact"]
+SITEMAP_STATIC = ["/", "/shop", "/brands", "/delivery-area", "/about", "/contact"]
 SITEMAP_FILE = ROOT_DIR.parent / "frontend" / "public" / "sitemap.xml"
 
 
@@ -1184,6 +1196,33 @@ async def delivery_check(zip: str = ""):
     return delivery_zone_check(zip, await get_settings())
 
 
+_area_cache: dict = {}
+
+
+@api_router.get("/delivery/area")
+async def delivery_area():
+    """All ZIP codes (grouped by city) inside the configured delivery radius — computed from the ZIP database."""
+    settings = await get_settings()
+    key = (settings["deliveryZip"], float(settings["deliveryRadiusMiles"]))
+    if key in _area_cache:
+        return _area_cache[key]
+    center = zip_lookup(settings["deliveryZip"])
+    cities: dict = {}
+    if center:
+        for z in zipcodes.filter_by_state(center["state"]):
+            if z.get("zip_code_type") != "STANDARD" or not z.get("lat") or z.get("active") is False:
+                continue
+            d = miles_between(center, {"lat": float(z["lat"]), "lng": float(z["long"])})
+            if d <= key[1]:
+                cities.setdefault(z["city"].title(), []).append({"zip": z["zip_code"], "distanceMiles": round(d, 1)})
+    areas = [{"city": c, "state": center["state"] if center else "", "zips": sorted(v, key=lambda x: x["zip"])} for c, v in cities.items()]
+    areas.sort(key=lambda a: (-len(a["zips"]), a["city"]))
+    result = {"centerZip": key[0], "centerCity": center["city"].title() if center else "", "radiusMiles": key[1], "zipCount": sum(len(a["zips"]) for a in areas), "areas": areas}
+    _area_cache.clear()
+    _area_cache[key] = result
+    return result
+
+
 @api_router.post("/promo/validate")
 async def validate_promo(inp: PromoValidateInput):
     subtotal = 0.0
@@ -1205,6 +1244,23 @@ async def get_admin_user(user: dict = Depends(get_current_user)):
     if not is_admin(user):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+
+@api_router.put("/admin/brands/{slug}")
+async def admin_set_brand_logo(slug: str, inp: BrandLogoInput, admin: dict = Depends(get_admin_user)):
+    slug = slugify(slug)
+    if not slug:
+        raise HTTPException(status_code=400, detail="Invalid brand")
+    doc = {"slug": slug, "name": inp.name.strip(), "image": inp.image.strip(), "updatedAt": now_utc(), "updatedBy": admin["id"]}
+    await db.brands.update_one({"slug": slug}, {"$set": doc}, upsert=True)
+    return {"slug": slug, "name": doc["name"], "image": doc["image"]}
+
+
+@api_router.delete("/admin/brands/{slug}")
+async def admin_delete_brand_logo(slug: str, admin: dict = Depends(get_admin_user)):
+    await db.brands.delete_one({"slug": slugify(slug)})
+    return {"ok": True}
+
 
 
 # ---- Home content (hero slider / promo tiles) ----

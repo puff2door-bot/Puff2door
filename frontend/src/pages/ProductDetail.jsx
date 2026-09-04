@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ChevronRight, Minus, Plus, ShoppingCart, Truck, ShieldCheck, RotateCcw, Star, Check, Heart, Bell, BellRing } from "lucide-react";
 import ProductCard from "../components/ProductCard";
@@ -10,6 +10,7 @@ import { useApp } from "../context/AppContext";
 import { useToast } from "../hooks/use-toast";
 import api, { imgUrl } from "../api";
 import Seo from "../seo/Seo";
+import { ecommerce } from "../seo/Analytics";
 import { absUrl, breadcrumbJsonLd, productJsonLd, productSeoDescription, productSpecs, titleCase } from "../seo/config";
 
 const ProductDetail = () => {
@@ -24,6 +25,7 @@ const ProductDetail = () => {
   const [activeImg, setActiveImg] = useState(0);
   const [added, setAdded] = useState(false);
   const [reviewSummary, setReviewSummary] = useState(null);
+  useEffect(() => { if (product) ecommerce.viewItem(product, getPrice(product)); }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [alertEmail, setAlertEmail] = useState(user?.email || "");
   const [alertBusy, setAlertBusy] = useState(false);
 

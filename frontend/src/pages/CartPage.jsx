@@ -47,7 +47,7 @@ const CartPage = () => {
         <div>
           <div className="border border-neutral-200 rounded-xl overflow-hidden">
             {items.map((it) => (
-              <div key={it.id} className="flex gap-4 p-4 border-b last:border-b-0">
+              <div key={it.id} data-testid={`cart-line-${it.id}`} className="flex gap-4 p-4 border-b last:border-b-0">
                 <Link to={`/shop/${it.slug}`} className="h-24 w-24 shrink-0 bg-neutral-50 rounded-lg overflow-hidden grid place-items-center p-2">
                   <img src={imgUrl(it.image)} alt={it.name} className="max-h-full max-w-full object-contain" />
                 </Link>
@@ -57,7 +57,7 @@ const CartPage = () => {
                   <p className="font-heading text-lg mt-1">${it.price.toFixed(2)}</p>
                 </div>
                 <div className="flex flex-col items-end justify-between">
-                  <button onClick={() => removeItem(it.id)} className="text-neutral-400 hover:text-red-500 transition-colors"><Trash2 className="h-5 w-5" /></button>
+                  <button onClick={() => removeItem(it.id)} data-testid={`cart-remove-${it.id}`} aria-label="Remove item" className="text-neutral-400 hover:text-red-500 transition-colors"><Trash2 className="h-5 w-5" /></button>
                   <div className="flex items-center border border-neutral-300 rounded-full">
                     <button onClick={() => updateQty(it.id, it.qty - 1)} className="h-8 w-8 grid place-items-center hover:text-emerald-600"><Minus className="h-3.5 w-3.5" /></button>
                     <span className="w-8 text-center text-sm font-semibold">{it.qty}</span>

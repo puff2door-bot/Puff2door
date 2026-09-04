@@ -1,10 +1,11 @@
 import React, { useState } from "react";
+import { imgUrl } from "../api";
 
 // Shows the brand logo when an asset exists and loads; otherwise falls back to the brand name
 export const BrandLogo = ({ brand, showCount = false, textClass = "text-lg sm:text-xl" }) => {
   const [failed, setFailed] = useState(false);
   if (brand.image && !failed) {
-    return <img src={brand.image} alt={`${brand.name} logo`} loading="lazy" onError={() => setFailed(true)} className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform" />;
+    return <img src={imgUrl(brand.image)} alt={`${brand.name} logo`} loading="lazy" onError={() => setFailed(true)} className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform" />;
   }
   return (
     <span data-testid={`brand-text-${brand.slug}`}>

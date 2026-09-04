@@ -22,12 +22,14 @@ export const CatalogProvider = ({ children }) => {
   const [products, setProducts] = useState([]);
   const [home, setHome] = useState({ heroSlides: [], promoBlocks: [] });
   const [loading, setLoading] = useState(true);
+  const [brandLogos, setBrandLogos] = useState([]);
 
   const refresh = useCallback(async () => {
     try {
-      const [p, c] = await Promise.all([api.get("/products"), api.get("/content/home")]);
+      const [p, c, b] = await Promise.all([api.get("/products"), api.get("/content/home"), api.get("/brands").catch(() => ({ data: { brands: [] } }))]);
       setProducts(p.data.products || []);
       setHome({ heroSlides: c.data.heroSlides || [], promoBlocks: c.data.promoBlocks || [] });
+      setBrandLogos(b.data.brands || []);
     } finally {
       setLoading(false);
     }
@@ -63,7 +65,8 @@ export const CatalogProvider = ({ children }) => {
     const activeBrands = products.length
       ? Object.keys(brandCounts).map((slug) => {
           const known = findBrandAsset(slug, brandNames[slug]);
-          return { slug, name: (brandNames[slug] || known?.name || slug).toUpperCase(), image: known?.image || "", count: brandCounts[slug] };
+          const custom = brandLogos.find((l) => l.slug === slug);
+          return { slug, name: (brandNames[slug] || known?.name || slug).toUpperCase(), image: custom?.image || known?.image || "", customImage: custom?.image || "", count: brandCounts[slug] };
         }).sort((a, b) => a.name.localeCompare(b.name))
       : brands;
     const promoTiles = home.promoBlocks.map((b) => {
@@ -89,6 +92,8 @@ export const CatalogProvider = ({ children }) => {
       setHome,
       loading,
       refresh,
+      brandLogos,
+      setBrandLogos,
       getProductBySlug: (slug) => products.find((p) => p.slug === slug),
       getProductById: (id) => products.find((p) => p.id === Number(id)),
       getProductsByCategory: (slug) => products.filter((p) => p.categorySlug === slug),
@@ -97,7 +102,7 @@ export const CatalogProvider = ({ children }) => {
       isOnDeal,
       getPrice,
     };
-  }, [products, home, loading, refresh]);
+  }, [products, home, loading, refresh, brandLogos]);
 
   return <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>;
 };

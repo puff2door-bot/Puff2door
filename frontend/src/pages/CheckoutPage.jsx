@@ -6,6 +6,7 @@ import { useApp } from "../context/AppContext";
 import { useToast } from "../hooks/use-toast";
 import { usStates } from "../mock";
 import api, { imgUrl } from "../api";
+import { ecommerce } from "../seo/Analytics";
 import PaymentMethodPicker, { enabledMethods } from "../components/checkout/PaymentMethodPicker";
 import SquarePayment from "../components/checkout/SquarePayment";
 import PayPalCheckout from "../components/checkout/PayPalCheckout";
@@ -35,6 +36,14 @@ const CheckoutPage = () => {
   itemsRef.current = items;
   const zoneRef = useRef(zone);
   zoneRef.current = zone;
+
+  const checkoutTracked = useRef(false);
+  useEffect(() => {
+    if (checkoutTracked.current || !itemsRef.current.length) return;
+    checkoutTracked.current = true;
+    ecommerce.beginCheckout(itemsRef.current.map((i) => ({ ...i, unitPrice: i.price })), totals.total, promo?.code);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const zip = form.zip.replace(/\D/g, "");
@@ -79,6 +88,7 @@ const CheckoutPage = () => {
     setBusy(true);
     try {
       const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: form, paymentMethod: method, promoCode: promo?.code || "", ...extra });
+      ecommerce.purchase(data);
       setPlaced(true);
       clearCart();
       toast({ title: data.paymentStatus === "awaiting_payment" ? "Order placed — awaiting payment" : "Order placed!", description: `Order ${data.orderNumber}${data.paymentStatus === "awaiting_payment" ? ". Send your Zelle payment to complete it." : " confirmed."}` });
@@ -186,7 +196,7 @@ const CheckoutPage = () => {
               <p className="text-sm text-red-500">No payment methods are available right now. Please contact us.</p>
             ) : (
               <>
-                <PaymentMethodPicker methods={methods} value={method} onChange={setMethod} />
+                <PaymentMethodPicker methods={methods} value={method} onChange={(m) => { setMethod(m); ecommerce.addPaymentInfo(m, totals.total); }} />
                 <div className="mt-5" data-testid="payment-panel">
                   {method === "square" && (
                     <SquarePayment key="square" config={payConfig.square} mode="square" total={total} onReady={(fn) => { tokenizeRef.current = fn; }} onError={payError} />

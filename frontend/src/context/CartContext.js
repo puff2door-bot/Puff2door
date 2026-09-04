@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import api, { getToken } from "../api";
+import { ecommerce } from "../seo/Analytics";
 
 const CartContext = createContext(null);
 
@@ -105,13 +106,18 @@ export const CartProvider = ({ children }) => {
   }, []);
 
   const addItem = (product, qty = 1) => {
+    ecommerce.addToCart(product, qty, product.price);
     setItems((prev) => {
       const existing = prev.find((i) => i.id === product.id);
       if (existing) return prev.map((i) => (i.id === product.id ? { ...i, qty: i.qty + qty } : i));
       return [...prev, { ...product, qty }];
     });
   };
-  const removeItem = (id) => setItems((prev) => prev.filter((i) => i.id !== id));
+  const removeItem = (id) => {
+    const it = items.find((i) => i.id === id);
+    if (it) ecommerce.removeFromCart(it, it.qty, it.price);
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  };
   const updateQty = (id, qty) =>
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, qty: Math.max(1, qty) } : i)));
   const clearCart = () => { setItems([]); setPromo(null); };

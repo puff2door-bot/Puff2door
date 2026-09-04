@@ -70,6 +70,7 @@ const Footer = () => {
             <li><Link to="/about" className="hover:text-emerald-400 transition-colors">About Us</Link></li>
             <li><Link to="/contact" className="hover:text-emerald-400 transition-colors">Contact</Link></li>
             <li><Link to="/track" className="hover:text-emerald-400 transition-colors">Track Order</Link></li>
+            <li><Link to="/delivery-area" className="hover:text-emerald-400 transition-colors">Orlando Delivery Area</Link></li>
             <li><Link to="/brands" className="hover:text-emerald-400 transition-colors">Brands</Link></li>
             <li><Link to="/my-account" className="hover:text-emerald-400 transition-colors">My Account</Link></li>
             <li><Link to="/cart" className="hover:text-emerald-400 transition-colors">Cart</Link></li>
