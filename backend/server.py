@@ -138,12 +138,14 @@ class OrderInput(BaseModel):
     paymentToken: str = ""
     paypalOrderId: str = ""
     promoCode: str = ""
+    redeemPoints: int = 0
 
 
 class PayPalCreateInput(BaseModel):
     items: List[CartItem]
     promoCode: str = ""
     zip: str = ""
+    redeemPoints: int = 0
 
 
 class PaymentStatusInput(BaseModel):
@@ -169,7 +171,8 @@ REAL_CARD_PROVIDER = SQUARE_ENABLED or PAYPAL_ENABLED
 # ALLOW_TEST_CARD=true keeps the simulated card usable for QA even when a real provider exists (hidden in UI). Leave unset in production.
 TEST_CARD_ENABLED = (not REAL_CARD_PROVIDER) or os.environ.get("ALLOW_TEST_CARD", "").lower() == "true"
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "zelle"}
-DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32832", "deliveryRadiusMiles": 20.0}
+DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32832", "deliveryRadiusMiles": 20.0,
+                    "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0}
 _settings_cache: dict = {}
 
 
@@ -225,6 +228,28 @@ class StoreSettingsInput(BaseModel):
         if not zip_lookup(v):
             raise ValueError("Delivery ZIP must be a valid US ZIP code")
         return re.sub(r"\D", "", v)[:5]
+
+
+class LoyaltySettingsInput(BaseModel):
+    loyaltyEnabled: bool = True
+    pointsPerDollar: float = Field(default=1.0, ge=0, le=100)
+    pointsPerReward: int = Field(default=100, ge=1)
+    rewardValue: float = Field(default=5.0, ge=0)
+    minRedeemPoints: int = Field(default=100, ge=0)
+    maxRedeemPerOrder: int = Field(default=0, ge=0)
+    minPurchaseForRedeem: float = Field(default=0.0, ge=0)
+
+
+class LoyaltyAdjustInput(BaseModel):
+    points: int
+    reason: str = Field(min_length=3, max_length=300)
+
+    @field_validator("points")
+    @classmethod
+    def _nonzero(cls, v):
+        if v == 0:
+            raise ValueError("Points must not be zero")
+        return v
 
 
 class PromoInput(BaseModel):
@@ -283,10 +308,15 @@ def promo_public(p: dict) -> dict:
     }
 
 
+def r2(x: float) -> float:
+    """Half-up cents rounding (matches the storefront's Math.round), avoiding Python's banker's rounding."""
+    return math.floor(x * 100 + 0.5 + 1e-9) / 100
+
+
 def promo_discount(promo: dict, subtotal: float) -> float:
     if promo["type"] == "percent":
-        return round(subtotal * min(promo["value"], 100) / 100, 2)
-    return round(min(promo["value"], subtotal), 2)
+        return r2(subtotal * min(promo["value"], 100) / 100)
+    return r2(min(promo["value"], subtotal))
 
 
 async def resolve_promo(code: str, subtotal: float) -> dict:
@@ -311,8 +341,125 @@ def compute_totals(subtotal: float, settings: dict, discount: float = 0.0) -> di
     subtotal = round(subtotal, 2)
     discount = round(min(discount, subtotal), 2)
     shipping_cost = 0.0 if subtotal >= settings["freeDeliveryMin"] or subtotal == 0 else settings["deliveryFee"]
-    tax = round((subtotal - discount) * settings["taxRate"], 2)
-    return {"subtotal": subtotal, "discount": discount, "shippingCost": shipping_cost, "tax": tax, "taxRate": settings["taxRate"], "total": round(subtotal - discount + shipping_cost + tax, 2)}
+    tax = r2((subtotal - discount) * settings["taxRate"])
+    return {"subtotal": subtotal, "discount": discount, "shippingCost": shipping_cost, "tax": tax, "taxRate": settings["taxRate"], "total": r2(subtotal - discount + shipping_cost + tax)}
+
+
+# ---- Loyalty rewards: ledger-based (loyalty_transactions), all math server-side ----
+def loyalty_rules(settings: dict) -> dict:
+    return {k: settings.get(k, DEFAULT_SETTINGS[k]) for k in ("loyaltyEnabled", "pointsPerDollar", "pointsPerReward", "rewardValue", "minRedeemPoints", "maxRedeemPerOrder", "minPurchaseForRedeem")}
+
+
+def loyalty_public_rules(settings: dict) -> dict:
+    r = loyalty_rules(settings)
+    return {"enabled": bool(r["loyaltyEnabled"]), "pointsPerDollar": r["pointsPerDollar"], "pointsPerReward": r["pointsPerReward"], "rewardValue": r["rewardValue"], "minRedeemPoints": r["minRedeemPoints"], "maxRedeemPerOrder": r["maxRedeemPerOrder"], "minPurchaseForRedeem": r["minPurchaseForRedeem"]}
+
+
+def points_value(points: int, rules: dict) -> float:
+    return r2(points / rules["pointsPerReward"] * rules["rewardValue"])
+
+
+def loyalty_tx_out(t: dict) -> dict:
+    c = t.get("createdAt")
+    return {"id": t["id"], "type": t["type"], "points": int(t["points"]), "rewardValue": t.get("rewardValue", 0), "description": t.get("description", ""), "reason": t.get("reason", ""),
+            "orderId": t.get("orderId"), "orderNumber": t.get("orderNumber"), "adminId": t.get("adminId"), "adminEmail": t.get("adminEmail"), "createdAt": c.isoformat() if isinstance(c, datetime) else c}
+
+
+async def loyalty_balance(user_id: str) -> dict:
+    """Ledger is the source of truth: every row carries signed points (earn +, redeem -, reverse -, redeem_return +, adjust ±)."""
+    earned = redeemed = reversed_ = adjusted = available = 0
+    async for t in db.loyalty_transactions.find({"userId": user_id}, {"type": 1, "points": 1}):
+        pts = int(t["points"])
+        available += pts
+        if t["type"] == "earn":
+            earned += pts
+        elif t["type"] == "redeem":
+            redeemed += -pts
+        elif t["type"] in ("reverse", "redeem_return"):
+            reversed_ += pts
+        else:
+            adjusted += pts
+    return {"available": max(available, 0), "lifetimeEarned": earned, "redeemed": redeemed, "reversed": reversed_, "adjusted": adjusted}
+
+
+async def loyalty_add(user_id: str, kind: str, points: int, key: str, description: str, order: Optional[dict] = None, reward_value: float = 0.0, admin: Optional[dict] = None, reason: str = "") -> Optional[dict]:
+    """Idempotent ledger insert (unique key). Returns the row, or None if the key already exists."""
+    if points == 0:
+        return None
+    doc = {"id": str(uuid.uuid4()), "userId": user_id, "orderId": order["id"] if order else None, "orderNumber": order.get("orderNumber") if order else None, "type": kind, "points": int(points), "rewardValue": round(reward_value, 2), "description": description, "reason": reason,
+           "adminId": admin["id"] if admin else None, "adminEmail": admin.get("email") if admin else None, "key": key, "createdAt": now_utc()}
+    try:
+        await db.loyalty_transactions.insert_one(doc)
+        return doc
+    except Exception:
+        return None
+
+
+async def loyalty_award_for_order(o: dict):
+    """Earn points once an order is paid. Idempotent via key earn:<orderId>. Tax, delivery, promo and reward discounts never earn."""
+    settings = await get_settings()
+    rules = loyalty_rules(settings)
+    if not rules["loyaltyEnabled"] or not o.get("userId") or o.get("paymentStatus") != "paid" or o.get("manualStatus") == "cancelled":
+        return
+    points = int(math.floor(round(o.get("subtotal", 0) - o.get("discount", 0) - o.get("rewardDiscount", 0), 2) * rules["pointsPerDollar"]))
+    if points <= 0:
+        return
+    if await loyalty_add(o["userId"], "earn", points, f"earn:{o['id']}", f"Order #{o['orderNumber']}", o):
+        o["pointsEarned"] = points
+        await db.orders.update_one({"id": o["id"]}, {"$set": {"pointsEarned": points}})
+
+
+async def loyalty_reverse_for_order(o: dict, refund_amount: Optional[float] = None, admin: Optional[dict] = None):
+    """Full (refund_amount None) or partial refund/cancel: reverse earned points proportionally; return redeemed points on full reversal."""
+    if not o.get("userId"):
+        return 0
+    earned = await db.loyalty_transactions.find_one({"key": f"earn:{o['id']}"})
+    reversed_total = 0
+    async for t in db.loyalty_transactions.find({"orderId": o["id"], "type": "reverse"}):
+        reversed_total += -int(t["points"])
+    earned_pts = int(earned["points"]) if earned else 0
+    remaining = max(earned_pts - reversed_total, 0)
+    settings = await get_settings()
+    rate = loyalty_rules(settings)["pointsPerDollar"]
+    if refund_amount is None:
+        to_reverse = remaining
+        label = "Order cancelled/refunded"
+    else:
+        to_reverse = min(remaining, int(math.floor(round(refund_amount, 2) * rate)))
+        label = f"Partial refund ${refund_amount:.2f}"
+    n = (await db.loyalty_transactions.count_documents({"orderId": o["id"], "type": "reverse"})) + 1
+    if to_reverse > 0:
+        if await loyalty_add(o["userId"], "reverse", -to_reverse, f"reverse:{o['id']}:{n}", f"{label} — Order #{o['orderNumber']}", o, admin=admin):
+            await db.orders.update_one({"id": o["id"]}, {"$inc": {"pointsReversed": to_reverse}})
+    if refund_amount is None and o.get("rewardPoints"):
+        await loyalty_add(o["userId"], "redeem_return", int(o["rewardPoints"]), f"redeem-return:{o['id']}", f"Redeemed points returned — Order #{o['orderNumber']}", o, reward_value=o.get("rewardDiscount", 0), admin=admin)
+    return to_reverse
+
+
+async def loyalty_validate_redeem(user: Optional[dict], redeem_points: int, merch_after_promo: float, settings: dict) -> float:
+    """Server-side validation of a redemption request; returns the dollar discount."""
+    if not redeem_points:
+        return 0.0
+    rules = loyalty_rules(settings)
+    if not rules["loyaltyEnabled"]:
+        raise HTTPException(status_code=400, detail="Puff2door Rewards is not available right now")
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in to your Puff2door account to redeem rewards")
+    if redeem_points < 0 or redeem_points % rules["pointsPerReward"] != 0:
+        raise HTTPException(status_code=400, detail=f"Rewards are redeemed in blocks of {rules['pointsPerReward']} points")
+    if redeem_points < rules["minRedeemPoints"]:
+        raise HTTPException(status_code=400, detail=f"Minimum redemption is {rules['minRedeemPoints']} points")
+    if rules["maxRedeemPerOrder"] and redeem_points > rules["maxRedeemPerOrder"]:
+        raise HTTPException(status_code=400, detail=f"You can redeem at most {rules['maxRedeemPerOrder']} points per order")
+    if merch_after_promo < rules["minPurchaseForRedeem"]:
+        raise HTTPException(status_code=400, detail=f"A minimum purchase of ${rules['minPurchaseForRedeem']:.2f} is required to redeem rewards")
+    bal = await loyalty_balance(user["id"])
+    if redeem_points > bal["available"]:
+        raise HTTPException(status_code=400, detail=f"You only have {bal['available']} points available")
+    value = points_value(redeem_points, rules)
+    if value > merch_after_promo + 0.005:
+        raise HTTPException(status_code=400, detail="Reward value cannot exceed the merchandise total")
+    return value
 
 
 def payments_config() -> dict:
@@ -376,7 +523,7 @@ async def paypal_request(method: str, path: str, body: Optional[dict] = None) ->
     return data
 
 
-async def price_cart(items: List[CartItem], promo_code: str = ""):
+async def price_cart(items: List[CartItem], promo_code: str = "", redeem_points: int = 0, user: Optional[dict] = None):
     problems, priced = [], []
     for it in items:
         prod = await db.products.find_one({"id": it.productId})
@@ -400,7 +547,12 @@ async def price_cart(items: List[CartItem], promo_code: str = ""):
     settings = await get_settings()
     subtotal = round(sum(i["price"] * i["qty"] for i in priced), 2)
     promo = await resolve_promo(promo_code, subtotal) if promo_code.strip() else None
-    totals = compute_totals(subtotal, settings, promo_discount(promo, subtotal) if promo else 0.0)
+    pdisc = round(min(promo_discount(promo, subtotal) if promo else 0.0, subtotal), 2)
+    reward = await loyalty_validate_redeem(user, int(redeem_points or 0), round(subtotal - pdisc, 2), settings)
+    totals = compute_totals(subtotal, settings, pdisc + reward)
+    totals["discount"] = pdisc
+    totals["rewardDiscount"] = reward
+    totals["rewardPoints"] = int(redeem_points or 0) if reward else 0
     totals["promoCode"] = promo["code"] if promo else ""
     return priced, totals
 
@@ -692,8 +844,11 @@ def order_response(o: dict) -> dict:
     else:
         created_dt = created
     awaiting = o.get("paymentStatus") == "awaiting_payment"
-    if awaiting:
+    cancelled = o.get("manualStatus") == "cancelled"
+    if awaiting or cancelled:
         status, timeline = build_tracking(created_dt, "placed", None)
+        if cancelled:
+            status = "cancelled"
     else:
         status, timeline = build_tracking(created_dt, o.get("manualStatus"), o.get("statusUpdatedAt"))
     return {
@@ -709,6 +864,12 @@ def order_response(o: dict) -> dict:
         "discount": o.get("discount", 0),
         "promoCode": o.get("promoCode", ""),
         "total": o["total"],
+        "rewardDiscount": o.get("rewardDiscount", 0.0),
+        "rewardPoints": o.get("rewardPoints", 0),
+        "pointsEarned": o.get("pointsEarned", 0),
+        "pointsReversed": o.get("pointsReversed", 0),
+        "refundedAmount": o.get("refundedAmount", 0.0),
+        "refunds": [{**r, "createdAt": r["createdAt"].isoformat() if isinstance(r.get("createdAt"), datetime) else r.get("createdAt")} for r in o.get("refunds", [])],
         "paymentLast4": o.get("paymentLast4", ""),
         "paymentMethod": o.get("paymentMethod", "test_card"),
         "paymentStatus": o.get("paymentStatus", "paid"),
@@ -968,13 +1129,13 @@ async def get_payments_config():
 
 
 @api_router.post("/payments/paypal/create-order")
-async def paypal_create_order(inp: PayPalCreateInput):
+async def paypal_create_order(inp: PayPalCreateInput, user: Optional[dict] = Depends(get_optional_user)):
     if not PAYPAL_ENABLED:
         raise HTTPException(status_code=503, detail="PayPal is not configured")
     if not inp.items:
         raise HTTPException(status_code=400, detail="Your cart is empty")
     require_delivery_zone(inp.zip, await get_settings())
-    _, totals = await price_cart(inp.items, inp.promoCode)
+    _, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user)
     total = totals["total"]
     data = await paypal_request("POST", "/v2/checkout/orders", {
         "intent": "CAPTURE",
@@ -1008,7 +1169,7 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
     if method not in PAYMENT_METHODS or not enabled[method]:
         raise HTTPException(status_code=400, detail="That payment method is not available")
     zone = require_delivery_zone(inp.shipping.zip, await get_settings())
-    priced_items, totals = await price_cart(inp.items, inp.promoCode)
+    priced_items, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user)
     subtotal, shipping_cost, total = totals["subtotal"], totals["shippingCost"], totals["total"]
     await reserve_stock(priced_items)
     order_id = str(uuid.uuid4())
@@ -1060,11 +1221,16 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
         "taxRate": totals["taxRate"],
         "discount": totals["discount"],
         "promoCode": totals["promoCode"],
+        "rewardDiscount": totals["rewardDiscount"],
+        "rewardPoints": totals["rewardPoints"],
         "total": total,
         **payment,
         "createdAt": now_utc(),
     }
     await db.orders.insert_one(order)
+    if totals["rewardPoints"] and user:
+        await loyalty_add(user["id"], "redeem", -totals["rewardPoints"], f"redeem:{order_id}", f"${totals['rewardDiscount']:.2f} reward redeemed — Order #{order_number}", order, reward_value=totals["rewardDiscount"])
+    await loyalty_award_for_order(order)
     if totals["promoCode"]:
         await db.promo_codes.update_one({"code": totals["promoCode"]}, {"$inc": {"uses": 1}})
     if user:
@@ -1268,7 +1434,29 @@ async def serve_file(path: str):
 @api_router.get("/settings")
 async def public_settings():
     settings = await get_settings()
-    return {"pricing": pricing_rules(settings), "delivery": delivery_rules(settings)}
+    return {"pricing": pricing_rules(settings), "delivery": delivery_rules(settings), "loyalty": loyalty_public_rules(settings)}
+
+
+# ---- Loyalty rewards (customer) ----
+async def loyalty_summary(user_id: str, settings: dict) -> dict:
+    rules = loyalty_rules(settings)
+    bal = await loyalty_balance(user_id)
+    per = rules["pointsPerReward"]
+    redeemable = (bal["available"] // per) * per if per else 0
+    if rules["maxRedeemPerOrder"]:
+        redeemable = min(redeemable, (rules["maxRedeemPerOrder"] // per) * per)
+    if redeemable < rules["minRedeemPoints"]:
+        redeemable = 0
+    return {**bal, "availableValue": points_value(bal["available"], rules), "redeemablePoints": redeemable, "redeemableValue": points_value(redeemable, rules),
+            "pointsToNextReward": per - (bal["available"] % per) if per else 0, "rules": loyalty_public_rules(settings)}
+
+
+@api_router.get("/loyalty/me")
+async def loyalty_me(user: dict = Depends(get_current_user)):
+    settings = await get_settings()
+    summary = await loyalty_summary(user["id"], settings)
+    rows = await db.loyalty_transactions.find({"userId": user["id"]}).sort("createdAt", -1).to_list(500)
+    return {**summary, "history": [loyalty_tx_out(t) for t in rows]}
 
 
 # ---- SEO: sitemap ----
@@ -1753,17 +1941,24 @@ async def admin_list_orders(admin: dict = Depends(get_admin_user)):
 
 @api_router.put("/admin/orders/{order_id}/status")
 async def admin_update_order_status(order_id: str, inp: OrderStatusInput, admin: dict = Depends(get_admin_user)):
-    if inp.status not in STAGE_KEYS:
+    if inp.status not in STAGE_KEYS and inp.status != "cancelled":
         raise HTTPException(status_code=400, detail="Invalid status")
-    res = await db.orders.update_one(
-        {"id": order_id},
-        {"$set": {"manualStatus": inp.status, "statusUpdatedAt": now_utc(), "statusUpdatedBy": admin["id"]}},
-    )
-    if not res.matched_count:
+    o = await db.orders.find_one({"id": order_id})
+    if not o:
         raise HTTPException(status_code=404, detail="Order not found")
+    updates = {"manualStatus": inp.status, "statusUpdatedAt": now_utc(), "statusUpdatedBy": admin["id"]}
+    if inp.status == "cancelled" and not o.get("stockReleased"):
+        await release_stock(o["items"])
+        updates["stockReleased"] = True
+    await db.orders.update_one({"id": order_id}, {"$set": updates})
     updated = await db.orders.find_one({"id": order_id})
-    asyncio.create_task(emails.send_status_update(updated, inp.status))
-    return order_response(updated)
+    if inp.status == "cancelled":
+        await loyalty_reverse_for_order(updated, None, admin)
+    elif inp.status == "delivered":
+        await loyalty_award_for_order(updated)
+    if inp.status in STAGE_KEYS:
+        asyncio.create_task(emails.send_status_update(updated, inp.status))
+    return order_response(await db.orders.find_one({"id": order_id}))
 
 
 @api_router.put("/admin/orders/{order_id}/payment")
@@ -1779,12 +1974,116 @@ async def admin_update_order_payment(order_id: str, inp: PaymentStatusInput, adm
         updates["manualStatus"] = "confirmed"
         updates["statusUpdatedAt"] = now_utc()
     if inp.paymentStatus == "refunded":
-        await release_stock(o["items"])
+        if not o.get("stockReleased"):
+            await release_stock(o["items"])
+            updates["stockReleased"] = True
+        updates["refundedAmount"] = round(o.get("subtotal", 0) - o.get("discount", 0) - o.get("rewardDiscount", 0), 2)
     await db.orders.update_one({"id": order_id}, {"$set": updates})
     updated = await db.orders.find_one({"id": order_id})
     if "paidAt" in updates:
+        await loyalty_award_for_order(updated)
         asyncio.create_task(emails.send_payment_received(updated))
-    return order_response(updated)
+    if inp.paymentStatus == "refunded":
+        await loyalty_reverse_for_order(updated, None, admin)
+    return order_response(await db.orders.find_one({"id": order_id}))
+
+
+class RefundInput(BaseModel):
+    amount: float = Field(gt=0)
+    reason: str = ""
+
+
+@api_router.post("/admin/orders/{order_id}/refund")
+async def admin_partial_refund(order_id: str, inp: RefundInput, admin: dict = Depends(get_admin_user)):
+    """Records a merchandise refund (partial or full) and reverses the matching loyalty points once."""
+    o = await db.orders.find_one({"id": order_id})
+    if not o:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if o.get("paymentStatus") != "paid":
+        raise HTTPException(status_code=400, detail="Only paid orders can be refunded")
+    max_refund = round(o.get("subtotal", 0) - o.get("discount", 0) - o.get("rewardDiscount", 0) - o.get("refundedAmount", 0), 2)
+    amount = round(min(inp.amount, max_refund), 2)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Nothing left to refund on this order")
+    full = amount >= max_refund - 0.005
+    sets = {"paymentStatus": "refunded"} if full else {}
+    if full and not o.get("stockReleased"):
+        await release_stock(o["items"])
+        sets["stockReleased"] = True
+    upd = {"$inc": {"refundedAmount": amount}, "$push": {"refunds": {"amount": amount, "reason": inp.reason, "adminId": admin["id"], "createdAt": now_utc()}}}
+    if sets:
+        upd["$set"] = sets
+    await db.orders.update_one({"id": order_id}, upd)
+    reversed_pts = await loyalty_reverse_for_order(o, None if full else amount, admin)
+    return {**order_response(await db.orders.find_one({"id": order_id})), "pointsReversed": reversed_pts}
+
+
+# ---- Admin: loyalty rewards ----
+@api_router.get("/admin/loyalty/settings")
+async def admin_loyalty_settings(admin: dict = Depends(get_admin_user)):
+    return loyalty_rules(await get_settings())
+
+
+@api_router.put("/admin/loyalty/settings")
+async def admin_put_loyalty_settings(inp: LoyaltySettingsInput, admin: dict = Depends(get_admin_user)):
+    global _settings_cache
+    await db.site_settings.update_one({"key": "store"}, {"$set": {**inp.model_dump(), "updatedAt": now_utc(), "updatedBy": admin["id"]}}, upsert=True)
+    _settings_cache = {}
+    return loyalty_rules(await get_settings())
+
+
+@api_router.get("/admin/loyalty/customers")
+async def admin_loyalty_customers(q: str = "", admin: dict = Depends(get_admin_user)):
+    """Customers with a loyalty balance (or matching a search), newest activity first."""
+    settings = await get_settings()
+    rules = loyalty_rules(settings)
+    query = {}
+    if q.strip():
+        rx = {"$regex": re.escape(q.strip()), "$options": "i"}
+        query = {"$or": [{"email": rx}, {"firstName": rx}, {"lastName": rx}]}
+    users = await db.users.find(query, {"_id": 0, "id": 1, "email": 1, "firstName": 1, "lastName": 1, "createdAt": 1}).to_list(2000)
+    totals: dict = {}
+    async for t in db.loyalty_transactions.find({}, {"userId": 1, "points": 1, "type": 1, "createdAt": 1}):
+        row = totals.setdefault(t["userId"], {"available": 0, "lifetimeEarned": 0, "lastActivity": None})
+        row["available"] += int(t["points"])
+        if t["type"] == "earn":
+            row["lifetimeEarned"] += int(t["points"])
+        if row["lastActivity"] is None or t["createdAt"] > row["lastActivity"]:
+            row["lastActivity"] = t["createdAt"]
+    out = []
+    for u in users:
+        s = totals.get(u["id"], {"available": 0, "lifetimeEarned": 0, "lastActivity": None})
+        if not q.strip() and u["id"] not in totals:
+            continue
+        avail = max(s["available"], 0)
+        out.append({"id": u["id"], "email": u["email"], "name": f"{u.get('firstName', '')} {u.get('lastName', '')}".strip(), "available": avail, "availableValue": points_value(avail, rules), "lifetimeEarned": s["lifetimeEarned"],
+                    "lastActivity": s["lastActivity"].isoformat() if isinstance(s["lastActivity"], datetime) else None})
+    out.sort(key=lambda x: (x["lastActivity"] or "", x["available"]), reverse=True)
+    return {"customers": out[:200], "rules": loyalty_public_rules(settings)}
+
+
+@api_router.get("/admin/loyalty/customers/{user_id}")
+async def admin_loyalty_customer(user_id: str, admin: dict = Depends(get_admin_user)):
+    u = await db.users.find_one({"id": user_id})
+    if not u:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    settings = await get_settings()
+    summary = await loyalty_summary(user_id, settings)
+    rows = await db.loyalty_transactions.find({"userId": user_id}).sort("createdAt", -1).to_list(1000)
+    return {"customer": {"id": u["id"], "email": u["email"], "name": f"{u.get('firstName', '')} {u.get('lastName', '')}".strip()}, **summary, "history": [loyalty_tx_out(t) for t in rows]}
+
+
+@api_router.post("/admin/loyalty/customers/{user_id}/adjust")
+async def admin_loyalty_adjust(user_id: str, inp: LoyaltyAdjustInput, admin: dict = Depends(get_admin_user)):
+    u = await db.users.find_one({"id": user_id})
+    if not u:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    bal = await loyalty_balance(user_id)
+    if inp.points < 0 and -inp.points > bal["available"]:
+        raise HTTPException(status_code=400, detail=f"Customer only has {bal['available']} points available")
+    row = await loyalty_add(user_id, "adjust", inp.points, f"adjust:{uuid.uuid4()}", f"Manual adjustment by {admin.get('email', 'admin')}", None, admin=admin, reason=inp.reason.strip())
+    settings = await get_settings()
+    return {**(await loyalty_summary(user_id, settings)), "transaction": loyalty_tx_out(row)}
 
 
 @api_router.get("/admin/settings")
@@ -1905,6 +2204,9 @@ async def create_indexes():
     await db.products.create_index("id", unique=True)
     await db.products.create_index("slug")
     await db.files.create_index("storage_path")
+    await db.loyalty_transactions.create_index("key", unique=True)
+    await db.loyalty_transactions.create_index([("userId", 1), ("createdAt", -1)])
+    await db.loyalty_transactions.create_index("orderId")
 
 
 @app.on_event("startup")

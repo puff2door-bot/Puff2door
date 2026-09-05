@@ -94,6 +94,7 @@ const CartPage = () => {
             <div className="space-y-3 text-sm border-t pt-4">
               <div className="flex justify-between"><span className="text-neutral-500">Subtotal</span><span className="font-semibold">${subtotal.toFixed(2)}</span></div>
               {discount > 0 && (<div className="flex justify-between text-emerald-600" data-testid="cart-discount"><span>Discount ({promo.code})</span><span className="font-semibold">-${discount.toFixed(2)}</span></div>)}
+              {totals.reward > 0 && (<div className="flex justify-between text-emerald-600" data-testid="cart-reward"><span>Rewards applied</span><span className="font-semibold">-${totals.reward.toFixed(2)}</span></div>)}
               <div className="flex justify-between"><span className="text-neutral-500">Delivery</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
               <div className="flex justify-between" data-testid="cart-tax"><span className="text-neutral-500">{pricing.taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>
               {subtotal < pricing.freeDeliveryMin && (<p className="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">Add ${(pricing.freeDeliveryMin - subtotal).toFixed(2)} more for FREE delivery!</p>)}

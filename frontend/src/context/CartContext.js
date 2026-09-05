@@ -40,12 +40,20 @@ export const CartProvider = ({ children }) => {
   const [items, setItems] = useState(readLocal);
   const [pricing, setPricing] = useState(DEFAULT_PRICING);
   const [delivery, setDelivery] = useState(DEFAULT_DELIVERY);
+  const [loyalty, setLoyalty] = useState(DEFAULT_LOYALTY);
+  const [redeemPoints, setRedeemPoints] = useState(0);
   const [promo, setPromo] = useState(() => {
     try { return JSON.parse(localStorage.getItem("p2d_promo")) || null; } catch { return null; }
   });
 
   useEffect(() => {
-    api.get("/settings").then(({ data }) => { setPricing(data.pricing); if (data.delivery) setDelivery(data.delivery); }).catch(() => {});
+    api.get("/settings").then(({ data }) => { setPricing(data.pricing); if (data.delivery) setDelivery(data.delivery); if (data.loyalty) setLoyalty(data.loyalty); }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const reset = () => setRedeemPoints(0);
+    window.addEventListener("p2d-auth-change", reset);
+    return () => window.removeEventListener("p2d-auth-change", reset);
   }, []);
 
   useEffect(() => {
@@ -120,15 +128,15 @@ export const CartProvider = ({ children }) => {
   };
   const updateQty = (id, qty) =>
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, qty: Math.max(1, qty) } : i)));
-  const clearCart = () => { setItems([]); setPromo(null); };
+  const clearCart = () => { setItems([]); setPromo(null); setRedeemPoints(0); };
 
   const count = items.reduce((s, i) => s + i.qty, 0);
   const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
-  const totals = computeTotals(subtotal, pricing, promo);
+  const totals = computeTotals(subtotal, pricing, promo, redeemPoints, loyalty);
 
   return (
     <CartContext.Provider
-      value={{ items, addItem, removeItem, updateQty, clearCart, count, subtotal, toServerItem, pricing, delivery, promo, applyPromo, removePromo, totals }}
+      value={{ items, addItem, removeItem, updateQty, clearCart, count, subtotal, toServerItem, pricing, delivery, promo, applyPromo, removePromo, totals, loyalty, redeemPoints, setRedeemPoints }}
     >
       {children}
     </CartContext.Provider>
@@ -137,6 +145,7 @@ export const CartProvider = ({ children }) => {
 
 export const DEFAULT_PRICING = { taxRate: 0.065, taxLabel: "Sales tax (6.5%)", deliveryFee: 15, freeDeliveryMin: 99 };
 export const DEFAULT_DELIVERY = { zip: "32832", radiusMiles: 20 };
+export const DEFAULT_LOYALTY = { enabled: true, pointsPerDollar: 1, pointsPerReward: 100, rewardValue: 5, minRedeemPoints: 100, maxRedeemPerOrder: 0, minPurchaseForRedeem: 0 };
 
 export const promoDiscount = (promo, subtotal) => {
   if (!promo || subtotal < (promo.minSubtotal || 0)) return 0;
@@ -144,11 +153,15 @@ export const promoDiscount = (promo, subtotal) => {
   return Math.round(d * 100) / 100;
 };
 
-export const computeTotals = (subtotal, rules = DEFAULT_PRICING, promo = null) => {
+export const rewardValue = (points, loyalty = DEFAULT_LOYALTY) => Math.round((points / loyalty.pointsPerReward) * loyalty.rewardValue * 100) / 100;
+
+export const computeTotals = (subtotal, rules = DEFAULT_PRICING, promo = null, redeemPoints = 0, loyalty = DEFAULT_LOYALTY) => {
   const discount = promoDiscount(promo, subtotal);
+  const reward = Math.min(rewardValue(redeemPoints, loyalty), Math.round((subtotal - discount) * 100) / 100);
   const shipping = subtotal >= rules.freeDeliveryMin || subtotal === 0 ? 0 : rules.deliveryFee;
-  const tax = Math.round((subtotal - discount) * rules.taxRate * 100) / 100;
-  return { subtotal, discount, shipping, tax, total: Math.round((subtotal - discount + shipping + tax) * 100) / 100 };
+  const tax = Math.round((subtotal - discount - reward) * rules.taxRate * 100) / 100;
+  const pointsToEarn = Math.floor(Math.max(subtotal - discount - reward, 0) * (loyalty.pointsPerDollar || 0));
+  return { subtotal, discount, reward, shipping, tax, pointsToEarn, total: Math.round((subtotal - discount - reward + shipping + tax) * 100) / 100 };
 };
 
 export const useCart = () => useContext(CartContext);

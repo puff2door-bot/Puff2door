@@ -6,12 +6,14 @@ import { useApp } from "../context/AppContext";
 import { useToast } from "../hooks/use-toast";
 import { usStates } from "../mock";
 import api from "../api";
+import MyRewards from "../components/account/MyRewards";
 
 const STATUS_LABEL = {
   placed: "Order Placed",
   confirmed: "Confirmed",
   out_for_delivery: "Out for Delivery",
   delivered: "Delivered",
+  cancelled: "Cancelled",
 };
 
 const AccountView = () => {
@@ -41,6 +43,7 @@ const AccountView = () => {
         </div>
 
         <div>
+          <MyRewards />
           <h2 className="font-heading text-2xl uppercase tracking-wide mb-5 flex items-center gap-2">
             <Package className="h-6 w-6 text-emerald-600" /> My Orders
           </h2>
@@ -61,7 +64,7 @@ const AccountView = () => {
                       <p className="text-xs text-neutral-500">{new Date(o.createdAt).toLocaleString()} · {o.items.length} item(s)</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className={`text-xs font-bold px-3 py-1 rounded-full ${o.status === "delivered" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                      <span className={`text-xs font-bold px-3 py-1 rounded-full ${o.status === "delivered" ? "bg-emerald-100 text-emerald-700" : o.status === "cancelled" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
                         {STATUS_LABEL[o.status]}
                       </span>
                       <span className="font-heading text-lg">${o.total.toFixed(2)}</span>

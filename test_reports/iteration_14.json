@@ -1,0 +1,42 @@
+{
+  "summary": "Frontend E2E testing of the Puff2Door loyalty/rewards feature via the public preview URL. Covered: new customer registration -> My Rewards empty state (0 pts), checkout rewards panel (balance / earn preview / not-redeemable), paid order earning (120 pts via API test_card since PayPal hides Test Card UI), order page rewards block, redemption at checkout (100 pts -> -$5.00, tax recalculated on subtotal-5, total reduced), redeemed order page + ledger, guest checkout rewards prompt (no redeem select) + guest order + far-ZIP delivery block, PUFF10 promo in cart, empty-cart redirect, admin Loyalty Rewards settings (read/save/persist/restore, Store Settings save does not reset loyalty), admin customer lookup + manual adjustment (required reason, +50, over-balance error toast), admin refund ($10 -> 10 pts reversed) and Cancelled status (35 reversed + 100 returned), Zelle order placed fully through the UI (lands on /order/:id, pending-points message) then admin Mark Paid -> +120 pts, and regression smoke (/, /shop, /sitemap.xml 200, 67 products, header category/brand dropdowns populated, GET /api/settings has loyalty block, GET /api/loyalty/me = 401 unauthenticated). Ledger math verified end-to-end: 120 -> redeem/earn -> 55 -> +50 adjust -> 105 -> -10 refund -> -35 cancel -> +100 return -> 160 -> +120 Zelle = 280 pts / $14.00. No blocking defects found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/orders", "issue": "Tax rounding differs from the UI: backend uses Python round() (banker's) so 35.00 x 6.5% -> 2.27 while checkout UI shows 2.28 (toFixed). Result: order total charged $52.27 vs $52.28 previewed at checkout (1c mismatch whenever the cents land on a .xx5 boundary)."},
+      {"endpoint": "POST /api/orders", "issue": "Create-order response returns pointsRedeemed: null; the persisted order uses rewardPoints (100). Response field is inconsistent/unused - consider returning pointsRedeemed = rewardPoints for API consumers."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "OrderPage (cancelled order)", "issue": "For a cancelled order the Delivery Tracker still renders with 'In Progress' label and an active 'Order Placed' step below the red 'Order cancelled' banner - contradictory state.", "selector": "[data-testid=cancelled-banner] + delivery tracker", "priority": "LOW"},
+      {"component": "AuthPage register", "issue": "After successful registration the app redirects to '/' instead of remaining on /my-account, so the new customer does not immediately see the My Rewards section (works after navigating back to /my-account).", "selector": "[data-testid=register-submit]", "priority": "LOW"},
+      {"component": "RewardsPanel redeem select", "issue": "React console warning 'In HTML, <span> cannot be a child of <option>' on /checkout (dynamic expression inside <option>). Console noise only; select works.", "selector": "[data-testid=rewards-redeem-select]", "priority": "LOW"},
+      {"component": "PayPalCheckout", "issue": "PayPal smart buttons occasionally stay at 'Loading PayPal...' for >15s (one run had 0 iframes after 15s; a later run rendered 2 iframes). Since Test Card UI is hidden, the only card path can appear unavailable for a while. Consider a timeout fallback message / allowing another method.", "selector": "[data-testid=paypal-panel]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Checkout / Order pages", "issues": ["Product thumbnails intermittently render blank when navigating quickly (image requests aborted); the /api/files/... URLs return 200 on direct fetch, so this is a load/abort timing nit, not a broken asset."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_loyalty.py"],
+  "action_items": [
+    "Align checkout tax/total rounding with the backend (backend round() gives 2.27 while UI shows 2.28) so the previewed total always equals the charged total.",
+    "Hide/neutralize the Delivery Tracker on cancelled orders.",
+    "Keep the user on /my-account after registration so My Rewards is visible immediately (or redirect to /my-account).",
+    "Add a load-timeout fallback for the PayPal buttons (or expose an alternate method) when the SDK is slow.",
+    "Optional: return pointsRedeemed (= rewardPoints) in the create-order response for consistency."
+  ],
+  "critical_code_review_comments": [
+    "RewardsPanel.jsx clamps redeemPoints in a useEffect on maxRedeem only; server-side validation (loyalty_validate_redeem) correctly re-checks, which was verified (guest redeem attempt -> 401 'Sign in to your Puff2door account to redeem rewards').",
+    "price_cart/create_order compute reward discount server-side and the ledger uses idempotent keys (redeem:<orderId>, redeem-return:<orderId>) - reversal on cancel after a partial refund correctly reversed only the remaining 35 pts."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (2 spot checks: /api/settings loyalty block present, /api/loyalty/me 401 unauth)", "frontend": "100% of loyalty flows functional; 4 low/medium cosmetic issues"},
+  "seed_data_creation": "Customer TEST_loy397886@example.com / Password123! (balance 280 pts). Orders: P2D-85588943 (paid, 120 earned, $10 refunded -> 110), P2D-60883981 (redeemed 100, cancelled -> reversed/returned), P2D-74654738 (Zelle, marked paid by admin -> +120), P2D-25042093 (guest, 0 pts). Admin loyalty settings changed to pointsPerDollar=2 then restored to 1.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "Admin admin@puff2door.com / Puff2Door-Admin1; customer TEST_loy397886@example.com / Password123!",
+  "context_for_next_testing_agent": "Test Card UI is hidden while PayPal is enabled (testCard.visible=false in /api/payments/config); to place a PAID order use POST /api/orders with paymentMethod test_card + Bearer token, or place a Zelle order through the UI and Mark Paid in /admin/orders (this earns points and is the only full UI checkout path). Age gate must be dismissed via [data-testid=age-gate-yes]. Product detail route is /shop/:slug (not /product/:slug); add-to-cart testid is detail-add-to-cart. Admin refund uses two window.prompt dialogs (amount, then reason); Cancelled status uses window.confirm.",
+  "rca_of_the_issue": "Tax mismatch RCA: server.py price_cart uses Python round((subtotal-discount)*taxRate, 2); for 35.00*0.065 = 2.2750 float repr rounds down to 2.27, while the React summary uses toFixed(2) -> 2.28. Fix by using a shared half-up rounding helper (e.g. Decimal ROUND_HALF_UP server-side) so displayed and charged totals match."
+}

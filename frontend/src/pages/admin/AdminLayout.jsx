@@ -1,12 +1,13 @@
 import React from "react";
 import { NavLink, Link, Outlet } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 
 const nav = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/admin/products", label: "Products", icon: Package },
   { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
+  { to: "/admin/loyalty", label: "Loyalty Rewards", icon: Gift },
   { to: "/admin/alerts", label: "Restock Alerts", icon: Bell },
   { to: "/admin/banners", label: "Home Banners", icon: Images },
   { to: "/admin/brands", label: "Brands", icon: Tag },

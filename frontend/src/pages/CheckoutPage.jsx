@@ -11,16 +11,19 @@ import PaymentMethodPicker, { enabledMethods } from "../components/checkout/Paym
 import SquarePayment from "../components/checkout/SquarePayment";
 import PayPalCheckout from "../components/checkout/PayPalCheckout";
 import ZelleInstructions from "../components/checkout/ZelleInstructions";
+import RewardsPanel from "../components/checkout/RewardsPanel";
 
 const CheckoutPage = () => {
-  const { items, subtotal, clearCart, toServerItem, pricing, delivery, promo, totals } = useCart();
+  const { items, subtotal, clearCart, toServerItem, pricing, delivery, promo, totals, redeemPoints } = useCart();
   const { user } = useApp();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [placed, setPlaced] = useState(false);
 
-  const { shipping, tax, discount, total } = totals;
+  const { shipping, tax, discount, reward, total } = totals;
+  const redeemRef = useRef(redeemPoints);
+  redeemRef.current = redeemPoints;
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
@@ -87,11 +90,12 @@ const CheckoutPage = () => {
   const submitOrder = useCallback(async (extra) => {
     setBusy(true);
     try {
-      const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: form, paymentMethod: method, promoCode: promo?.code || "", ...extra });
+      const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: form, paymentMethod: method, promoCode: promo?.code || "", redeemPoints: user ? redeemRef.current : 0, ...extra });
       ecommerce.purchase(data);
       setPlaced(true);
       clearCart();
-      toast({ title: data.paymentStatus === "awaiting_payment" ? "Order placed — awaiting payment" : "Order placed!", description: `Order ${data.orderNumber}${data.paymentStatus === "awaiting_payment" ? ". Send your Zelle payment to complete it." : " confirmed."}` });
+      const earned = data.pointsEarned ? ` You earned ${data.pointsEarned} rewards points.` : "";
+      toast({ title: data.paymentStatus === "awaiting_payment" ? "Order placed — awaiting payment" : "Order placed!", description: `Order ${data.orderNumber}${data.paymentStatus === "awaiting_payment" ? ". Send your Zelle payment to complete it." : " confirmed."}${earned}` });
       navigate(`/order/${data.id}`);
       return data;
     } catch (err) {
@@ -101,7 +105,7 @@ const CheckoutPage = () => {
       throw err;
     } finally { setBusy(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, method, promo, toServerItem, clearCart, navigate, toast]);
+  }, [form, method, promo, toServerItem, clearCart, navigate, toast, user]);
 
   const validateShipping = () => {
     if (!formRef.current?.reportValidity()) {
@@ -138,7 +142,7 @@ const CheckoutPage = () => {
   };
 
   const paypalCreate = async () => {
-    const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "", zip: form.zip });
+    const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "", zip: form.zip, redeemPoints: user ? redeemRef.current : 0 });
     return data.id;
   };
 
@@ -183,6 +187,8 @@ const CheckoutPage = () => {
               </div>
             )}
           </section>
+
+          <RewardsPanel />
 
           {/* Payment */}
           <section>
@@ -243,6 +249,7 @@ const CheckoutPage = () => {
             <div className="space-y-2 text-sm border-t pt-4">
               <div className="flex justify-between"><span className="text-neutral-500">Subtotal</span><span className="font-semibold">${subtotal.toFixed(2)}</span></div>
               {discount > 0 && <div className="flex justify-between text-emerald-600" data-testid="checkout-discount"><span>Discount ({promo.code})</span><span className="font-semibold">-${discount.toFixed(2)}</span></div>}
+              {reward > 0 && <div className="flex justify-between text-emerald-600" data-testid="checkout-reward"><span>Rewards ({redeemPoints.toLocaleString()} pts)</span><span className="font-semibold">-${reward.toFixed(2)}</span></div>}
               <div className="flex justify-between"><span className="text-neutral-500">Delivery</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
               <div className="flex justify-between" data-testid="checkout-tax"><span className="text-neutral-500">{pricing.taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>
             </div>
