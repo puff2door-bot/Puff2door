@@ -171,6 +171,11 @@ const OrderPage = () => {
               {order.shipping.city}, {order.shipping.state} {order.shipping.zip}<br />
               {order.shipping.phone}
             </p>
+            {order.deliveryDate && order.status !== "cancelled" && (
+              <p data-testid="order-delivery-day" className="mt-3 text-xs font-semibold text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                {order.sameDay ? "Same-day local delivery" : "Scheduled local delivery"}: {new Date(order.deliveryDate + "T12:00:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
+              </p>
+            )}
           </div>
           <Link to="/shop" className="block text-center py-3 border-2 border-neutral-900 font-bold rounded-full hover:bg-neutral-900 hover:text-white transition-colors">Continue Shopping</Link>
         </div>

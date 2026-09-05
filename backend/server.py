@@ -17,7 +17,8 @@ import json
 import math
 import secrets
 import zipcodes
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date, time as dtime
+from zoneinfo import ZoneInfo
 import jwt
 from passlib.context import CryptContext
 
@@ -139,6 +140,7 @@ class OrderInput(BaseModel):
     paypalOrderId: str = ""
     promoCode: str = ""
     redeemPoints: int = 0
+    expectSameDay: Optional[bool] = None
 
 
 class PayPalCreateInput(BaseModel):
@@ -172,7 +174,10 @@ REAL_CARD_PROVIDER = SQUARE_ENABLED or PAYPAL_ENABLED
 TEST_CARD_ENABLED = (not REAL_CARD_PROVIDER) or os.environ.get("ALLOW_TEST_CARD", "").lower() == "true"
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "zelle"}
 DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32832", "deliveryRadiusMiles": 20.0,
-                    "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50}
+                    "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
+                    "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6]}
+STORE_TZ = ZoneInfo("America/New_York")
+DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 _settings_cache: dict = {}
 
 
@@ -215,12 +220,82 @@ def require_delivery_zone(zip_code: str, settings: dict):
     return res
 
 
+def parse_cutoff(value: str) -> dtime:
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", (value or "").strip())
+    if not m or not (0 <= int(m.group(1)) <= 23 and 0 <= int(m.group(2)) <= 59):
+        raise ValueError("Cutoff must be HH:MM (24h)")
+    return dtime(int(m.group(1)), int(m.group(2)))
+
+
+def fmt_clock(t: dtime) -> str:
+    h = t.hour % 12 or 12
+    return f"{h}:{t.minute:02d} {'PM' if t.hour >= 12 else 'AM'}"
+
+
+def day_label(d: date, today: date) -> str:
+    if d == today:
+        return "Today"
+    if d == today + timedelta(days=1):
+        return "Tomorrow"
+    return d.strftime("%a, %b ") + str(d.day)
+
+
+def delivery_window(settings: dict, now: Optional[datetime] = None) -> dict:
+    """Same-day cutoff logic in the store's timezone (Orlando). Server time is the only source of truth."""
+    now = (now or now_utc()).astimezone(STORE_TZ)
+    cutoff = parse_cutoff(settings.get("deliveryCutoff", DEFAULT_SETTINGS["deliveryCutoff"]))
+    days = sorted({int(d) for d in settings.get("deliveryDays", DEFAULT_SETTINGS["deliveryDays"]) if 0 <= int(d) <= 6})
+    enabled = bool(settings.get("sameDayEnabled", True))
+    today = now.date()
+    cutoff_dt = datetime.combine(today, cutoff, tzinfo=STORE_TZ)
+    today_open = today.weekday() in days
+    same_day = enabled and today_open and now < cutoff_dt
+    next_day = None
+    if days:
+        start = today if (today_open and now < cutoff_dt) else today + timedelta(days=1)
+        for i in range(0, 8):
+            d = start + timedelta(days=i)
+            if d.weekday() in days:
+                next_day = d
+                break
+    seconds = int((cutoff_dt - now).total_seconds()) if same_day else 0
+    if not enabled:
+        message = ""
+    elif same_day:
+        h, m = divmod(max(seconds, 0) // 60, 60)
+        message = f"Order within {f'{h}h ' if h else ''}{m}m for today's local delivery"
+    elif next_day is None:
+        message = "Local delivery is currently paused. Please check back soon."
+    elif today_open:
+        message = "Today's delivery window has closed. Order now for the next available delivery day."
+    else:
+        message = f"No local delivery today. Order now for the next available delivery day ({day_label(next_day, today)})."
+    return {
+        "enabled": enabled, "timezone": str(STORE_TZ), "serverTime": now.isoformat(), "cutoff": cutoff.strftime("%H:%M"), "cutoffLabel": fmt_clock(cutoff),
+        "deliveryDays": days, "todayOpen": today_open, "sameDayOpen": same_day, "secondsRemaining": max(seconds, 0),
+        "nextDeliveryDate": next_day.isoformat() if next_day else None, "nextDeliveryLabel": day_label(next_day, today) if next_day else None, "message": message,
+    }
+
+
 class StoreSettingsInput(BaseModel):
     taxRate: float = Field(ge=0, le=0.5)
     deliveryFee: float = Field(ge=0)
     freeDeliveryMin: float = Field(ge=0)
     deliveryZip: str = "32832"
     deliveryRadiusMiles: float = Field(default=20.0, gt=0, le=500)
+    sameDayEnabled: bool = True
+    deliveryCutoff: str = "20:00"
+    deliveryDays: List[int] = Field(default=[0, 1, 2, 3, 4, 5, 6])
+
+    @field_validator("deliveryCutoff")
+    @classmethod
+    def _cutoff(cls, v):
+        return parse_cutoff(v).strftime("%H:%M")
+
+    @field_validator("deliveryDays")
+    @classmethod
+    def _days(cls, v):
+        return sorted({int(d) for d in v if 0 <= int(d) <= 6})
 
     @field_validator("deliveryZip")
     @classmethod
@@ -877,6 +952,8 @@ def order_response(o: dict) -> dict:
         "userId": o.get("userId"),
         "items": o["items"],
         "shipping": o["shipping"],
+        "deliveryDate": o.get("deliveryDate"),
+        "sameDay": o.get("sameDay"),
         "subtotal": o["subtotal"],
         "shippingCost": o.get("shippingCost", 0),
         "tax": o.get("tax", 0),
@@ -1192,6 +1269,9 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
     if method not in PAYMENT_METHODS or not enabled[method]:
         raise HTTPException(status_code=400, detail="That payment method is not available")
     zone = require_delivery_zone(inp.shipping.zip, await get_settings())
+    window = delivery_window(await get_settings())
+    if inp.expectSameDay and not window["sameDayOpen"]:
+        raise HTTPException(status_code=409, detail=window["message"] or "Same-day delivery is not available right now. Your order will be scheduled for the next available delivery day.")
     priced_items, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user)
     subtotal, shipping_cost, total = totals["subtotal"], totals["shippingCost"], totals["total"]
     await reserve_stock(priced_items)
@@ -1238,6 +1318,8 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
         "items": priced_items,
         "shipping": inp.shipping.model_dump(),
         "deliveryDistanceMiles": zone["distanceMiles"],
+        "deliveryDate": window["nextDeliveryDate"],
+        "sameDay": bool(window["sameDayOpen"]),
         "subtotal": subtotal,
         "shippingCost": shipping_cost,
         "tax": totals["tax"],
@@ -1537,6 +1619,11 @@ async def sitemap_xml():
 @api_router.get("/delivery/check")
 async def delivery_check(zip: str = ""):
     return delivery_zone_check(zip, await get_settings())
+
+
+@api_router.get("/delivery/window")
+async def delivery_window_public():
+    return delivery_window(await get_settings())
 
 
 _area_cache: dict = {}

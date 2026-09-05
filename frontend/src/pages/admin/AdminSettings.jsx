@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Save, Percent, Truck, Gift, MapPin, Radius } from "lucide-react";
+import { Save, Percent, Truck, Gift, MapPin, Radius, Clock } from "lucide-react";
 import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
+
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const inputCls = "w-full border border-neutral-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-emerald-600 transition-colors";
 
@@ -18,7 +20,8 @@ const AdminSettings = () => {
   const [busy, setBusy] = useState(false);
   const { toast } = useToast();
 
-  const toForm = (data) => ({ taxPercent: +(data.taxRate * 100).toFixed(3), deliveryFee: data.deliveryFee, freeDeliveryMin: data.freeDeliveryMin, deliveryZip: data.deliveryZip || "32832", deliveryRadiusMiles: data.deliveryRadiusMiles ?? 20 });
+  const toForm = (data) => ({ taxPercent: +(data.taxRate * 100).toFixed(3), deliveryFee: data.deliveryFee, freeDeliveryMin: data.freeDeliveryMin, deliveryZip: data.deliveryZip || "32832", deliveryRadiusMiles: data.deliveryRadiusMiles ?? 20,
+    sameDayEnabled: data.sameDayEnabled ?? true, deliveryCutoff: data.deliveryCutoff || "20:00", deliveryDays: data.deliveryDays || [0, 1, 2, 3, 4, 5, 6] });
 
   useEffect(() => {
     api.get("/admin/settings").then(({ data }) => setF(toForm(data)));
@@ -28,9 +31,10 @@ const AdminSettings = () => {
     e.preventDefault();
     setBusy(true);
     try {
-      const { data } = await api.put("/admin/settings", { taxRate: Number(f.taxPercent) / 100, deliveryFee: Number(f.deliveryFee), freeDeliveryMin: Number(f.freeDeliveryMin), deliveryZip: f.deliveryZip, deliveryRadiusMiles: Number(f.deliveryRadiusMiles) });
+      const { data } = await api.put("/admin/settings", { taxRate: Number(f.taxPercent) / 100, deliveryFee: Number(f.deliveryFee), freeDeliveryMin: Number(f.freeDeliveryMin), deliveryZip: f.deliveryZip, deliveryRadiusMiles: Number(f.deliveryRadiusMiles),
+        sameDayEnabled: Boolean(f.sameDayEnabled), deliveryCutoff: f.deliveryCutoff, deliveryDays: f.deliveryDays });
       setF(toForm(data));
-      toast({ title: "Settings saved", description: "New rates and delivery zone apply to all new carts and orders immediately." });
+      toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
     } catch (err) {
       const d = err?.response?.data?.detail;
       toast({ title: "Save failed", description: Array.isArray(d) ? d.map((x) => x.msg).join(", ") : d || "Try again", variant: "destructive" });
@@ -71,6 +75,31 @@ const AdminSettings = () => {
         <Field icon={Radius} label="Delivery radius (miles)" hint="Orders with a delivery ZIP farther than this are blocked at checkout. Shown in the homepage banner.">
           <input required type="number" min="1" max="500" step="1" data-testid="settings-delivery-radius" className={inputCls} value={f.deliveryRadiusMiles} onChange={(e) => setF({ ...f, deliveryRadiusMiles: e.target.value })} />
         </Field>
+      </div>
+
+      <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-sameday">
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+          <div className="flex items-center gap-2"><Clock className="h-4 w-4 text-emerald-600" /><label className="text-sm font-bold text-neutral-900">Same-day local delivery countdown</label></div>
+          <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer"><input type="checkbox" data-testid="settings-sameday-enabled" className="accent-emerald-600 h-4 w-4" checked={f.sameDayEnabled} onChange={(e) => setF({ ...f, sameDayEnabled: e.target.checked })} /> {f.sameDayEnabled ? "ON" : "OFF"}</label>
+        </div>
+        <p className="text-xs text-neutral-500 mb-4">Shows "Order within Xh Ym for today's local delivery" on the homepage and checkout. Times are Orlando (Eastern) time on the server — customers' device clocks are ignored, and checkout re-checks the cutoff.</p>
+        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4">
+          <div>
+            <label className="block text-xs font-bold text-neutral-600 mb-1">Daily cutoff time (ET)</label>
+            <input required type="time" data-testid="settings-cutoff" className={inputCls} value={f.deliveryCutoff} onChange={(e) => setF({ ...f, deliveryCutoff: e.target.value })} />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-neutral-600 mb-1">Delivery days (unticked = closed, customers see the next open day)</label>
+            <div className="flex flex-wrap gap-2">
+              {DAYS.map((d, i) => {
+                const on = f.deliveryDays.includes(i);
+                return (
+                  <button type="button" key={d} data-testid={`settings-day-${d.toLowerCase()}`} onClick={() => setF({ ...f, deliveryDays: on ? f.deliveryDays.filter((x) => x !== i) : [...f.deliveryDays, i].sort() })} className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${on ? "bg-neutral-900 border-neutral-900 text-white" : "border-neutral-300 text-neutral-500 hover:border-neutral-900"}`}>{d}</button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="border border-dashed border-neutral-300 rounded-2xl p-5 text-sm text-neutral-600" data-testid="settings-preview">

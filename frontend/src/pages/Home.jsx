@@ -5,6 +5,7 @@ import HeroSlider from "../components/HeroSlider";
 import DealOfTheDay from "../components/DealOfTheDay";
 import ProductCard from "../components/ProductCard";
 import { DeliveryBanner } from "../components/DeliveryZone";
+import DeliveryCountdown from "../components/DeliveryCountdown";
 import BrandLogo from "../components/BrandLogo";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import { useCatalog } from "../context/CatalogContext";
@@ -55,6 +56,7 @@ const Home = () => {
     <div>
       <Seo title={DEFAULT_TITLE} description={DEFAULT_DESCRIPTION} path="/" jsonLd={faqJsonLd(HOME_FAQS)} />
       <DeliveryBanner />
+      <DeliveryCountdown />
       <HeroSlider />
 
       {/* Intro / H1 */}

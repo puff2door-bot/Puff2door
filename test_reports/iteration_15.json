@@ -1,0 +1,34 @@
+{
+  "summary": "Frontend/browser testing of the Smart Local Delivery Countdown feature (Puff2Door) plus the requested API spot checks. Verified homepage strip placement/text/mobile fit, admin Store Settings same-day card (toggle, cutoff, day toggles, save + persistence), closed-cutoff and closed-day states, checkout inline countdown (in-zone only), server-side expectSameDay 409 enforcement, order page scheduled delivery line, feature OFF behaviour, live ticking, and regressions (loyalty settings, 67 products, sitemap, header dropdowns, out-of-zone block). All scenarios passed; Store Settings were restored to defaults (sameDayEnabled true, cutoff 20:00, all 7 days).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/orders", "issue": "When the countdown feature is toggled OFF (sameDayEnabled=false), a body with expectSameDay:true still gets 409 'Today's delivery window has closed.' Not reachable from the UI (CheckoutPage sends expectSameDay = enabled && sameDayOpen), but an API client could see a misleading message while the feature is simply disabled."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Order confirmation /order/:id", "issues": ["'Scheduled local delivery: Sun, Sep 6' is emerald text on emerald-50 chip — low-ish contrast, readable but faint", "Order placed timestamp is rendered in the browser's timezone (showed 5:30 AM for a 1:30 AM ET order) while delivery cutoff logic is ET — potentially confusing (pre-existing, not part of this feature)"]},
+      {"screen": "Homepage strip", "issues": ["Closed state appends '· Next: Tomorrow' after the closed sentence (desktop only) — matches design intent, just noting it differs slightly from the literal spec string"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_countdown_api_spot.py", "/app/backend/tests/test_delivery_countdown.py"],
+  "action_items": [
+    "Optional: skip/soften the expectSameDay 409 when sameDayEnabled is false (return 200 with sameDay=false instead of a 'window closed' message)",
+    "Optional: raise contrast of the order page 'Scheduled local delivery' chip text"
+  ],
+  "critical_code_review_comments": [
+    "DeliveryCountdown home variant re-derives the countdown value with text.replace(...) string surgery on the hook's sentence; safer to expose fmt(remaining) directly from the hook to avoid breakage if the message wording changes.",
+    "useDeliveryWindow tick interval reads anchor.current without a null guard (only safe today because it is set before win is non-null) — cheap defensive check recommended."
+  ],
+  "updated_files": ["/app/backend/tests/test_countdown_api_spot.py"],
+  "success_rate": {"backend": "100% (2/2 new spot checks + window/settings/loyalty/products/sitemap checks)", "frontend": "100% (all 7 requested browser scenarios passed)"},
+  "seed_data_creation": "2 paid test orders created via API (shipping name TEST Countdown / TEST Off, TEST_countdown@example.com, ZIP 32832). Store Settings temporarily changed (cutoff/day/toggle) and restored to defaults at the end.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@puff2door.com / Puff2Door-Admin1 (admin login via POST /api/auth/login, token stored in localStorage p2d_token; age gate bypass: localStorage p2d_age_ok='true')",
+  "context_for_next_testing_agent": "Verified results: homepage [data-testid=delivery-countdown] sits between the green delivery banner (y=157) and hero (y=189), text 'Order within 18h 27m for today's local delivery'; no [data-testid=delivery-checker] on homepage; mobile 390px strip = single 32px line, no overflow (document scrollWidth 458 comes from the marquee ticker, pre-existing). Admin settings-sameday card: toggle ON, cutoff 20:00, all 7 day buttons active; setting cutoff 2 min in the past saved ('Settings saved' toast) and persisted after reload; GET /api/delivery/window then sameDayOpen=false, nextDeliveryLabel=Tomorrow, closed message on homepage. Checkout ZIP 32832 shows [data-testid=checkout-delivery-countdown] with closed message + 'Next delivery: Tomorrow.'; ZIP 90210 shows [data-testid=payment-blocked] and no countdown. POST /api/orders expectSameDay:true → 409 with 'closed'; without → 200, sameDay=false, deliveryDate 2026-09-06 (tomorrow ET); /order/:id shows 'Scheduled local delivery: Sun, Sep 6'. Unticking today's day + cutoff 23:59 → todayOpen=false and 'No local delivery today. Order now for the next available delivery day (Tomorrow).'. Toggle OFF → no homepage strip, no checkout line, ordering works. Ticking verified (18h 27m → 18h 26m over 66s). Regression: loyalty settings intact (signupBonusPoints 50, pointsPerDollar 1) after Store Settings save, 67 products, /sitemap.xml 200, SHOP dropdown populated (7 categories). Note age gate uses localStorage key p2d_age_ok='true' (string 'true').",
+  "rca_of_the_issue": "No functional defect found in the feature. The only anomaly (409 on expectSameDay:true while the feature is disabled) stems from create_order checking window['sameDayOpen'], which is false both when the cutoff passed and when sameDayEnabled=false, reusing the 'window closed' message."
+}

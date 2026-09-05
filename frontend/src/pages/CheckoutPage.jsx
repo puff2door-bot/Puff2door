@@ -12,6 +12,7 @@ import SquarePayment from "../components/checkout/SquarePayment";
 import PayPalCheckout from "../components/checkout/PayPalCheckout";
 import ZelleInstructions from "../components/checkout/ZelleInstructions";
 import RewardsPanel from "../components/checkout/RewardsPanel";
+import DeliveryCountdown, { useDeliveryWindow } from "../components/DeliveryCountdown";
 
 const CheckoutPage = () => {
   const { items, subtotal, clearCart, toServerItem, pricing, delivery, promo, totals, redeemPoints } = useCart();
@@ -24,6 +25,9 @@ const CheckoutPage = () => {
   const { shipping, tax, discount, reward, total } = totals;
   const redeemRef = useRef(redeemPoints);
   redeemRef.current = redeemPoints;
+  const { window: deliveryWin, sameDayOpen } = useDeliveryWindow();
+  const sameDayRef = useRef(false);
+  sameDayRef.current = Boolean(deliveryWin?.enabled) && sameDayOpen;
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
@@ -90,7 +94,7 @@ const CheckoutPage = () => {
   const submitOrder = useCallback(async (extra) => {
     setBusy(true);
     try {
-      const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: form, paymentMethod: method, promoCode: promo?.code || "", redeemPoints: user ? redeemRef.current : 0, ...extra });
+      const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: form, paymentMethod: method, promoCode: promo?.code || "", redeemPoints: user ? redeemRef.current : 0, expectSameDay: sameDayRef.current, ...extra });
       ecommerce.purchase(data);
       setPlaced(true);
       clearCart();
@@ -101,7 +105,7 @@ const CheckoutPage = () => {
     } catch (err) {
       const status = err?.response?.status;
       const detail = err?.response?.data?.detail;
-      toast({ title: status === 409 ? "Stock changed" : status === 402 ? "Payment declined" : "Checkout failed", description: typeof detail === "string" ? detail : "Try again", variant: "destructive" });
+      toast({ title: status === 409 ? (detail && String(detail).includes("delivery") ? "Delivery window changed" : "Stock changed") : status === 402 ? "Payment declined" : "Checkout failed", description: typeof detail === "string" ? detail : "Try again", variant: "destructive" });
       throw err;
     } finally { setBusy(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -186,6 +190,7 @@ const CheckoutPage = () => {
                 <span>{zone.message}</span>
               </div>
             )}
+            {zone?.eligible && <DeliveryCountdown variant="inline" />}
           </section>
 
           <RewardsPanel />
