@@ -34,7 +34,7 @@ const RewardsPanel = () => {
         <Sparkles className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
         <p className="text-sm text-neutral-700">
           <span className="font-bold text-neutral-900">Earn {totals.pointsToEarn} Puff2door Rewards points on this order.</span>{" "}
-          <Link to="/my-account" className="text-emerald-700 font-semibold hover:underline" data-testid="rewards-signin-link">Sign in or create an account</Link> to collect points — every {per} points = ${loyalty.rewardValue.toFixed(2)} off a future order.
+          <Link to="/my-account" className="text-emerald-700 font-semibold hover:underline" data-testid="rewards-signin-link">Sign in or create an account</Link> to collect points{loyalty.signupBonusPoints ? ` (new members get ${loyalty.signupBonusPoints} bonus points)` : ""} — every {per} points = ${loyalty.rewardValue.toFixed(2)} off a future order.
         </p>
       </div>
     );

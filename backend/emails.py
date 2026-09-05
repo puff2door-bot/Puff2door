@@ -134,11 +134,20 @@ async def _send(to: List[str], subject: str, html: str, kind: str, meta: Optiona
     return record["status"]
 
 
+def rewards_box(rewards: Optional[dict]) -> str:
+    if not rewards or not rewards.get("earned"):
+        return ""
+    return f"""<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px 18px;margin:16px 0;">
+<p style="margin:0 0 4px;font-weight:800;color:#065f46;">You earned {rewards["earned"]:,} Puff2door Rewards points!</p>
+<p style="margin:0;font-size:13px;color:#374151;">Your balance is now <strong>{rewards["balance"]:,} points</strong> (worth {_money(rewards["value"])}). Every {rewards.get("pointsPerReward", 100)} points = {_money(rewards.get("rewardValue", 5))} off at checkout.</p>
+</div>"""
+
+
 def order_link(order: dict) -> str:
     return f"{_public_url}/order/{order['id']}"
 
 
-async def send_order_confirmation(order: dict, zelle: Optional[dict] = None):
+async def send_order_confirmation(order: dict, zelle: Optional[dict] = None, rewards: Optional[dict] = None):
     to = order.get("shipping", {}).get("email")
     n = order["orderNumber"]
     awaiting = order.get("paymentStatus") == "awaiting_payment"
@@ -149,6 +158,7 @@ async def send_order_confirmation(order: dict, zelle: Optional[dict] = None):
     if awaiting and zelle:
         body += zelle_box(zelle["recipient"], zelle["name"], zelle["amount"], zelle["memo"])
     body += items_table(order)
+    body += rewards_box(rewards)
     body += f'<p style="font-size:13px;color:#6b7280;margin:0 0 6px;"><strong style="color:#171717;">Delivering to</strong><br>{address_block(order["shipping"])}</p>'
     body += f'<p style="margin:24px 0 0;">{button("Track your order", order_link(order))}</p>'
     await _send([to], title, layout(title, body, intro), "order_confirmation", {"orderId": order["id"]})
@@ -169,12 +179,13 @@ async def notify_admin_new_order(order: dict):
     await _send([NOTIFY_EMAIL], title, layout(title, body), "admin_new_order", {"orderId": order["id"]})
 
 
-async def send_payment_received(order: dict):
+async def send_payment_received(order: dict, rewards: Optional[dict] = None):
     to = order.get("shipping", {}).get("email")
     n = order["orderNumber"]
     title = f"Payment received — order {n} is confirmed"
     body = f'<p style="font-size:15px;line-height:1.6;color:#374151;">Hi {escape(order["shipping"].get("firstName") or "there")}, we\'ve received your {PAY_LABEL.get(order.get("paymentMethod"), "")} payment of <strong>{_money(order["total"])}</strong>. Your order is confirmed and being prepared.</p>'
     body += items_table(order)
+    body += rewards_box(rewards)
     body += f'<p style="margin:24px 0 0;">{button("Track your order", order_link(order))}</p>'
     await _send([to], title, layout(title, body), "payment_received", {"orderId": order["id"]})
 

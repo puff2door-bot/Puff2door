@@ -172,7 +172,7 @@ REAL_CARD_PROVIDER = SQUARE_ENABLED or PAYPAL_ENABLED
 TEST_CARD_ENABLED = (not REAL_CARD_PROVIDER) or os.environ.get("ALLOW_TEST_CARD", "").lower() == "true"
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "zelle"}
 DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32832", "deliveryRadiusMiles": 20.0,
-                    "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0}
+                    "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50}
 _settings_cache: dict = {}
 
 
@@ -238,6 +238,7 @@ class LoyaltySettingsInput(BaseModel):
     minRedeemPoints: int = Field(default=100, ge=0)
     maxRedeemPerOrder: int = Field(default=0, ge=0)
     minPurchaseForRedeem: float = Field(default=0.0, ge=0)
+    signupBonusPoints: int = Field(default=50, ge=0, le=100000)
 
 
 class LoyaltyAdjustInput(BaseModel):
@@ -347,12 +348,12 @@ def compute_totals(subtotal: float, settings: dict, discount: float = 0.0) -> di
 
 # ---- Loyalty rewards: ledger-based (loyalty_transactions), all math server-side ----
 def loyalty_rules(settings: dict) -> dict:
-    return {k: settings.get(k, DEFAULT_SETTINGS[k]) for k in ("loyaltyEnabled", "pointsPerDollar", "pointsPerReward", "rewardValue", "minRedeemPoints", "maxRedeemPerOrder", "minPurchaseForRedeem")}
+    return {k: settings.get(k, DEFAULT_SETTINGS[k]) for k in ("loyaltyEnabled", "pointsPerDollar", "pointsPerReward", "rewardValue", "minRedeemPoints", "maxRedeemPerOrder", "minPurchaseForRedeem", "signupBonusPoints")}
 
 
 def loyalty_public_rules(settings: dict) -> dict:
     r = loyalty_rules(settings)
-    return {"enabled": bool(r["loyaltyEnabled"]), "pointsPerDollar": r["pointsPerDollar"], "pointsPerReward": r["pointsPerReward"], "rewardValue": r["rewardValue"], "minRedeemPoints": r["minRedeemPoints"], "maxRedeemPerOrder": r["maxRedeemPerOrder"], "minPurchaseForRedeem": r["minPurchaseForRedeem"]}
+    return {"enabled": bool(r["loyaltyEnabled"]), "pointsPerDollar": r["pointsPerDollar"], "pointsPerReward": r["pointsPerReward"], "rewardValue": r["rewardValue"], "minRedeemPoints": r["minRedeemPoints"], "maxRedeemPerOrder": r["maxRedeemPerOrder"], "minPurchaseForRedeem": r["minPurchaseForRedeem"], "signupBonusPoints": r["signupBonusPoints"]}
 
 
 def points_value(points: int, rules: dict) -> float:
@@ -393,6 +394,25 @@ async def loyalty_add(user_id: str, kind: str, points: int, key: str, descriptio
         return doc
     except Exception:
         return None
+
+
+async def loyalty_signup_bonus(user: dict) -> int:
+    """Welcome points for a brand-new account (idempotent via key signup:<userId>)."""
+    rules = loyalty_rules(await get_settings())
+    pts = int(rules["signupBonusPoints"])
+    if not rules["loyaltyEnabled"] or pts <= 0:
+        return 0
+    row = await loyalty_add(user["id"], "bonus", pts, f"signup:{user['id']}", "Welcome bonus — thanks for joining Puff2door Rewards")
+    return pts if row else 0
+
+
+async def loyalty_email_info(o: dict) -> Optional[dict]:
+    """Points earned + fresh balance for the paid-order emails (None for guests / nothing earned)."""
+    if not o.get("userId") or not o.get("pointsEarned"):
+        return None
+    rules = loyalty_rules(await get_settings())
+    bal = await loyalty_balance(o["userId"])
+    return {"earned": int(o["pointsEarned"]), "balance": bal["available"], "value": points_value(bal["available"], rules), "pointsPerReward": rules["pointsPerReward"], "rewardValue": rules["rewardValue"]}
 
 
 async def loyalty_award_for_order(o: dict):
@@ -908,8 +928,9 @@ async def register(inp: RegisterInput):
         "createdAt": now_utc(),
     }
     await db.users.insert_one(user)
+    bonus = await loyalty_signup_bonus(user)
     token = create_token(user["id"])
-    return {"token": token, "user": public_user(user)}
+    return {"token": token, "user": public_user(user), "signupBonusPoints": bonus}
 
 
 @api_router.post("/auth/login")
@@ -988,6 +1009,7 @@ async def google_session(inp: GoogleSessionInput, response: Response):
     name = (data.get("name") or "").strip()
     first, _, last = name.partition(" ")
     user = await db.users.find_one({"email": email})
+    bonus = 0
     if not user:
         user = {
             "id": str(uuid.uuid4()),
@@ -999,6 +1021,7 @@ async def google_session(inp: GoogleSessionInput, response: Response):
             "createdAt": now_utc(),
         }
         await db.users.insert_one(user)
+        bonus = await loyalty_signup_bonus(user)
     else:
         updates = {"picture": data.get("picture", "")}
         if not user.get("firstName"):
@@ -1017,7 +1040,7 @@ async def google_session(inp: GoogleSessionInput, response: Response):
         "session_token", session_token, httponly=True, secure=True, samesite="none",
         path="/", max_age=SESSION_DAYS * 24 * 3600,
     )
-    return {"token": session_token, "user": public_user(user)}
+    return {"token": session_token, "user": public_user(user), "signupBonusPoints": bonus}
 
 
 @api_router.post("/auth/logout")
@@ -1236,7 +1259,7 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
     if user:
         await db.carts.update_one({"userId": user["id"]}, {"$set": {"items": []}}, upsert=True)
     resp = order_response(order)
-    asyncio.create_task(emails.send_order_confirmation(order, resp.get("zelle")))
+    asyncio.create_task(emails.send_order_confirmation(order, resp.get("zelle"), await loyalty_email_info(order)))
     return resp
 
 
@@ -1982,7 +2005,7 @@ async def admin_update_order_payment(order_id: str, inp: PaymentStatusInput, adm
     updated = await db.orders.find_one({"id": order_id})
     if "paidAt" in updates:
         await loyalty_award_for_order(updated)
-        asyncio.create_task(emails.send_payment_received(updated))
+        asyncio.create_task(emails.send_payment_received(updated, await loyalty_email_info(updated)))
     if inp.paymentStatus == "refunded":
         await loyalty_reverse_for_order(updated, None, admin)
     return order_response(await db.orders.find_one({"id": order_id}))

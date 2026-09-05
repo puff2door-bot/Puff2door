@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { ChevronRight, Minus, Plus, ShoppingCart, Truck, ShieldCheck, RotateCcw, Star, Check, Heart, Bell, BellRing } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import ReviewsSection from "../components/ReviewsSection";
+import RewardsBadge from "../components/RewardsBadge";
 import { useCatalog } from "../context/CatalogContext";
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
@@ -142,6 +143,7 @@ const ProductDetail = () => {
               </>
             )}
           </div>
+          <RewardsBadge price={price} qty={qty} />
           <p className="text-neutral-600 leading-relaxed mb-5">{product.description}</p>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm mb-7 border border-neutral-200 rounded-xl p-4 bg-neutral-50" data-testid="product-specs">
             {productSpecs(product).map(([k, v]) => (

@@ -27,7 +27,7 @@ const SettingsForm = () => {
     e.preventDefault();
     setBusy(true);
     try {
-      const { data } = await api.put("/admin/loyalty/settings", { ...f, pointsPerDollar: Number(f.pointsPerDollar), pointsPerReward: Number(f.pointsPerReward), rewardValue: Number(f.rewardValue), minRedeemPoints: Number(f.minRedeemPoints), maxRedeemPerOrder: Number(f.maxRedeemPerOrder), minPurchaseForRedeem: Number(f.minPurchaseForRedeem) });
+      const { data } = await api.put("/admin/loyalty/settings", { ...f, pointsPerDollar: Number(f.pointsPerDollar), pointsPerReward: Number(f.pointsPerReward), rewardValue: Number(f.rewardValue), minRedeemPoints: Number(f.minRedeemPoints), maxRedeemPerOrder: Number(f.maxRedeemPerOrder), minPurchaseForRedeem: Number(f.minPurchaseForRedeem), signupBonusPoints: Number(f.signupBonusPoints) });
       setF(data);
       toast({ title: "Rewards settings saved", description: "New rules apply to all new orders and redemptions immediately." });
     } catch (err) {
@@ -50,6 +50,7 @@ const SettingsForm = () => {
         <Field label="Minimum points to redeem" hint="Customers need at least this many points to redeem."><input required type="number" min="0" step="1" data-testid="loyalty-min-redeem" className={inputCls} value={f.minRedeemPoints} onChange={(e) => setF({ ...f, minRedeemPoints: e.target.value })} /></Field>
         <Field label="Max points per order" hint="0 = no limit."><input required type="number" min="0" step="1" data-testid="loyalty-max-redeem" className={inputCls} value={f.maxRedeemPerOrder} onChange={(e) => setF({ ...f, maxRedeemPerOrder: e.target.value })} /></Field>
         <Field label="Minimum purchase to redeem ($)" hint="Merchandise total (after promo) required before rewards can be applied. 0 = none."><input required type="number" min="0" step="0.01" data-testid="loyalty-min-purchase" className={inputCls} value={f.minPurchaseForRedeem} onChange={(e) => setF({ ...f, minPurchaseForRedeem: e.target.value })} /></Field>
+        <Field label="Welcome bonus (points)" hint="Added once when a new account is created (email or Google). 0 = no bonus."><input required type="number" min="0" step="1" data-testid="loyalty-signup-bonus" className={inputCls} value={f.signupBonusPoints} onChange={(e) => setF({ ...f, signupBonusPoints: e.target.value })} /></Field>
       </div>
       <p className="text-sm text-neutral-600 border border-dashed rounded-2xl p-4" data-testid="loyalty-preview">A ${ex} merchandise order earns <b>{Math.floor(ex * Number(f.pointsPerDollar))} points</b> · {Number(f.pointsPerReward)} points = <b>${Number(f.rewardValue).toFixed(2)} off</b> ({Number(f.pointsPerReward) && Number(f.rewardValue) ? `${(Number(f.rewardValue) / Number(f.pointsPerReward) * 100).toFixed(1)}¢ per point` : "—"}).</p>
     </form>

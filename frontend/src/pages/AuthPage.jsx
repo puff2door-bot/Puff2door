@@ -138,9 +138,9 @@ const AuthPage = () => {
     if (!isStrongEnough(reg.password)) return toast({ title: "Weak password", description: "Use at least 8 characters with a letter and a number.", variant: "destructive" });
     setBusy(true);
     try {
-      await register(reg);
-      toast({ title: "Account created", description: "Welcome to Puff2Door!" });
-      navigate("/");
+      const created = await register(reg);
+      toast({ title: "Account created", description: created.signupBonusPoints ? `Welcome to Puff2Door! ${created.signupBonusPoints} bonus rewards points were added to your account.` : "Welcome to Puff2Door!" });
+      navigate("/my-account");
     } catch (err) {
       fail("Registration failed", err);
     } finally { setBusy(false); }

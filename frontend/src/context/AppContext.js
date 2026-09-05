@@ -59,7 +59,7 @@ export const AppProvider = ({ children }) => {
     const { data } = await api.post("/auth/register", payload);
     setToken(data.token);
     setUser(data.user);
-    return data.user;
+    return { ...data.user, signupBonusPoints: data.signupBonusPoints || 0 };
   };
 
   const loginWithGoogle = () => {

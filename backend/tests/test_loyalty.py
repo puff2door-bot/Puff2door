@@ -43,7 +43,7 @@ def product():
 
 @pytest.fixture(scope="module", autouse=True)
 def default_rules(admin):
-    body = {"loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0}
+    body = {"loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50}
     r = requests.put(f"{API}/admin/loyalty/settings", json=body, headers=auth(admin))
     assert r.status_code == 200, r.text
     yield
@@ -75,9 +75,11 @@ def test_loyalty_me_requires_auth():
     assert requests.get(f"{API}/loyalty/me").status_code == 401
 
 
-def test_new_customer_has_zero_balance(customer):
+def test_new_customer_gets_welcome_bonus(customer):
     d = me(customer["token"])
-    assert d["available"] == 0 and d["history"] == [] and d["redeemablePoints"] == 0
+    assert d["available"] == 50 and d["redeemablePoints"] == 0
+    assert d["history"][0]["type"] == "bonus" and d["history"][0]["points"] == 50
+    assert d["rules"]["signupBonusPoints"] == 50
 
 
 def test_guest_order_earns_nothing_and_cannot_redeem(product):
@@ -89,6 +91,7 @@ def test_guest_order_earns_nothing_and_cannot_redeem(product):
 
 
 def test_paid_order_earns_floor_of_merchandise_only(customer, product):
+    before = me(customer["token"])["available"]
     qty = max(1, int(120 // (product["salePrice"] or product["price"])) + 1)
     r = place(product, qty, customer["token"])
     assert r.status_code == 200, r.text
@@ -97,7 +100,7 @@ def test_paid_order_earns_floor_of_merchandise_only(customer, product):
     assert o["pointsEarned"] == expected and expected > 0
     assert o["tax"] > 0  # tax charged but not counted
     d = me(customer["token"])
-    assert d["available"] == expected
+    assert d["available"] == before + expected
     assert d["history"][0]["type"] == "earn" and d["history"][0]["points"] == expected and d["history"][0]["orderNumber"] == o["orderNumber"]
     customer["order1"] = o
 
@@ -209,7 +212,7 @@ def test_admin_endpoints_forbidden_for_customers(customer):
 
 
 def test_disabled_program_blocks_redeem_and_earning(customer, product, admin):
-    r = requests.put(f"{API}/admin/loyalty/settings", json={"loyaltyEnabled": False, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0}, headers=auth(admin))
+    r = requests.put(f"{API}/admin/loyalty/settings", json={"loyaltyEnabled": False, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50}, headers=auth(admin))
     assert r.status_code == 200 and r.json()["loyaltyEnabled"] is False
     assert requests.get(f"{API}/settings").json()["loyalty"]["enabled"] is False
     r = place(product, 1, customer["token"], extra={"redeemPoints": 100})
@@ -221,7 +224,7 @@ def test_disabled_program_blocks_redeem_and_earning(customer, product, admin):
 
 
 def test_store_settings_save_does_not_reset_loyalty(admin):
-    requests.put(f"{API}/admin/loyalty/settings", json={"loyaltyEnabled": True, "pointsPerDollar": 2.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0}, headers=auth(admin))
+    requests.put(f"{API}/admin/loyalty/settings", json={"loyaltyEnabled": True, "pointsPerDollar": 2.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50}, headers=auth(admin))
     s = requests.get(f"{API}/admin/settings", headers=auth(admin)).json()
     r = requests.put(f"{API}/admin/settings", json={"taxRate": s["taxRate"], "deliveryFee": s["deliveryFee"], "freeDeliveryMin": s["freeDeliveryMin"], "deliveryZip": s["deliveryZip"], "deliveryRadiusMiles": s["deliveryRadiusMiles"]}, headers=auth(admin))
     assert r.status_code == 200

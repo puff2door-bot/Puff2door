@@ -8,6 +8,7 @@ export const TX_META = {
   reverse: { label: "Reversed", icon: RotateCcw, cls: "text-red-700 bg-red-50" },
   redeem_return: { label: "Returned", icon: RotateCcw, cls: "text-blue-700 bg-blue-50" },
   adjust: { label: "Adjustment", icon: Wrench, cls: "text-neutral-700 bg-neutral-100" },
+  bonus: { label: "Bonus", icon: Gift, cls: "text-emerald-700 bg-emerald-50" },
 };
 
 export const HistoryTable = ({ history, showAdmin = false, testId = "rewards-history" }) => (
