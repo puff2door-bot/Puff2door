@@ -1,12 +1,14 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { NavLink, Link, Outlet } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle } from "lucide-react";
 import { useApp } from "../../context/AppContext";
+import api from "../../api";
 
 const nav = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/admin/products", label: "Products", icon: Package },
   { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
+  { to: "/admin/chat", label: "Live Chat", icon: MessageCircle, badge: "chat" },
   { to: "/admin/loyalty", label: "Loyalty Rewards", icon: Gift },
   { to: "/admin/alerts", label: "Restock Alerts", icon: Bell },
   { to: "/admin/banners", label: "Home Banners", icon: Images },
@@ -19,6 +21,16 @@ const nav = [
 
 const AdminLayout = () => {
   const { user, authLoading } = useApp();
+  const isAdmin = Boolean(user && user.role === "admin");
+  const [chatUnread, setChatUnread] = useState(0);
+
+  useEffect(() => {
+    if (!isAdmin) return undefined;
+    const poll = () => api.get("/admin/chat/conversations", { params: { status: "open" } }).then(({ data }) => setChatUnread(data.unreadTotal || 0)).catch(() => {});
+    poll();
+    const t = setInterval(poll, 10000);
+    return () => clearInterval(t);
+  }, [isAdmin]);
 
   if (authLoading) return <div className="max-w-[1280px] mx-auto px-4 py-24 text-center text-neutral-500">Loading...</div>;
   if (!user || user.role !== "admin") {
@@ -48,6 +60,7 @@ const AdminLayout = () => {
                   className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${isActive ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-neutral-100"}`}
                 >
                   <n.icon className="h-4 w-4" /> {n.label}
+                  {n.badge === "chat" && chatUnread > 0 && <span data-testid="admin-nav-chat-badge" className="ml-auto text-[11px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5">{chatUnread}</span>}
                 </NavLink>
               ))}
             </nav>

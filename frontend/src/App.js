@@ -35,6 +35,8 @@ import DeliveryAreaPage from "./pages/DeliveryAreaPage";
 import AdminBrands from "./pages/admin/AdminBrands";
 import AdminCategories from "./pages/admin/AdminCategories";
 import AdminLoyalty from "./pages/admin/AdminLoyalty";
+import AdminChat from "./pages/admin/AdminChat";
+import ChatWidget from "./components/chat/ChatWidget";
 import Seo, { setJsonLd } from "./seo/Seo";
 import Analytics from "./seo/Analytics";
 import { organizationJsonLd, websiteJsonLd } from "./seo/config";
@@ -92,6 +94,7 @@ const AppRoutes = () => {
         <Route path="products" element={<AdminProducts />} />
         <Route path="orders" element={<AdminOrders />} />
         <Route path="loyalty" element={<AdminLoyalty />} />
+        <Route path="chat" element={<AdminChat />} />
         <Route path="alerts" element={<AdminAlerts />} />
         <Route path="banners" element={<AdminBanners />} />
         <Route path="brands" element={<AdminBrands />} />
@@ -122,6 +125,7 @@ function App() {
                 <AppRoutes />
               </main>
               <Footer />
+              <ChatWidget />
               <Toaster />
             </BrowserRouter>
             </CatalogProvider>

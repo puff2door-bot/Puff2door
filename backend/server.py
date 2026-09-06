@@ -2311,6 +2311,235 @@ async def admin_stock_alerts(admin: dict = Depends(get_admin_user)):
     return {"alerts": alerts}
 
 
+# =====================================================================
+# Live chat (customer ↔ admin). Conversations are readable only with the
+# browser's secret token (or as admin). No public listing.
+# =====================================================================
+CHAT_DEFAULTS = {"chatEnabled": True, "chatOnline": True,
+                 "chatWelcome": "Hi! Welcome to Puff2door. How can we help you today?",
+                 "chatOffline": "We're currently offline. Leave us a message and we'll get back to you."}
+
+
+def chat_settings(settings: dict) -> dict:
+    return {k: settings.get(k, v) for k, v in CHAT_DEFAULTS.items()}
+
+
+class ChatSettingsInput(BaseModel):
+    chatEnabled: bool = True
+    chatOnline: bool = True
+    chatWelcome: str = Field(default=CHAT_DEFAULTS["chatWelcome"], max_length=500)
+    chatOffline: str = Field(default=CHAT_DEFAULTS["chatOffline"], max_length=500)
+
+
+class ChatStartInput(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    contact: str = Field(min_length=3, max_length=120)
+    message: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("contact")
+    @classmethod
+    def _contact(cls, v):
+        v = v.strip()
+        digits = re.sub(r"\D", "", v)
+        if "@" in v:
+            if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", v):
+                raise ValueError("Enter a valid email address")
+            return v.lower()
+        if len(digits) < 10:
+            raise ValueError("Enter a valid email or 10-digit phone number")
+        return v
+
+
+class ChatMessageInput(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+
+
+def chat_token_header(request: Request) -> str:
+    return (request.headers.get("X-Chat-Token") or "").strip()
+
+
+def chat_msg_out(m: dict) -> dict:
+    c = m.get("createdAt")
+    return {"id": m["id"], "sender": m["sender"], "text": m["text"], "createdAt": c.isoformat() if isinstance(c, datetime) else c}
+
+
+def chat_conv_out(c: dict, admin: bool = False) -> dict:
+    out = {"id": c["id"], "name": c.get("name", ""), "contact": c.get("contact", ""), "status": c.get("status", "open"),
+           "createdAt": c["createdAt"].isoformat() if isinstance(c.get("createdAt"), datetime) else c.get("createdAt"),
+           "lastMessageAt": c["lastMessageAt"].isoformat() if isinstance(c.get("lastMessageAt"), datetime) else c.get("lastMessageAt"),
+           "lastMessage": c.get("lastMessage", ""), "lastSender": c.get("lastSender", ""), "offline": bool(c.get("offline"))}
+    if admin:
+        out.update({"userId": c.get("userId"), "unreadAdmin": int(c.get("unreadAdmin", 0)), "resolvedAt": c["resolvedAt"].isoformat() if isinstance(c.get("resolvedAt"), datetime) else c.get("resolvedAt"), "page": c.get("page", "")})
+    else:
+        out["unreadCustomer"] = int(c.get("unreadCustomer", 0))
+    return out
+
+
+async def chat_conv_for_token(request: Request) -> dict:
+    token = chat_token_header(request)
+    if not token or len(token) < 20:
+        raise HTTPException(status_code=401, detail="Chat session missing")
+    c = await db.chat_conversations.find_one({"token": token})
+    if not c:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return c
+
+
+async def chat_add_message(conv: dict, sender: str, text: str) -> dict:
+    m = {"id": str(uuid.uuid4()), "conversationId": conv["id"], "sender": sender, "text": text.strip(), "createdAt": now_utc()}
+    await db.chat_messages.insert_one(m)
+    inc = {"unreadAdmin": 1} if sender == "customer" else {"unreadCustomer": 1}
+    sets = {"lastMessageAt": m["createdAt"], "lastMessage": m["text"][:200], "lastSender": sender}
+    if sender == "customer" and conv.get("status") == "resolved":
+        sets["status"] = "open"
+        sets["reopenedAt"] = m["createdAt"]
+    await db.chat_conversations.update_one({"id": conv["id"]}, {"$set": sets, "$inc": inc})
+    return m
+
+
+@api_router.get("/chat/status")
+async def chat_status():
+    s = chat_settings(await get_settings())
+    return {"enabled": s["chatEnabled"], "online": s["chatOnline"], "welcome": s["chatWelcome"], "offlineMessage": s["chatOffline"]}
+
+
+@api_router.post("/chat/start")
+async def chat_start(inp: ChatStartInput, request: Request, user: Optional[dict] = Depends(get_optional_user)):
+    s = chat_settings(await get_settings())
+    if not s["chatEnabled"]:
+        raise HTTPException(status_code=403, detail="Live chat is currently unavailable")
+    token = secrets.token_urlsafe(32)
+    conv = {"id": str(uuid.uuid4()), "token": token, "name": inp.name.strip(), "contact": inp.contact, "userId": user["id"] if user else None,
+            "status": "open", "offline": not s["chatOnline"], "unreadAdmin": 0, "unreadCustomer": 0, "createdAt": now_utc(), "lastMessageAt": now_utc(),
+            "page": (request.headers.get("referer") or "")[:200]}
+    await db.chat_conversations.insert_one(conv)
+    if s["chatWelcome"] and s["chatOnline"]:
+        await db.chat_messages.insert_one({"id": str(uuid.uuid4()), "conversationId": conv["id"], "sender": "admin", "text": s["chatWelcome"], "createdAt": now_utc(), "system": True})
+    m = await chat_add_message(conv, "customer", inp.message)
+    asyncio.create_task(emails.notify_admin_chat(conv, m["text"], not s["chatOnline"]))
+    fresh = await db.chat_conversations.find_one({"id": conv["id"]})
+    msgs = await db.chat_messages.find({"conversationId": conv["id"]}).sort("createdAt", 1).to_list(500)
+    return {"token": token, "conversation": chat_conv_out(fresh), "messages": [chat_msg_out(x) for x in msgs], "online": s["chatOnline"], "offlineMessage": s["chatOffline"]}
+
+
+@api_router.get("/chat/conversation")
+async def chat_get(request: Request, after: str = ""):
+    conv = await chat_conv_for_token(request)
+    q = {"conversationId": conv["id"]}
+    if after:
+        try:
+            q["createdAt"] = {"$gt": datetime.fromisoformat(after)}
+        except ValueError:
+            pass
+    msgs = await db.chat_messages.find(q).sort("createdAt", 1).to_list(500)
+    if conv.get("unreadCustomer"):
+        await db.chat_conversations.update_one({"id": conv["id"]}, {"$set": {"unreadCustomer": 0}})
+        conv["unreadCustomer"] = 0
+    s = chat_settings(await get_settings())
+    return {"conversation": chat_conv_out(conv), "messages": [chat_msg_out(x) for x in msgs], "online": s["chatOnline"], "enabled": s["chatEnabled"], "offlineMessage": s["chatOffline"]}
+
+
+@api_router.get("/chat/unread")
+async def chat_unread(request: Request):
+    conv = await chat_conv_for_token(request)
+    return {"unread": int(conv.get("unreadCustomer", 0)), "status": conv.get("status", "open")}
+
+
+@api_router.post("/chat/message")
+async def chat_send(inp: ChatMessageInput, request: Request):
+    conv = await chat_conv_for_token(request)
+    s = chat_settings(await get_settings())
+    if not s["chatEnabled"]:
+        raise HTTPException(status_code=403, detail="Live chat is currently unavailable")
+    m = await chat_add_message(conv, "customer", inp.message)
+    if not s["chatOnline"]:
+        asyncio.create_task(emails.notify_admin_chat(conv, m["text"], True))
+    return chat_msg_out(m)
+
+
+# ---- Admin: live chat ----
+@api_router.get("/admin/chat/settings")
+async def admin_chat_settings(admin: dict = Depends(get_admin_user)):
+    return chat_settings(await get_settings())
+
+
+@api_router.put("/admin/chat/settings")
+async def admin_put_chat_settings(inp: ChatSettingsInput, admin: dict = Depends(get_admin_user)):
+    global _settings_cache
+    await db.site_settings.update_one({"key": "store"}, {"$set": {**inp.model_dump(), "updatedAt": now_utc(), "updatedBy": admin["id"]}}, upsert=True)
+    _settings_cache = {}
+    return chat_settings(await get_settings())
+
+
+@api_router.get("/admin/chat/conversations")
+async def admin_chat_list(status: str = "open", q: str = "", admin: dict = Depends(get_admin_user)):
+    query: dict = {}
+    if status in ("open", "resolved"):
+        query["status"] = status
+    if q.strip():
+        rx = {"$regex": re.escape(q.strip()), "$options": "i"}
+        query["$or"] = [{"name": rx}, {"contact": rx}, {"lastMessage": rx}]
+    rows = await db.chat_conversations.find(query).sort("lastMessageAt", -1).to_list(300)
+    unread_total = 0
+    async for c in db.chat_conversations.find({"status": "open", "unreadAdmin": {"$gt": 0}}, {"unreadAdmin": 1}):
+        unread_total += int(c["unreadAdmin"])
+    open_count = await db.chat_conversations.count_documents({"status": "open"})
+    return {"conversations": [chat_conv_out(c, admin=True) for c in rows], "unreadTotal": unread_total, "openCount": open_count, "settings": chat_settings(await get_settings())}
+
+
+@api_router.get("/admin/chat/conversations/{conv_id}")
+async def admin_chat_get(conv_id: str, after: str = "", admin: dict = Depends(get_admin_user)):
+    conv = await db.chat_conversations.find_one({"id": conv_id})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    q = {"conversationId": conv_id}
+    if after:
+        try:
+            q["createdAt"] = {"$gt": datetime.fromisoformat(after)}
+        except ValueError:
+            pass
+    msgs = await db.chat_messages.find(q).sort("createdAt", 1).to_list(1000)
+    if conv.get("unreadAdmin"):
+        await db.chat_conversations.update_one({"id": conv_id}, {"$set": {"unreadAdmin": 0}})
+        conv["unreadAdmin"] = 0
+    others = await db.chat_conversations.find({"id": {"$ne": conv_id}, "$or": [{"contact": conv.get("contact")}] + ([{"userId": conv["userId"]}] if conv.get("userId") else [])}).sort("lastMessageAt", -1).to_list(50)
+    return {"conversation": chat_conv_out(conv, admin=True), "messages": [chat_msg_out(x) for x in msgs], "previous": [chat_conv_out(c, admin=True) for c in others]}
+
+
+@api_router.post("/admin/chat/conversations/{conv_id}/reply")
+async def admin_chat_reply(conv_id: str, inp: ChatMessageInput, admin: dict = Depends(get_admin_user)):
+    conv = await db.chat_conversations.find_one({"id": conv_id})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    m = await chat_add_message(conv, "admin", inp.message)
+    await db.chat_conversations.update_one({"id": conv_id}, {"$set": {"lastAdminId": admin["id"], "unreadAdmin": 0}})
+    return chat_msg_out(m)
+
+
+class ChatStatusInput(BaseModel):
+    status: str
+
+    @field_validator("status")
+    @classmethod
+    def _st(cls, v):
+        if v not in ("open", "resolved"):
+            raise ValueError("status must be open or resolved")
+        return v
+
+
+@api_router.put("/admin/chat/conversations/{conv_id}/status")
+async def admin_chat_status(conv_id: str, inp: ChatStatusInput, admin: dict = Depends(get_admin_user)):
+    sets = {"status": inp.status, "statusUpdatedBy": admin["id"]}
+    sets["resolvedAt" if inp.status == "resolved" else "reopenedAt"] = now_utc()
+    if inp.status == "resolved":
+        sets["unreadAdmin"] = 0
+    res = await db.chat_conversations.update_one({"id": conv_id}, {"$set": sets})
+    if not res.matched_count:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return chat_conv_out(await db.chat_conversations.find_one({"id": conv_id}), admin=True)
+
+
+
 app.include_router(api_router)
 
 app.add_middleware(
@@ -2338,6 +2567,9 @@ async def create_indexes():
     await db.loyalty_transactions.create_index("key", unique=True)
     await db.loyalty_transactions.create_index([("userId", 1), ("createdAt", -1)])
     await db.loyalty_transactions.create_index("orderId")
+    await db.chat_conversations.create_index("token", unique=True)
+    await db.chat_conversations.create_index([("status", 1), ("lastMessageAt", -1)])
+    await db.chat_messages.create_index([("conversationId", 1), ("createdAt", 1)])
 
 
 @app.on_event("startup")

@@ -1,0 +1,27 @@
+{
+  "summary": "Full end-to-end browser testing of the new Puff2Door Live Chat feature (customer↔admin) using two isolated browser contexts. All 9 requested scenarios PASSED: customer start flow (desktop + mobile 390 launcher), contact validation error, token persistence in localStorage across close/reopen and page reload, admin sidebar nav badge + chat-unread-total, real-time round trip (admin→customer and customer→admin within 3s poll), resolve → resolved tab + chat-resolved-note, reopen from resolved, auto-reopen when customer sends after resolve, launcher chat-unread-badge appearing within ~8s when window closed and clearing on open, previous conversations panel + All-tab search on same email, offline-mode intro/button/status + admin 'offline message' tag, welcome-message persistence, Chat OFF hides launcher (verified via API+reload), /admin has no launcher, homepage delivery countdown still present, and API security spot checks (401/404/403 as expected).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_chat.py"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ChatWidget useEffect only calls /api/chat/status once at mount. Consequence: if admin changes chatEnabled/chatOnline/welcome while a storefront tab is open, the customer must reload to see the change. Real-time settings refresh could be added by polling /chat/status alongside the existing 3s poll, or by reading enabled/online/offlineMessage from GET /chat/conversation (already returned) whenever token exists. Not blocking — reload picks up changes correctly.",
+    "Admin AdminLayout badge polls /admin/chat/conversations every 10s just to read unreadTotal. A cheaper GET /admin/chat/unread-count endpoint would reduce payload; not urgent.",
+    "chat-status text on launcher window: the StatusDot renders with a leading space (' Online' / ' Offline') because the flex gap emits a whitespace inside the span. Cosmetic only; text-content assertions must .strip()."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (API security + status spot checks 6/6)", "frontend": "100% (all 9 requested scenarios verified end-to-end)"},
+  "test_credentials": "admin@puff2door.com / Puff2Door-Admin1 (login works via /my-account → [data-testid=login-submit]). Customer chat needs no account — used random test_e2e_<rand>@example.com per run.",
+  "seed_data_creation": "Created three TEST chat conversations tied to random emails (test_e2e_ksgg4v@example.com — 2 threads, test_e2e_off_ksgg4v@example.com — 1 offline thread, plus one earlier test_e2e_tn0zre@example.com and API-only test_sec@example.com). All resolved-or-open state left; admin can bulk-clean if needed. No product/order/user data touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Chat feature fully verified. Key data-testids confirmed working: chat-launcher, chat-window, chat-status, chat-intro, chat-name, chat-contact, chat-first-message, chat-start-submit, chat-start-form, chat-error, chat-msg-admin, chat-msg-customer, chat-input, chat-send, chat-close, chat-resolved-note, chat-unread-badge, chat-settings, chat-setting-enabled, chat-setting-online, chat-setting-welcome, chat-setting-offline, chat-settings-save, chat-tab-open, chat-tab-resolved, chat-tab-all, chat-search, chat-list, chat-conv-unread, chat-thread, chat-thread-name, chat-thread-contact, chat-reply-input, chat-reply-send, chat-resolve, chat-reopen, chat-previous, chat-unread-total, admin-nav-live-chat, admin-nav-chat-badge, admin-msg-admin, admin-msg-customer. IMPORTANT: age-gate button text is 'Yes, I am 21+' (not 'I'm 21+'). Always dismiss via get_by_role('button', name='Yes, I am 21+'). Login button data-testid=login-submit on /my-account. When toggling Chat OFF via the admin UI form, ensure the previous form save has fully re-loaded settings before toggling the checkbox — one UI attempt saw a race; the underlying feature works (verified via direct PUT /api/admin/chat/settings + storefront reload). Restored settings: chatEnabled=true, chatOnline=true, welcome='Hi! Welcome to Puff2door. How can we help you today?', offline=\"We're currently offline. Leave us a message and we'll get back to you.\".",
+  "rca_of_the_issue": "N/A — feature works as spec'd. One transient UI test failure ('launcher hidden when Chat OFF') was reproduced against the API path and confirmed working end-to-end (GET /api/chat/status returns enabled:false and ChatWidget returns null). Root cause of the flaky UI step: after previously reloading the admin page, the checkbox click + save fired before ChatSettings' useEffect(setF(settings)) had fully synced; the save may have posted a stale form snapshot. Not a product bug."
+}

@@ -179,6 +179,16 @@ async def notify_admin_new_order(order: dict):
     await _send([NOTIFY_EMAIL], title, layout(title, body), "admin_new_order", {"orderId": order["id"]})
 
 
+async def notify_admin_chat(conv: dict, text: str, offline: bool):
+    if not NOTIFY_EMAIL or is_test_address(conv.get("contact")):
+        return
+    title = f"{'Offline message' if offline else 'New live chat'} from {conv.get('name') or 'a customer'}"
+    body = f'<p style="font-size:14px;color:#374151;">{escape(conv.get("name", ""))} · {escape(conv.get("contact", ""))}</p>'
+    body += f'<blockquote style="margin:12px 0;padding:12px 16px;background:#f5f5f5;border-left:4px solid #059669;border-radius:8px;font-size:14px;color:#111;">{escape(text)}</blockquote>'
+    body += f'<p style="margin:20px 0 0;">{button("Reply in admin", f"{_public_url}/admin/chat")}</p>'
+    await _send([NOTIFY_EMAIL], title, layout(title, body), "admin_chat", {"conversationId": conv["id"]})
+
+
 async def send_payment_received(order: dict, rewards: Optional[dict] = None):
     to = order.get("shipping", {}).get("email")
     n = order["orderNumber"]
