@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { CreditCard, Lock, ChevronRight, ShieldCheck, MapPin, CheckCircle2, XCircle } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { useApp } from "../context/AppContext";
+import { useCatalog } from "../context/CatalogContext";
 import { useToast } from "../hooks/use-toast";
 import { usStates } from "../mock";
 import api, { imgUrl } from "../api";
@@ -15,8 +16,9 @@ import RewardsPanel from "../components/checkout/RewardsPanel";
 import DeliveryCountdown, { useDeliveryWindow } from "../components/DeliveryCountdown";
 
 const CheckoutPage = () => {
-  const { items, subtotal, clearCart, toServerItem, pricing, delivery, promo, totals, redeemPoints } = useCart();
+  const { items, subtotal, clearCart, removeItem, toServerItem, pricing, delivery, promo, totals, redeemPoints } = useCart();
   const { user } = useApp();
+  const { products, getProductById, refresh: refreshCatalog } = useCatalog();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
@@ -105,7 +107,9 @@ const CheckoutPage = () => {
     } catch (err) {
       const status = err?.response?.status;
       const detail = err?.response?.data?.detail;
-      toast({ title: status === 409 ? (detail && String(detail).includes("delivery") ? "Delivery window changed" : "Stock changed") : status === 402 ? "Payment declined" : "Checkout failed", description: typeof detail === "string" ? detail : "Try again", variant: "destructive" });
+      if (status === 409) refreshCatalog();
+      const title = status === 409 ? (String(detail || "").includes("delivery") ? "Delivery window changed" : String(detail || "").includes("PayPal") ? "Payment in progress" : "Stock changed") : status === 402 ? "Payment declined" : "Checkout failed";
+      toast({ title, description: typeof detail === "string" ? detail : "Try again", variant: "destructive" });
       throw err;
     } finally { setBusy(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,15 +149,30 @@ const CheckoutPage = () => {
     }
   };
 
+  const stockIssues = products.length ? items.flatMap((it) => {
+    const p = getProductById(it.id);
+    if (!p || !p.inStock || p.stock <= 0) return [{ id: it.id, message: `${it.name} is sold out.` }];
+    if (it.qty > p.stock) return [{ id: it.id, message: `Only ${p.stock} left of ${it.name} (you have ${it.qty}).` }];
+    return [];
+  }) : [];
+
   const paypalCreate = async () => {
-    const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "", zip: form.zip, redeemPoints: user ? redeemRef.current : 0 });
-    return data.id;
+    if (stockIssues.length) throw new Error(stockIssues.map((s) => s.message).join(" "));
+    try {
+      const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "", zip: form.zip, redeemPoints: user ? redeemRef.current : 0 });
+      return data.id;
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      if (err?.response?.status === 409) refreshCatalog();
+      throw new Error(typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d) => d.msg).join(", ") : "Could not start PayPal checkout. Please try again.");
+    }
   };
 
-  const payError = (msg) => toast({ title: "Payment problem", description: msg, variant: "destructive" });
+  const payError = (msg) => toast({ title: "Payment problem", description: typeof msg === "string" && msg ? msg : "Please try again.", variant: "destructive" });
   const methods = payConfig ? enabledMethods(payConfig) : [];
   const buttonDriven = method === "paypal" || method === "cash_app";
   const outOfZone = Boolean(zone && !zone.eligible);
+  const blocked = outOfZone || stockIssues.length > 0;
 
   const inputCls = "w-full border border-neutral-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-600 transition-colors";
 
@@ -201,6 +220,15 @@ const CheckoutPage = () => {
             <p className="text-xs text-neutral-500 mb-4">Choose how you'd like to pay.</p>
             {outOfZone ? (
               <p data-testid="payment-blocked" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">Sorry, we only deliver within {delivery.radiusMiles} miles of {delivery.zip}. Enter an eligible ZIP code to continue to payment.</p>
+            ) : stockIssues.length > 0 ? (
+              <div data-testid="stock-blocked" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                <p className="font-bold mb-1">Some items in your cart are no longer available:</p>
+                <ul className="list-disc pl-5 space-y-0.5">{stockIssues.map((s) => <li key={s.id} data-testid={`stock-issue-${s.id}`}>{s.message}</li>)}</ul>
+                <div className="mt-2 flex flex-wrap gap-3">
+                  <Link to="/cart" data-testid="stock-fix-cart" className="font-bold underline">Update your cart</Link>
+                  <button type="button" data-testid="stock-remove-all" onClick={() => stockIssues.forEach((s) => removeItem(s.id))} className="font-bold underline">Remove unavailable items</button>
+                </div>
+              </div>
             ) : !payConfig ? (
               <p className="text-sm text-neutral-500">Loading payment options...</p>
             ) : methods.length === 0 ? (
@@ -220,6 +248,7 @@ const CheckoutPage = () => {
                   )}
                   {method === "paypal" && (
                     <PayPalCheckout config={payConfig.paypal} validate={validateShipping} createOrder={paypalCreate} onError={payError}
+                      onCancel={() => toast({ title: "PayPal cancelled", description: "You were not charged. Choose a payment method to try again." })}
                       onApprove={(paypalOrderId) => submitOrder({ paypalOrderId }).catch(() => {})} />
                   )}
                   {method === "zelle" && <ZelleInstructions recipient={payConfig.zelle.email} name={payConfig.zelle.name} amount={total} />}
@@ -264,10 +293,12 @@ const CheckoutPage = () => {
             </div>
             {outOfZone ? (
               <p data-testid="checkout-submit-blocked" className="mt-5 text-center text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-full py-3 px-4">Outside our {delivery.radiusMiles}-mile delivery area</p>
+            ) : stockIssues.length > 0 ? (
+              <p data-testid="checkout-submit-stock-blocked" className="mt-5 text-center text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-full py-3 px-4">Update your cart to continue — some items are unavailable</p>
             ) : buttonDriven ? (
               <p data-testid="checkout-button-hint" className="mt-5 text-center text-xs text-neutral-500 border border-dashed rounded-full py-3 px-4">Complete your payment with the {method === "paypal" ? "PayPal" : "Cash App Pay"} button in the Payment section.</p>
             ) : (
-              <button disabled={busy || !method || outOfZone} data-testid="checkout-submit" className="w-full mt-5 py-3.5 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+              <button disabled={busy || !method || blocked} data-testid="checkout-submit" className="w-full mt-5 py-3.5 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
                 <ShieldCheck className="h-5 w-5" /> {busy ? "Processing..." : method === "zelle" ? "Place Order — Pay via Zelle" : `Pay $${total.toFixed(2)}`}
               </button>
             )}

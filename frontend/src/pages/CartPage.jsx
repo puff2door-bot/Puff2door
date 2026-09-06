@@ -3,7 +3,17 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Trash2, Minus, Plus, ShoppingBag, ArrowRight, Tag } from "lucide-react";
 import { useCart } from "../context/CartContext";
+import { useCatalog } from "../context/CatalogContext";
 import { useToast } from "../hooks/use-toast";
+
+const StockNote = ({ item }) => {
+  const { products, getProductById } = useCatalog();
+  if (!products.length) return null;
+  const p = getProductById(item.id);
+  if (!p || !p.inStock || p.stock <= 0) return <p data-testid={`cart-stock-${item.id}`} className="text-xs font-bold text-red-600 mt-1">Sold out — remove to continue</p>;
+  if (item.qty > p.stock) return <p data-testid={`cart-stock-${item.id}`} className="text-xs font-bold text-red-600 mt-1">Only {p.stock} left — lower the quantity</p>;
+  return null;
+};
 
 const CartPage = () => {
   const { items, updateQty, removeItem, subtotal, clearCart, pricing, promo, applyPromo, removePromo, totals } = useCart();
@@ -54,6 +64,7 @@ const CartPage = () => {
                 <div className="flex-1 min-w-0">
                   <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide">{it.category}</p>
                   <Link to={`/shop/${it.slug}`} className="block text-sm font-medium text-neutral-800 line-clamp-2 hover:text-emerald-600">{it.name}</Link>
+                  <StockNote item={it} />
                   <p className="font-heading text-lg mt-1">${it.price.toFixed(2)}</p>
                 </div>
                 <div className="flex flex-col items-end justify-between">

@@ -3,11 +3,11 @@ import { Loader2 } from "lucide-react";
 import { loadScript } from "../../lib/loadScript";
 
 // PayPal JS SDK buttons; order is created & captured server-side.
-const PayPalCheckout = ({ config, createOrder, onApprove, onError, validate }) => {
+const PayPalCheckout = ({ config, createOrder, onApprove, onError, onCancel, validate }) => {
   const [state, setState] = useState("loading");
   const containerRef = useRef(null);
-  const handlers = useRef({ createOrder, onApprove, onError, validate });
-  handlers.current = { createOrder, onApprove, onError, validate };
+  const handlers = useRef({ createOrder, onApprove, onError, onCancel, validate });
+  handlers.current = { createOrder, onApprove, onError, onCancel, validate };
 
   useEffect(() => {
     let buttons;
@@ -22,6 +22,7 @@ const PayPalCheckout = ({ config, createOrder, onApprove, onError, validate }) =
           onClick: (data, actions) => (handlers.current.validate() ? actions.resolve() : actions.reject()),
           createOrder: () => handlers.current.createOrder(),
           onApprove: (data) => handlers.current.onApprove(data.orderID),
+          onCancel: () => handlers.current.onCancel?.(),
           onError: (err) => handlers.current.onError(err?.message || "PayPal error"),
         });
         if (containerRef.current) {

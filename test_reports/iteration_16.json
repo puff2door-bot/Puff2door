@@ -1,0 +1,31 @@
+{
+  "summary": "Verified PayPal 409 stock-blocked bug fix on Puff2Door: stale cart with sold-out product 33 + valid product 1, over-quantity for product 14, PayPal validation gate, PayPal server-side stock enforcement, POST /api/orders with unknown paypalOrderId, and Zelle regression. All requested UI selectors and API responses match the spec. PayPal popup cancel flow was skipped (cannot safely automate PayPal Smart Buttons popup without real sandbox buyer creds).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/payments/paypal/create-order", "issue": "Stock error message uses the client-provided item name (e.g. 'x is sold out' when client sent name='x'), not the DB product name. Bug spec example matched only because the frontend sends the real name; a malicious/misconfigured client could see a misleading label. Minor cosmetic — server should look up product name from DB when returning the 409 message."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_payments_mock.py"],
+  "action_items": [
+    "(Optional) Return the DB product name in the /api/payments/paypal/create-order 409 detail instead of echoing the client-supplied item name."
+  ],
+  "critical_code_review_comments": [
+    "CheckoutPage.jsx stockIssues (L152) recomputes every render from products list; fine but consider memoizing to avoid needless re-renders while typing.",
+    "paypalCreate (L159) surfaces server detail correctly; refreshCatalog() on 409 is a nice touch. Consider showing the toast automatically instead of relying on PayPal SDK's onError propagation.",
+    "Server 409 message uses the untrusted client-supplied name — see minor backend issue above."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (4/4 API spot checks passed)", "frontend": "100% (5/5 executed scenarios passed; PayPal cancel skipped as instructed)"},
+  "test_credentials": "admin@puff2door.com / Puff2Door-Admin1 (not needed for these tests). Age gate bypass via localStorage p2d_age_ok='true'.",
+  "seed_data_creation": "One TEST Zelle order created via UI (order id 474b18e2-b37f-46d1-be65-ccb02c712984, P2D-45819461, shipping name 'TESTZelle User', email TEST_zelle@example.com, ZIP 32832, awaiting Zelle payment). No PayPal orders created.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "PayPal bug fix confirmed. Evidence: (1) /cart with product 33 in localStorage shows [data-testid=cart-stock-33]='Sold out — remove to continue'. (2) /checkout ZIP=32832 with sold-out cart shows [data-testid=stock-blocked] listing 'MUHA CARTRIDGE 1G SATIVA JACK HERER is sold out.', paypal-panel absent, [data-testid=checkout-submit-stock-blocked] visible. (3) Clicking [data-testid=stock-remove-all] removes sold-out items from localStorage cart and PayPal Smart Buttons render within ~3s. (4) Over-qty product 14 qty=999 → 'Only 52 left of Test 14 (you have 999).'; lowering qty clears the block. (5) Clicking PayPal button with empty delivery fields shows toast 'Missing delivery details / Please fill in all delivery fields first.' and does NOT open PayPal popup (actions.reject worked). (6) POST /api/payments/paypal/create-order: productId 33 → 409 'MUHA CARTRIDGE 1G SATIVA JACK HERER is sold out'; productId 14 qty 999 → 409 'Only 52 left of Test'; valid product → 200 {id,total:57.60}. (7) POST /api/orders paymentMethod=paypal paypalOrderId=UNKNOWN → 402 'PayPal order not found. Please try again.'. (8) Zelle end-to-end: full form + ZIP 32832 + Zelle → lands on /order/474b18e2… (not bounced). Rewards panel visible on checkout for anon user showing 'Earn 40 Puff2door Rewards points'. Delivery countdown 'Order within 19h 48m for today's local delivery · cutoff 8:00 PM ET' visible. GET /api/products returns 67 products. PayPal popup cancel test: SKIPPED — PayPal Smart Buttons open a real popup that cannot be reliably automated without a sandbox buyer credential; onCancel handler is present in code (CheckoutPage.jsx L251) and wired to toast 'PayPal cancelled / You were not charged…'.",
+  "rca_of_the_issue": "Original 409 'Payment problem — Request failed with status code 409' happened because the frontend passed axios's generic error message instead of the server's detail. Fix chain verified: (a) UI now blocks payment via stockIssues derived from live catalog + shows readable list + Remove all button; (b) paypalCreate reads err.response.data.detail and re-throws it so any surviving 409 (race) surfaces the real reason; (c) backend still returns proper 409 with the item name for both sold-out and over-qty paths, and 402 for unknown paypalOrderId. All acceptance criteria met."
+}

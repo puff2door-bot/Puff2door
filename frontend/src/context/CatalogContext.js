@@ -70,6 +70,7 @@ export const CatalogProvider = ({ children }) => {
     }).filter((t) => t.image);
     return {
       products,
+      refresh,
       home,
       activeCategories,
       activeBrands,

@@ -627,7 +627,8 @@ async def price_cart(items: List[CartItem], promo_code: str = "", redeem_points:
             continue
         if int(prod.get("stock", 0)) < it.qty:
             left = int(prod.get("stock", 0))
-            problems.append(f"Only {left} left of {it.name}" if left else f"{it.name} is sold out")
+            name = prod.get("name") or it.name
+            problems.append(f"Only {left} left of {name}" if left else f"{name} is sold out")
             continue
         base = prod["price"]
         sale = prod.get("salePrice")
@@ -1272,12 +1273,29 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
     window = delivery_window(await get_settings())
     if inp.expectSameDay and not window["sameDayOpen"]:
         raise HTTPException(status_code=409, detail=window["message"] or "Same-day delivery is not available right now. Your order will be scheduled for the next available delivery day.")
+    pending = None
+    if method == "paypal":
+        if not inp.paypalOrderId:
+            raise HTTPException(status_code=400, detail="Missing PayPal order")
+        pending = await db.paypal_orders.find_one({"paypalOrderId": inp.paypalOrderId})
+        if not pending:
+            raise HTTPException(status_code=402, detail="PayPal order not found. Please try again.")
+        if pending.get("captured"):
+            existing = await db.orders.find_one({"id": pending.get("orderId", "")}) if pending.get("orderId") else None
+            if existing:
+                return order_response(existing)  # duplicate submission of an already-captured payment → same order, no second charge
+            raise HTTPException(status_code=402, detail="This PayPal payment was already used.")
+        if pending.get("capturing"):
+            raise HTTPException(status_code=409, detail="This PayPal payment is already being processed. Please wait a moment.")
     priced_items, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user)
     subtotal, shipping_cost, total = totals["subtotal"], totals["shippingCost"], totals["total"]
+    if pending and abs(pending["total"] - total) > 0.01:
+        raise HTTPException(status_code=402, detail="PayPal order does not match your cart. Please try again.")
     await reserve_stock(priced_items)
     order_id = str(uuid.uuid4())
     order_number = "P2D-" + "".join(random.choices("0123456789", k=8))
     payment = {"paymentMethod": method, "paymentStatus": "paid", "paymentRef": "", "paymentLast4": inp.paymentLast4, "paymentBrand": ""}
+    paypal_locked = False
     try:
         if method in ("square", "cash_app"):
             if not inp.paymentToken:
@@ -1288,27 +1306,30 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
             card = pay.get("card_details", {}).get("card", {})
             payment.update({"paymentRef": pay.get("id", ""), "paymentLast4": card.get("last_4", ""), "paymentBrand": card.get("card_brand", "Cash App" if method == "cash_app" else "")})
         elif method == "paypal":
-            if not inp.paypalOrderId:
-                raise HTTPException(status_code=400, detail="Missing PayPal order")
-            pending = await db.paypal_orders.find_one({"paypalOrderId": inp.paypalOrderId, "captured": False})
-            if not pending or abs(pending["total"] - total) > 0.01:
-                raise HTTPException(status_code=402, detail="PayPal order does not match your cart. Please try again.")
+            lock = await db.paypal_orders.update_one({"paypalOrderId": inp.paypalOrderId, "captured": False, "capturing": {"$ne": True}}, {"$set": {"capturing": True, "capturingAt": now_utc(), "orderId": order_id}})
+            if lock.modified_count == 0:
+                raise HTTPException(status_code=409, detail="This PayPal payment is already being processed. Please wait a moment.")
+            paypal_locked = True
             cap = await paypal_request("POST", f"/v2/checkout/orders/{inp.paypalOrderId}/capture")
             if cap.get("status") != "COMPLETED":
                 raise HTTPException(status_code=402, detail=f"PayPal payment {cap.get('status', 'failed').lower()}")
             capture_id = cap["purchase_units"][0]["payments"]["captures"][0]["id"]
-            await db.paypal_orders.update_one({"paypalOrderId": inp.paypalOrderId}, {"$set": {"captured": True, "orderId": order_id}})
+            await db.paypal_orders.update_one({"paypalOrderId": inp.paypalOrderId}, {"$set": {"captured": True, "capturing": False, "capturedAt": now_utc(), "captureId": capture_id, "orderId": order_id}})
             payment.update({"paymentRef": capture_id, "paymentBrand": "PayPal", "paymentLast4": (cap.get("payer", {}).get("email_address") or "")})
         elif method == "zelle":
             payment.update({"paymentStatus": "awaiting_payment", "paymentBrand": "Zelle"})
         elif method == "test_card":
             digits = re.sub(r"\D", "", inp.paymentLast4)
             payment.update({"paymentLast4": digits[-4:], "paymentBrand": "Test Card"})
-    except HTTPException:
+    except HTTPException as e:
         await release_stock(priced_items)
+        if paypal_locked:
+            await db.paypal_orders.update_one({"paypalOrderId": inp.paypalOrderId, "captured": False}, {"$set": {"capturing": False, "lastError": str(e.detail)[:300]}})
         raise
     except Exception as e:
         await release_stock(priced_items)
+        if paypal_locked:
+            await db.paypal_orders.update_one({"paypalOrderId": inp.paypalOrderId, "captured": False}, {"$set": {"capturing": False, "lastError": str(e)[:300]}})
         logger.error("Payment error: %s", e)
         raise HTTPException(status_code=502, detail="Payment provider error. You were not charged.")
     order = {
