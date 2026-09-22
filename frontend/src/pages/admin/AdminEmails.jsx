@@ -41,7 +41,7 @@ const AdminEmails = () => {
       {data.emails.length === 0 ? (
         <p className="text-neutral-500 border border-dashed rounded-2xl p-10 text-center">No emails sent yet.</p>
       ) : (
-        <div className="border border-neutral-200 rounded-2xl overflow-hidden">
+        <div className="border border-neutral-200 rounded-2xl overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-neutral-50 text-left text-[11px] uppercase tracking-wide text-neutral-500">
               <tr><th className="px-4 py-3">When</th><th className="px-4 py-3">To</th><th className="px-4 py-3">Subject</th><th className="px-4 py-3">Status</th></tr>

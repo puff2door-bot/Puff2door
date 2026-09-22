@@ -95,11 +95,11 @@ const CartPage = () => {
               </div>
             ) : (
               <div className="flex gap-2 mb-5">
-                <div className="flex-1 flex items-center border border-neutral-300 rounded-lg px-3">
-                  <Tag className="h-4 w-4 text-neutral-400" />
-                  <input data-testid="promo-input" value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onApply()} placeholder="Promo code" className="flex-1 px-2 py-2.5 text-sm outline-none uppercase" />
+                <div className="flex-1 min-w-0 flex items-center border border-neutral-300 rounded-lg px-3">
+                  <Tag className="h-4 w-4 text-neutral-400 shrink-0" />
+                  <input data-testid="promo-input" value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onApply()} placeholder="Promo code" className="flex-1 min-w-0 px-2 py-2.5 text-sm outline-none uppercase" />
                 </div>
-                <button onClick={onApply} disabled={applying} data-testid="promo-apply" className="px-4 bg-neutral-900 text-white text-sm font-bold rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-60">{applying ? "..." : "Apply"}</button>
+                <button onClick={onApply} disabled={applying} data-testid="promo-apply" className="shrink-0 px-4 bg-neutral-900 text-white text-sm font-bold rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-60">{applying ? "..." : "Apply"}</button>
               </div>
             )}
             <div className="space-y-3 text-sm border-t pt-4">

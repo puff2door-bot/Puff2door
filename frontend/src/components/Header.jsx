@@ -56,18 +56,18 @@ const Header = () => {
       {/* Main bar */}
       <div className={`bg-white border-b transition-shadow ${scrolled ? "shadow-md" : ""}`}>
         <div className="max-w-[1280px] mx-auto px-4">
-          <div className="flex items-center gap-4 h-[76px]">
-            <button className="lg:hidden p-2 -ml-2" onClick={() => setMobileOpen(true)} aria-label="Menu">
+          <div className="flex items-center gap-2 sm:gap-4 h-[68px] sm:h-[76px]">
+            <button className="lg:hidden p-2 -ml-2 shrink-0" onClick={() => setMobileOpen(true)} aria-label="Menu">
               <Menu className="h-6 w-6" />
             </button>
 
-            <Link to="/" className="flex items-center gap-2 shrink-0">
-              <img src="/img/logo.png" alt="Puff2Door logo" data-testid="header-logo" className="h-11 w-11 rounded-full object-contain" />
+            <Link to="/" className="flex items-center gap-2 shrink-0 min-w-0">
+              <img src="/img/logo.png" alt="Puff2Door logo" data-testid="header-logo" className="h-10 w-10 sm:h-11 sm:w-11 rounded-full object-contain" />
               <span className="leading-none">
-                <span className="block font-heading font-700 text-[22px] tracking-tight text-neutral-900">
+                <span className="block font-heading font-700 text-[20px] sm:text-[22px] tracking-tight text-neutral-900">
                   Puff<span className="text-emerald-600">2</span>Door
                 </span>
-                <span className="block text-[9px] tracking-[0.28em] text-neutral-500 uppercase">
+                <span className="hidden sm:block text-[9px] tracking-[0.28em] text-neutral-500 uppercase">
                   {BRAND.tagline}
                 </span>
               </span>
@@ -88,7 +88,7 @@ const Header = () => {
               </div>
             </form>
 
-            <div className="flex items-center gap-1 ml-auto lg:ml-0">
+            <div className="flex items-center gap-0.5 sm:gap-1 ml-auto lg:ml-0 shrink-0">
               <Link to="/my-account" className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
                 <User className="h-5 w-5" />
                 <span className="text-xs leading-tight">
@@ -96,7 +96,7 @@ const Header = () => {
                   <span className="block font-semibold">{user ? user.firstName || "Member" : "Login"}</span>
                 </span>
               </Link>
-              <Link to="/wishlist" data-testid="header-wishlist-link" className="relative flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
+              <Link to="/wishlist" data-testid="header-wishlist-link" className="relative flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
                 <div className="relative">
                   <Heart className="h-6 w-6" />
                   {wishCount > 0 && (
@@ -107,7 +107,7 @@ const Header = () => {
                 </div>
                 <span className="hidden sm:block text-xs font-semibold">Wishlist</span>
               </Link>
-              <Link to="/cart" data-testid="header-cart-link" className="relative flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
+              <Link to="/cart" data-testid="header-cart-link" className="relative flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
                 <div className="relative">
                   <ShoppingCart className="h-6 w-6" />
                   {count > 0 && (

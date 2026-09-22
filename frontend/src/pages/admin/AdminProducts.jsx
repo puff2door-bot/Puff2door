@@ -65,7 +65,7 @@ const AdminProducts = () => {
       {loading ? (
         <p className="text-neutral-500">Loading products...</p>
       ) : (
-        <div className="border border-neutral-200 rounded-2xl overflow-hidden">
+        <div className="border border-neutral-200 rounded-2xl overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-neutral-50 text-left text-[11px] uppercase tracking-wide text-neutral-500">
               <tr>
