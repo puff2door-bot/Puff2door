@@ -1,0 +1,121 @@
+[
+  {
+    "id": "0684f5dc-a963-48d8-8a8f-b9f9b9929ff6",
+    "slug": "disposable",
+    "name": "DISPOSABLE VAPES",
+    "order": 0,
+    "active": true
+  },
+  {
+    "id": "b436316d-5606-489f-b7b2-7187992721f0",
+    "slug": "delta",
+    "name": "DELTA DISPOSABLES",
+    "order": 1,
+    "active": true
+  },
+  {
+    "id": "0d6c7f9b-94c3-4637-a86b-a84c532fe47c",
+    "slug": "delta-cartridges",
+    "name": "DELTA CARTRIDGES",
+    "order": 2,
+    "active": true
+  },
+  {
+    "id": "f7caee2b-0d5a-4116-a341-e6c60d9b0244",
+    "slug": "delta-edibles",
+    "name": "DELTA EDIBLES",
+    "order": 3,
+    "active": true
+  },
+  {
+    "id": "3f541468-2276-410e-89cc-e0bad35e0555",
+    "slug": "delta-smokeables",
+    "name": "DELTA SMOKEABLES",
+    "order": 4,
+    "active": true
+  },
+  {
+    "id": "e4e9335f-50fa-4669-b077-f024d04ecb5d",
+    "slug": "vape-accessories",
+    "name": "VAPE ACCESSORIES",
+    "order": 5,
+    "active": true
+  },
+  {
+    "id": "16d0fee0-f160-499c-9403-3003492bb882",
+    "slug": "hemp-wraps",
+    "name": "HEMP WRAPS",
+    "order": 6,
+    "active": true
+  },
+  {
+    "id": "4d752fe1-d7d3-4a45-95ba-8793999b7e8c",
+    "slug": "e-liquids",
+    "name": "E- LIQUID",
+    "order": 7,
+    "active": true
+  },
+  {
+    "id": "af4c0688-feab-48fc-afa5-bb823863788a",
+    "slug": "paper-cones",
+    "name": "PAPER & CONES",
+    "order": 8,
+    "active": true
+  },
+  {
+    "id": "673ffe9d-7d77-4f4d-afa9-2ccb310bf98f",
+    "slug": "kratom",
+    "name": "KRATOM",
+    "order": 9,
+    "active": true
+  },
+  {
+    "id": "b86376e4-3c5b-44b7-8f68-60bddb67a377",
+    "slug": "glass-pipes",
+    "name": "GLASS PIPES",
+    "order": 10,
+    "active": true
+  },
+  {
+    "id": "4ee4a8d2-b2a3-41fa-8056-99bb4ac22f27",
+    "slug": "lighter",
+    "name": "LIGHTER",
+    "order": 11,
+    "active": true
+  },
+  {
+    "id": "86d2e5af-431a-4fbe-b767-c3f2c82ad800",
+    "slug": "air-freshner",
+    "name": "AIR FRESHNER",
+    "order": 12,
+    "active": true
+  },
+  {
+    "id": "242db19b-4468-420f-9892-3d8eba68fe8a",
+    "slug": "hookah-accessories",
+    "name": "HOOKAH ACCESSORIES",
+    "order": 13,
+    "active": true
+  },
+  {
+    "id": "e2c2fc1d-8397-4c35-ba26-2ec72e547a1f",
+    "slug": "miscellaneous",
+    "name": "MISCELLANEOUS",
+    "order": 14,
+    "active": true
+  },
+  {
+    "id": "3622dc5d-5096-45a4-aaff-bd7de82b1f59",
+    "slug": "munchies",
+    "name": "MUNCHIES",
+    "order": 15,
+    "active": true
+  },
+  {
+    "id": "cdc6ecea-95c1-41e0-a3da-7a231e076c7e",
+    "slug": "cigars",
+    "name": "CIGARS",
+    "order": 16,
+    "active": true
+  }
+]

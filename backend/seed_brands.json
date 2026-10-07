@@ -1,0 +1,290 @@
+[
+  {
+    "id": "60ef9e02-24a4-40d7-8dc2-46dde9ba009a",
+    "slug": "black-sheep",
+    "name": "BLACK SHEEP",
+    "displayName": "BLACK SHEEP",
+    "logo": "/uploads/puff2door/products/f38db8b2-87d4-4d09-9c6b-6151b24b1583.png",
+    "active": true
+  },
+  {
+    "id": "03e37b75-8f9d-4a70-b12d-2a334c78cbd2",
+    "slug": "silly-dots",
+    "name": "SILLY DOTS",
+    "displayName": "SILLY DOTS",
+    "logo": "/uploads/puff2door/products/0b23f866-7738-4720-acb2-b1317532a865.png",
+    "active": true
+  },
+  {
+    "id": "978f0d1e-13ac-4985-aa0f-dc38cf955ce7",
+    "slug": "raz",
+    "name": "RAZ",
+    "displayName": "RAZ",
+    "logo": "/uploads/puff2door/products/94871b2b-279d-4e3c-a21e-1e1d4ae0adb8.jpg",
+    "active": true
+  },
+  {
+    "id": "75e699f5-a054-40b7-8919-27ea00cfed33",
+    "slug": "muha",
+    "name": "MUHA",
+    "displayName": "MUHA",
+    "logo": "/uploads/puff2door/products/01896e37-f978-4906-a685-a9ab8ab88cd1.png",
+    "active": true
+  },
+  {
+    "id": "c4dddae0-71a2-42de-a6b6-06467cfa6a3a",
+    "slug": "glass-tobacco-pipe",
+    "name": "PIPE",
+    "displayName": "PIPE",
+    "logo": "/uploads/puff2door/products/c1e92fac-538c-4d63-ade0-4ab288d775cd.png",
+    "active": true
+  },
+  {
+    "id": "e4815c4e-2cf7-4be5-8e5d-aa8eac3a89b9",
+    "slug": "geek-bar",
+    "name": "GEEK BAR",
+    "displayName": "GEEK BAR",
+    "logo": "/uploads/puff2door/products/93a049bf-1e21-479c-8220-5a33e7366033.jpg",
+    "active": true
+  },
+  {
+    "id": "b4f7bc60-4fc1-4ba4-ac85-6f3327cf8cb5",
+    "slug": "nexa",
+    "name": "NEXA",
+    "displayName": "NEXA",
+    "logo": "/uploads/puff2door/products/0c452625-cbc4-4d48-aab7-59ce82a90aa0.png",
+    "active": true
+  },
+  {
+    "id": "4e820ae2-d9d3-4c0d-934a-b280526c0215",
+    "slug": "nugg-life",
+    "name": "NUGG LIFE",
+    "displayName": "NUGG LIFE",
+    "logo": "/uploads/puff2door/products/accabf9e-fd31-4abf-b46b-2ad73006adc2.png",
+    "active": true
+  },
+  {
+    "id": "d0793413-9ee2-4dd4-a44f-64be98ad289f",
+    "slug": "apex",
+    "name": "APEX",
+    "displayName": "APEX",
+    "logo": "/uploads/puff2door/products/ec55751a-d910-498a-b034-8e010103042a.png",
+    "active": true
+  },
+  {
+    "id": "11938b8c-edd3-4218-9f7c-cad2289a7608",
+    "slug": "febreze",
+    "name": "FEBREZE",
+    "displayName": "FEBREZE",
+    "logo": "/uploads/puff2door/products/81152c75-39da-47e7-b6fe-73f2e016b239.jpeg",
+    "active": true
+  },
+  {
+    "id": "91a2ab15-ad75-4c12-832b-3b670eceda7a",
+    "slug": "zig-zag",
+    "name": "ZIG-ZAG",
+    "displayName": "ZIG-ZAG",
+    "logo": "/uploads/puff2door/products/076a873e-e995-4a80-be3d-4dac590e9ef3.jpeg",
+    "active": true
+  },
+  {
+    "id": "071b3554-2d9b-451d-8c55-095d463dd74e",
+    "slug": "top",
+    "name": "TOP",
+    "displayName": "TOP",
+    "logo": "/uploads/puff2door/products/b3eec963-d4d0-47f5-bbeb-56d4923f5393.jpeg",
+    "active": true
+  },
+  {
+    "id": "5b5c587b-7701-4eac-83a6-840df3575f98",
+    "slug": "raw",
+    "name": "RAW",
+    "displayName": "RAW",
+    "logo": "/uploads/puff2door/products/65400fb1-d54b-4350-90f2-0d168720d00c.jpg",
+    "active": true
+  },
+  {
+    "id": "81e19d1f-1fd5-407c-877c-6c38a2ac27b3",
+    "slug": "dozo",
+    "name": "DOZO",
+    "displayName": "DOZO",
+    "logo": "/uploads/puff2door/products/d7d41f87-dcfe-437c-a612-ffad2e3305b4.webp",
+    "active": true
+  },
+  {
+    "id": "92e98d0c-2caf-4d78-8d1a-898ed6882d9e",
+    "slug": "bic",
+    "name": "BIC",
+    "displayName": "BIC",
+    "logo": "/uploads/puff2door/products/8bf6c4a4-369d-40bb-91d9-0ea780c671e4.jpg",
+    "active": true
+  },
+  {
+    "id": "d487e93d-d525-4cda-bbb2-593ecaacc566",
+    "slug": "al-fakher",
+    "name": "AL FAKHER",
+    "displayName": "AL FAKHER",
+    "logo": "/uploads/puff2door/products/b9654d0c-430b-4287-809c-16b99970059a.png",
+    "active": true
+  },
+  {
+    "id": "1da020cb-8494-4f82-9444-a51e4861c664",
+    "slug": "havana",
+    "name": "HAVANA",
+    "displayName": "HAVANA",
+    "logo": "/uploads/puff2door/products/0d40000f-44fb-4c93-a2e5-c7b3db8e6d74.jpeg",
+    "active": true
+  },
+  {
+    "id": "cba2399f-8465-41f5-8195-aead6685fd20",
+    "slug": "my",
+    "name": "MY FATHER",
+    "displayName": "MY FATHER",
+    "logo": "/uploads/puff2door/products/469631a8-18f5-465a-a8aa-eeac58b9e4fc.jpeg",
+    "active": true
+  },
+  {
+    "id": "7e62faee-1770-4215-b82c-a89c660a677d",
+    "slug": "cereal",
+    "name": "CEREAL",
+    "displayName": "CEREAL",
+    "logo": "/uploads/puff2door/products/7bf6fc1f-7edb-4711-a01c-9a637c049758.png",
+    "active": true
+  },
+  {
+    "id": "a12c5822-c4c7-4d5b-b061-db68b3e3816a",
+    "slug": "lost-mary",
+    "name": "LOST MARY",
+    "displayName": "LOST MARY",
+    "logo": "/uploads/puff2door/products/b8c33e72-ae27-4669-a6be-478b8191d56f.jpg",
+    "active": true
+  },
+  {
+    "id": "f750d607-8694-406e-a38a-53f6b40096fe",
+    "slug": "zippo",
+    "name": "ZIPPO",
+    "displayName": "ZIPPO",
+    "logo": "/uploads/puff2door/products/ccd2ccc6-5978-43e0-b67e-de5e3b0cab4d.jpg",
+    "active": true
+  },
+  {
+    "id": "c5c40eb1-494a-4303-83b0-363864945098",
+    "slug": "mike-tyson",
+    "name": "MIKE TYSON",
+    "displayName": "MIKE TYSON",
+    "logo": "/uploads/puff2door/products/c6f7ecc5-0088-4a45-8110-6550d0c1cf32.jpg",
+    "active": true
+  },
+  {
+    "id": "98f91e34-b551-4bd1-a4b3-be3718f58ebf",
+    "slug": "swisher-sweets",
+    "name": "SWISHER SWEETS",
+    "displayName": "SWISHER SWEETS",
+    "logo": "/uploads/puff2door/products/1b84c952-34bb-41f3-bf24-270a144f01b0.png",
+    "active": true
+  },
+  {
+    "id": "233a8070-7415-4df1-bb07-e085732687ca",
+    "slug": "eagle-torch",
+    "name": "EAGLE TORCH",
+    "displayName": "EAGLE TORCH",
+    "logo": "/uploads/puff2door/products/0fd0f169-1f78-4a4c-93e2-92dead7337d5.png",
+    "active": true
+  },
+  {
+    "id": "fa0c823d-7298-4900-8944-df911526db12",
+    "slug": "royal",
+    "name": "ROYAL",
+    "displayName": "ROYAL",
+    "logo": "/uploads/puff2door/products/7206796a-a30f-44ae-a17f-39051968aca0.png",
+    "active": true
+  },
+  {
+    "id": "9b992cf9-22a8-4d62-bcb6-d4f4141c0355",
+    "slug": "adjust",
+    "name": "ADJUST",
+    "displayName": "ADJUST",
+    "logo": "/uploads/puff2door/products/296960d6-3b8e-40ae-8071-20d36f744cb1.jpg",
+    "active": true
+  },
+  {
+    "id": "f536f2eb-aa3a-4b5a-b10c-930ba7f217d9",
+    "slug": "fume",
+    "name": "FUME",
+    "displayName": "FUME",
+    "logo": "/uploads/puff2door/products/1c055973-9624-4907-9c17-9e47a8feab96.webp",
+    "active": true
+  },
+  {
+    "id": "22c83b0e-5743-4964-b7e4-7d1e8d955782",
+    "slug": "crazy",
+    "name": "CRAZY",
+    "displayName": "CRAZY",
+    "logo": "/uploads/puff2door/products/103224c2-9740-4151-a61e-cbf181f90433.png",
+    "active": true
+  },
+  {
+    "id": "5ce994a2-2eab-40ac-8304-12f02d5580da",
+    "slug": "pink",
+    "name": "PINK",
+    "displayName": "PINK",
+    "logo": "/uploads/puff2door/products/a9ca38fc-4200-476f-92c3-307cef99c310.jpeg",
+    "active": true
+  },
+  {
+    "id": "9798a040-1991-438f-ab64-ebdd0913b83c",
+    "slug": "plastic",
+    "name": "PLASTIC",
+    "displayName": "PLASTIC",
+    "logo": "/uploads/puff2door/products/42ffce13-aff7-496b-9f2e-336fb4efca51.jpg",
+    "active": true
+  },
+  {
+    "id": "1405d264-fda7-4159-ab8c-74ea8c1114b1",
+    "slug": "qcarbo",
+    "name": "QCARBO",
+    "displayName": "QCARBO",
+    "logo": "/uploads/puff2door/products/7bcf22bb-2735-4319-a653-ab35cd14f7b0.png",
+    "active": true
+  },
+  {
+    "id": "f2feadbd-77d1-43e9-95e1-1d84a02a2713",
+    "slug": "budget",
+    "name": "BUDGET",
+    "displayName": "BUDGET",
+    "logo": "/uploads/puff2door/products/e97ffca8-1b19-4e84-b1db-92bcb8f349c9.webp",
+    "active": true
+  },
+  {
+    "id": "c3452724-d059-44c8-8c9d-b9da2c604069",
+    "slug": "elf-bar",
+    "name": "ELF BAR",
+    "displayName": "ELF BAR",
+    "logo": "/uploads/puff2door/products/16ea1d51-b6e3-4b0d-9413-aee13f408eea.jpeg",
+    "active": true
+  },
+  {
+    "id": "dcb6f06c-7537-4208-9cb4-689466e066d5",
+    "slug": "vuse",
+    "name": "VUSE",
+    "displayName": "VUSE",
+    "logo": "/uploads/puff2door/products/86748e99-c180-4cf2-97f4-36c172d9dab3.png",
+    "active": true
+  },
+  {
+    "id": "e8cd7269-cb26-48bb-ada2-705aa2336696",
+    "slug": "loose-leaf",
+    "name": "LOOSE LEAF",
+    "displayName": "LOOSE LEAF",
+    "logo": "/uploads/puff2door/products/e9b51df2-9cf0-43a4-ac8a-7f56190aea3c.png",
+    "active": true
+  },
+  {
+    "id": "45bc08e0-6078-4fee-bbd3-121ae23ca02b",
+    "slug": "pure-zen",
+    "name": "PURE ZEN",
+    "displayName": "PURE ZEN",
+    "logo": "",
+    "active": true
+  }
+]

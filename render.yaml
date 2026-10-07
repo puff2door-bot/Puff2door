@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: puff2door
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/
+    autoDeploy: true
+    envVars:
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: puff2door
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: SITE_URL
+        value: https://puff2door.com
+      - key: PUBLIC_URL
+        value: https://puff2door.com
+      - key: ALLOW_TEST_CARD
+        value: "false"
+      - key: PAYPAL_ENV
+        value: live
+      - key: SQUARE_ENV
+        value: production

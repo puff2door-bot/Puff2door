@@ -1,0 +1,19 @@
+{
+  "taxRate": 0.065,
+  "deliveryFee": 15.0,
+  "freeDeliveryMin": 99.0,
+  "deliveryZip": "32832",
+  "deliveryRadiusMiles": 10.0,
+  "loyaltyEnabled": true,
+  "pointsPerDollar": 1.0,
+  "pointsPerReward": 150,
+  "rewardValue": 5.0,
+  "minRedeemPoints": 150,
+  "maxRedeemPerOrder": 0,
+  "minPurchaseForRedeem": 0.0,
+  "signupBonusPoints": 50,
+  "chatEnabled": true,
+  "chatOnline": true,
+  "chatWelcome": "💨 Welcome to Puff2door! Good vibes, great finds, delivered to your door. What can we help you with? 21+ only.",
+  "chatOffline": "We're currently offline. Leave us a message and we'll get back to you."
+}

@@ -1,10 +1,12 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File
+from fastapi.responses import FileResponse
 from dotenv import load_dotenv
 import httpx
 import asyncio
 import emails
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
+from gridfs.errors import NoFile
 import os
 import logging
 from pathlib import Path
@@ -29,6 +31,7 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+file_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="uploads")
 
 JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGO = 'HS256'
@@ -653,8 +656,8 @@ async def price_cart(items: List[CartItem], promo_code: str = "", redeem_points:
     return priced, totals
 
 
-class GoogleSessionInput(BaseModel):
-    session_id: str
+class GoogleTokenInput(BaseModel):
+    access_token: str
 
 
 class WishlistItem(BaseModel):
@@ -720,44 +723,23 @@ class HomeContentInput(BaseModel):
 
 
 ADMIN_EMAILS = [e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()]
-STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
-STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 APP_NAME = "puff2door"
 MIME_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif"}
-storage_key = None
-
-
-async def init_storage(force: bool = False):
-    global storage_key
-    if storage_key and not force:
-        return storage_key
-    async with httpx.AsyncClient(timeout=30) as http:
-        r = await http.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY})
-    r.raise_for_status()
-    storage_key = r.json()["storage_key"]
-    return storage_key
 
 
 async def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = await init_storage()
-    async with httpx.AsyncClient(timeout=120) as http:
-        r = await http.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key, "Content-Type": content_type}, content=data)
-        if r.status_code == 404:
-            key = await init_storage(force=True)
-            r = await http.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key, "Content-Type": content_type}, content=data)
-    r.raise_for_status()
-    return r.json()
+    await file_bucket.upload_from_stream(path, data, metadata={"content_type": content_type})
+    return {"path": path, "size": len(data)}
 
 
 async def get_object(path: str):
-    key = await init_storage()
-    async with httpx.AsyncClient(timeout=60) as http:
-        r = await http.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key})
-    if r.status_code == 404:
+    try:
+        stream = await file_bucket.open_download_stream_by_name(path)
+    except NoFile:
         raise HTTPException(status_code=404, detail="File not found")
-    r.raise_for_status()
-    return r.content, r.headers.get("Content-Type", "application/octet-stream")
+    data = await stream.read()
+    metadata = getattr(stream, "metadata", None) or {}
+    return data, metadata.get("content_type", "application/octet-stream")
 
 
 def is_admin(user: Optional[dict]) -> bool:
@@ -1070,20 +1052,13 @@ async def me(user: dict = Depends(get_current_user)):
     return {"user": public_user(user)}
 
 
-EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
-SESSION_DAYS = 7
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 
 
-@api_router.post("/auth/google/session")
-async def google_session(inp: GoogleSessionInput, response: Response):
-    async with httpx.AsyncClient(timeout=15) as http:
-        r = await http.get(EMERGENT_SESSION_URL, headers={"X-Session-ID": inp.session_id})
-    if r.status_code != 200:
-        raise HTTPException(status_code=401, detail="Invalid or expired Google session")
-    data = r.json()
+async def upsert_google_user(data: dict):
     email = (data.get("email") or "").lower()
-    if not email:
-        raise HTTPException(status_code=401, detail="Google account has no email")
+    if not email or data.get("email_verified") is False:
+        raise HTTPException(status_code=401, detail="Google account has no verified email")
     name = (data.get("name") or "").strip()
     first, _, last = name.partition(" ")
     user = await db.users.find_one({"email": email})
@@ -1107,18 +1082,27 @@ async def google_session(inp: GoogleSessionInput, response: Response):
             updates["lastName"] = last
         await db.users.update_one({"id": user["id"]}, {"$set": updates})
         user.update(updates)
-    session_token = data["session_token"]
-    await db.user_sessions.insert_one({
-        "userId": user["id"],
-        "session_token": session_token,
-        "expires_at": now_utc() + timedelta(days=SESSION_DAYS),
-        "createdAt": now_utc(),
-    })
-    response.set_cookie(
-        "session_token", session_token, httponly=True, secure=True, samesite="none",
-        path="/", max_age=SESSION_DAYS * 24 * 3600,
-    )
-    return {"token": session_token, "user": public_user(user), "signupBonusPoints": bonus}
+    return user, bonus
+
+
+@api_router.get("/auth/providers")
+async def auth_providers():
+    return {"google": {"enabled": bool(GOOGLE_CLIENT_ID), "clientId": GOOGLE_CLIENT_ID or None}}
+
+
+@api_router.post("/auth/google/token")
+async def google_token(inp: GoogleTokenInput):
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured")
+    async with httpx.AsyncClient(timeout=15) as http:
+        token_check = await http.get("https://oauth2.googleapis.com/tokeninfo", params={"access_token": inp.access_token})
+        if token_check.status_code != 200 or token_check.json().get("aud") != GOOGLE_CLIENT_ID:
+            raise HTTPException(status_code=401, detail="Invalid Google access token")
+        profile = await http.get("https://openidconnect.googleapis.com/v1/userinfo", headers={"Authorization": f"Bearer {inp.access_token}"})
+    if profile.status_code != 200:
+        raise HTTPException(status_code=401, detail="Could not read Google profile")
+    user, bonus = await upsert_google_user(profile.json())
+    return {"token": create_token(user["id"], remember=True), "user": public_user(user), "signupBonusPoints": bonus}
 
 
 @api_router.post("/auth/logout")
@@ -1436,6 +1420,16 @@ async def brand_counts() -> dict:
 
 async def seed_brands():
     """Idempotent: import every brand referenced by products into the brands collection, preserving slug/name/logo."""
+    if await db.brands.count_documents({}) == 0:
+        seed_path = ROOT_DIR / "seed_brands.json"
+        if seed_path.exists():
+            rows = json.loads(seed_path.read_text())
+            for row in rows:
+                row.pop("productCount", None)
+                row["createdAt"] = now_utc()
+                row["updatedAt"] = now_utc()
+            if rows:
+                await db.brands.insert_many(rows)
     existing = {b["slug"]: b for b in await db.brands.find({}).to_list(2000)}
     names: dict = {}
     async for p in db.products.find({"active": True}, {"brand": 1, "brandName": 1, "name": 1}):
@@ -1515,6 +1509,16 @@ async def category_counts() -> dict:
 
 async def seed_categories():
     """Idempotent: default list + any category referenced by products, preserving slugs/names."""
+    if await db.categories.count_documents({}) == 0:
+        seed_path = ROOT_DIR / "seed_categories.json"
+        if seed_path.exists():
+            rows = json.loads(seed_path.read_text())
+            for row in rows:
+                row.pop("productCount", None)
+                row["createdAt"] = now_utc()
+                row["updatedAt"] = now_utc()
+            if rows:
+                await db.categories.insert_many(rows)
     existing = {c["slug"] for c in await db.categories.find({}, {"slug": 1}).to_list(500)}
     wanted = list(DEFAULT_CATEGORIES)
     async for p in db.products.find({"active": True}, {"categorySlug": 1, "category": 1}):
@@ -2589,6 +2593,11 @@ async def seed_data():
                 it["updatedAt"] = now_utc()
             await db.products.insert_many(items)
             logger.info("Seeded %s products", len(items))
+    if await db.site_settings.count_documents({"key": "store"}) == 0:
+        seed_path = ROOT_DIR / "seed_settings.json"
+        if seed_path.exists():
+            settings = json.loads(seed_path.read_text())
+            await db.site_settings.insert_one({"key": "store", **settings, "updatedAt": now_utc()})
     if await db.promo_codes.count_documents({}) == 0:
         await db.promo_codes.insert_one({"id": str(uuid.uuid4()), "code": "PUFF10", "type": "percent", "value": 10, "minSubtotal": 0, "maxUses": None, "expiresAt": None, "active": True, "uses": 0, "createdAt": now_utc()})
     await db.promo_codes.create_index("code", unique=True)
@@ -2605,11 +2614,6 @@ async def seed_data():
             await db.users.update_one({"email": email}, {"$set": {"password": pwd_ctx.hash(admin_pw), "role": "admin"}})
     if ADMIN_EMAILS:
         await db.users.update_many({"email": {"$in": ADMIN_EMAILS}}, {"$set": {"role": "admin"}})
-    try:
-        await init_storage()
-        logger.info("Storage initialized")
-    except Exception as e:
-        logger.error("Storage init failed: %s", e)
     await seed_brands()
     await seed_categories()
     await refresh_static_sitemap()
@@ -2618,3 +2622,20 @@ async def seed_data():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+
+# In portable deployments the React production build is served by this same
+# FastAPI process. API routes are registered first, so this fallback only
+# handles browser assets and client-side routes such as /shop and /admin.
+FRONTEND_BUILD_DIR = ROOT_DIR.parent / "frontend" / "build"
+if FRONTEND_BUILD_DIR.exists():
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend(full_path: str):
+        candidate = (FRONTEND_BUILD_DIR / full_path).resolve()
+        try:
+            candidate.relative_to(FRONTEND_BUILD_DIR.resolve())
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Not found")
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(FRONTEND_BUILD_DIR / "index.html")

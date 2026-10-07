@@ -9,7 +9,6 @@ import { Toaster } from "./components/ui/toaster";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import AgeGate from "./components/AgeGate";
-import AuthCallback from "./components/AuthCallback";
 import Home from "./pages/Home";
 import ShopPage from "./pages/ShopPage";
 import ProductDetail from "./pages/ProductDetail";
@@ -70,8 +69,6 @@ const ScrollToTop = () => {
 };
 
 const AppRoutes = () => {
-  const location = useLocation();
-  if (location.hash?.includes("session_id=")) return <AuthCallback />;
   return (
     <Routes>
       <Route path="/" element={<Home />} />

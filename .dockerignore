@@ -1,0 +1,14 @@
+.git
+.gitconfig
+.emergent
+**/.DS_Store
+**/__pycache__
+**/*.pyc
+frontend/node_modules
+frontend/build
+frontend/.corepack
+test_reports
+a-*.jpeg
+m-*.jpeg
+auth_testing.md
+test_result.md
