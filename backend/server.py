@@ -2604,15 +2604,15 @@ async def seed_data():
     await db.promo_codes.create_index("code", unique=True)
     admin_pw = os.environ.get("ADMIN_PASSWORD")
     if ADMIN_EMAILS and admin_pw:
-        email = ADMIN_EMAILS[0]
-        existing = await db.users.find_one({"email": email})
-        if not existing:
-            await db.users.insert_one({
-                "id": str(uuid.uuid4()), "email": email, "password": pwd_ctx.hash(admin_pw),
-                "firstName": "Admin", "lastName": "", "role": "admin", "provider": "password", "createdAt": now_utc(),
-            })
-        elif not existing.get("password") or not pwd_ctx.verify(admin_pw, existing["password"]):
-            await db.users.update_one({"email": email}, {"$set": {"password": pwd_ctx.hash(admin_pw), "role": "admin"}})
+        for email in ADMIN_EMAILS:
+            existing = await db.users.find_one({"email": email})
+            if not existing:
+                await db.users.insert_one({
+                    "id": str(uuid.uuid4()), "email": email, "password": pwd_ctx.hash(admin_pw),
+                    "firstName": "Admin", "lastName": "", "role": "admin", "provider": "password", "createdAt": now_utc(),
+                })
+            elif not existing.get("password") or not pwd_ctx.verify(admin_pw, existing["password"]):
+                await db.users.update_one({"email": email}, {"$set": {"password": pwd_ctx.hash(admin_pw), "role": "admin"}})
     if ADMIN_EMAILS:
         await db.users.update_many({"email": {"$in": ADMIN_EMAILS}}, {"$set": {"role": "admin"}})
     await seed_brands()
