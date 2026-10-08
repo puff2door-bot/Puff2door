@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { loadScript } from "../../lib/loadScript";
@@ -16,7 +17,7 @@ const ApplePayCheckout = ({ config, total, createOrder, onApprove, onError, onCa
         if (!window.ApplePaySession?.canMakePayments?.()) throw new Error("Apple Pay is not available on this device.");
         const sdkHost = config.env === "sandbox" ? "https://www.sandbox.paypal.com" : "https://www.paypal.com";
         await Promise.all([
-          loadScript(`${sdkHost}/sdk/js?client-id=${encodeURIComponent(config.clientId)}&currency=USD&intent=capture&components=applepay`, { "data-namespace": "paypal_applepay" }),
+          loadScript(`${sdkHost}/sdk/js?client-id=${encodeURIComponent(config.clientId)}&currency=USD&buyer-country=US&intent=capture&components=applepay`, { "data-namespace": "paypal_applepay" }),
           loadScript("https://applepay.cdn-apple.com/jsapi/1.latest/apple-pay-sdk.js"),
         ]);
         if (cancelled || !window.paypal_applepay?.Applepay) throw new Error("Apple Pay could not be loaded.");
@@ -82,15 +83,22 @@ const ApplePayCheckout = ({ config, total, createOrder, onApprove, onError, onCa
       {state === "loading" && <p className="flex items-center gap-2 text-sm text-neutral-500"><Loader2 className="h-4 w-4 animate-spin" /> Checking Apple Pay...</p>}
       {state === "unavailable" && <p className="text-sm text-neutral-500">Apple Pay is not available for this browser, device, or merchant account. Choose PayPal or another method.</p>}
       {state === "ready" && (
-        <apple-pay-button
-          buttonstyle="black"
-          type="buy"
-          locale="en-US"
-          onClick={begin}
-          data-testid="apple-pay-button"
-          aria-label={`Pay $${Number(total).toFixed(2)} with Apple Pay`}
-          style={{ display: "block", width: "100%", height: "48px", "--apple-pay-button-border-radius": "10px" }}
-        />
+        <div className="relative" data-testid="apple-pay-button">
+          <apple-pay-button
+            buttonstyle="black"
+            type="buy"
+            locale="en-US"
+            aria-hidden="true"
+            style={{ display: "block", width: "100%", height: "48px", "--apple-pay-button-border-radius": "10px", pointerEvents: "none" }}
+          />
+          {/* Safari's Apple Pay custom element does not reliably forward clicks to React. */}
+          <button
+            type="button"
+            onClick={begin}
+            aria-label={`Pay $${Number(total).toFixed(2)} with Apple Pay`}
+            className="absolute inset-0 h-full w-full cursor-pointer rounded-[10px] border-0 bg-transparent"
+          />
+        </div>
       )}
     </div>
   );
