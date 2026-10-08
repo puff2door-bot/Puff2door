@@ -17,7 +17,7 @@ const ApplePayCheckout = ({ config, total, createOrder, onApprove, onError, onCa
         if (!window.ApplePaySession?.canMakePayments?.()) throw new Error("Apple Pay is not available on this device.");
         const sdkHost = config.env === "sandbox" ? "https://www.sandbox.paypal.com" : "https://www.paypal.com";
         await Promise.all([
-          loadScript(`${sdkHost}/sdk/js?client-id=${encodeURIComponent(config.clientId)}&currency=USD&buyer-country=US&intent=capture&components=applepay`, { "data-namespace": "paypal_applepay" }),
+          loadScript(`${sdkHost}/sdk/js?client-id=${encodeURIComponent(config.clientId)}&currency=USD&intent=capture&components=applepay`, { "data-namespace": "paypal_applepay" }),
           loadScript("https://applepay.cdn-apple.com/jsapi/1.latest/apple-pay-sdk.js"),
         ]);
         if (cancelled || !window.paypal_applepay?.Applepay) throw new Error("Apple Pay could not be loaded.");
