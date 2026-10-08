@@ -50,7 +50,7 @@ def layout(title: str, body: str, preheader: str = "") -> str:
 </td></tr>
 <tr><td style="padding:20px 32px;background:#fafafa;border-top:1px solid #e5e5e5;font-size:12px;color:#737373;line-height:1.6;">
   Questions? Reply to this email or reach us at puff2door@gmail.com · (407) 625-6826.<br>
-  You must be 21+ to purchase. Puff2Door · 12915 Narcoossee Rd, Orlando, FL 32832.
+  You must be 21+ to purchase. Puff2Door · 481 N State Rd 434, Altamonte Springs, FL 32714.
 </td></tr>
 </table></td></tr></table></body></html>"""
 

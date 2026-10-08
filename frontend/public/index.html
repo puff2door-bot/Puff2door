@@ -4,6 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#059669" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Puff2Door" />
     <meta name="description" content="Shop vapes, smoking accessories and smoke shop essentials online at Puff2door. Convenient ordering, fast delivery and shipping right to your door." />
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <meta name="rating" content="adult" />
@@ -17,6 +21,7 @@
     <link rel="canonical" href="https://puff2door.com/" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.webmanifest" />
     <script>(function(){var h=location.hostname;if(h==="www.puff2door.com"){location.replace("https://puff2door.com"+location.pathname+location.search+location.hash)}})();</script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -27,5 +32,12 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+    <script>
+      if ("serviceWorker" in navigator && window.location.protocol === "https:") {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("/service-worker.js");
+        });
+      }
+    </script>
   </body>
 </html>

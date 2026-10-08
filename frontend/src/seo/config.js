@@ -117,7 +117,7 @@ export const organizationJsonLd = () => ({
   description: "Online smoke shop and vape shop offering online ordering with local delivery in the Orlando, Florida area.",
   telephone: BRAND.phone,
   email: BRAND.email,
-  address: { "@type": "PostalAddress", streetAddress: "12915 Narcoossee Rd", addressLocality: "Orlando", addressRegion: "FL", postalCode: "32832", addressCountry: "US" },
+  address: { "@type": "PostalAddress", streetAddress: "481 N State Rd 434", addressLocality: "Altamonte Springs", addressRegion: "FL", postalCode: "32714", addressCountry: "US" },
   areaServed: { "@type": "GeoCircle", geoMidpoint: { "@type": "GeoCoordinates", latitude: 28.3774, longitude: -81.1888 }, geoRadius: "32000" },
   sameAs: ["https://www.instagram.com/puff2doors/"],
   contactPoint: { "@type": "ContactPoint", telephone: BRAND.phone, contactType: "customer service", email: BRAND.email, areaServed: "US" },

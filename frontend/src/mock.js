@@ -6,7 +6,7 @@ export const BRAND = {
   tagline: "Puffs Delivered To Your Door",
   phone: "(407) 625-6826",
   email: "puff2door@gmail.com",
-  address: "12915 Narcoossee Rd, Orlando, FL 32832",
+  address: "481 N State Rd 434, Altamonte Springs, FL 32714",
 };
 
 export const announcements = [
