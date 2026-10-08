@@ -16,6 +16,7 @@ import { useCatalog } from "../context/CatalogContext";
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
 import { useApp } from "../context/AppContext";
+import AnimatedLogo from "./AnimatedLogo";
 
 const Header = () => {
   const navigate = useNavigate();
@@ -62,10 +63,10 @@ const Header = () => {
             </button>
 
             <Link to="/" className="flex items-center gap-2 shrink-0 min-w-0">
-              <img src="/img/logo.png" alt="Puff2Door logo" data-testid="header-logo" className="h-10 w-10 sm:h-11 sm:w-11 rounded-full object-contain" />
+              <AnimatedLogo testId="header-logo" className="h-10 w-10 sm:h-11 sm:w-11" />
               <span className="leading-none">
                 <span className="block font-heading font-700 text-[20px] sm:text-[22px] tracking-tight text-neutral-900">
-                  Puff<span className="text-emerald-600">2</span>Door
+                  Puff<span className="p2d-logo-accent text-emerald-600">2</span>Door
                 </span>
                 <span className="hidden sm:block text-[9px] tracking-[0.28em] text-neutral-500 uppercase">
                   {BRAND.tagline}

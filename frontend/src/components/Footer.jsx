@@ -9,6 +9,7 @@ const SOCIALS = [
 ];
 import { BRAND } from "../mock";
 import { useCatalog } from "../context/CatalogContext";
+import AnimatedLogo from "./AnimatedLogo";
 
 const Footer = () => {
   const { activeCategories: categories } = useCatalog();
@@ -27,9 +28,9 @@ const Footer = () => {
       <div className="max-w-[1280px] mx-auto px-4 py-14 grid grid-cols-1 md:grid-cols-4 gap-10">
         <div>
           <div className="flex items-center gap-2 mb-4">
-            <img src="/img/logo.png" alt="Puff2Door logo" data-testid="footer-logo" className="h-10 w-10 rounded-full object-contain" />
+            <AnimatedLogo testId="footer-logo" className="h-10 w-10" />
             <span className="font-heading font-700 text-xl text-white">
-              Puff<span className="text-emerald-500">2</span>Door
+              Puff<span className="p2d-logo-accent text-emerald-500">2</span>Door
             </span>
           </div>
           <p className="text-sm leading-relaxed text-neutral-400">

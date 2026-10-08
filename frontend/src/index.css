@@ -72,3 +72,111 @@ code {
   100% { transform: translateX(-50%); }
 }
 .animate-marquee { animation: marquee 22s linear infinite; }
+
+/* Puff2Door logo motion */
+.p2d-logo {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  isolation: isolate;
+}
+
+.p2d-logo__image {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  animation: p2dLogoFloat 4.8s ease-in-out infinite;
+  filter: drop-shadow(0 3px 5px rgb(5 150 105 / 0.18));
+  transform-origin: 50% 55%;
+  transition: filter 280ms ease, transform 280ms ease;
+}
+
+.p2d-logo__halo {
+  position: absolute;
+  z-index: 1;
+  inset: -4px;
+  border: 1.5px solid rgb(16 185 129 / 0.44);
+  border-right-color: rgb(52 211 153 / 0.06);
+  border-bottom-color: rgb(245 158 11 / 0.26);
+  border-radius: 999px;
+  animation: p2dLogoOrbit 7s linear infinite, p2dLogoHalo 4.8s ease-in-out infinite;
+}
+
+.p2d-logo__puff {
+  position: absolute;
+  z-index: 3;
+  top: 2px;
+  right: 0;
+  width: 5px;
+  height: 5px;
+  border: 1px solid rgb(16 185 129 / 0.58);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.86);
+  opacity: 0;
+  pointer-events: none;
+  animation: p2dLogoPuff 4.2s ease-out infinite;
+}
+
+.p2d-logo__puff--two {
+  width: 4px;
+  height: 4px;
+  animation-delay: 1.35s;
+}
+
+.p2d-logo__puff--three {
+  width: 6px;
+  height: 6px;
+  animation-delay: 2.7s;
+}
+
+.p2d-logo-accent {
+  display: inline-block;
+  animation: p2dLogoAccent 4.8s ease-in-out infinite;
+}
+
+a:hover .p2d-logo__image {
+  animation-play-state: paused;
+  filter: drop-shadow(0 5px 9px rgb(5 150 105 / 0.35));
+  transform: translateY(-2px) rotate(4deg) scale(1.08);
+}
+
+a:hover .p2d-logo__halo {
+  border-color: rgb(16 185 129 / 0.72);
+}
+
+@keyframes p2dLogoFloat {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-3px) rotate(1.5deg); }
+}
+
+@keyframes p2dLogoOrbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes p2dLogoHalo {
+  0%, 100% { opacity: 0.55; scale: 0.96; }
+  50% { opacity: 1; scale: 1.04; }
+}
+
+@keyframes p2dLogoPuff {
+  0%, 58% { opacity: 0; transform: translate(0, 0) scale(0.45); }
+  64% { opacity: 0.72; }
+  88% { opacity: 0.28; }
+  100% { opacity: 0; transform: translate(8px, -15px) scale(1.35); }
+}
+
+@keyframes p2dLogoAccent {
+  0%, 100% { transform: translateY(0); text-shadow: 0 0 0 rgb(16 185 129 / 0); }
+  50% { transform: translateY(-1px); text-shadow: 0 0 10px rgb(16 185 129 / 0.38); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .p2d-logo__image,
+  .p2d-logo__halo,
+  .p2d-logo__puff,
+  .p2d-logo-accent {
+    animation: none;
+  }
+}
