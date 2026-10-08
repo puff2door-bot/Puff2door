@@ -13,7 +13,7 @@ const STATUSES = [
 const CANCELLED = { key: "cancelled", label: "Cancelled" };
 const ALL_STATUSES = [...STATUSES, CANCELLED];
 
-const PAY_LABEL = { square: "Card", cash_app: "Cash App", paypal: "PayPal", zelle: "Zelle", test_card: "Test card" };
+const PAY_LABEL = { square: "Card", cash_app: "Cash App", paypal: "PayPal", apple_pay: "Apple Pay", zelle: "Zelle", test_card: "Test card" };
 const payTone = { paid: "bg-emerald-100 text-emerald-700", awaiting_payment: "bg-amber-100 text-amber-800", refunded: "bg-neutral-200 text-neutral-600" };
 
 const tone = { placed: "bg-neutral-100 text-neutral-700", confirmed: "bg-blue-100 text-blue-700", out_for_delivery: "bg-amber-100 text-amber-700", delivered: "bg-emerald-100 text-emerald-700", cancelled: "bg-red-100 text-red-700" };

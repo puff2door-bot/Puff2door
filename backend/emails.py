@@ -94,7 +94,7 @@ def address_block(s: dict) -> str:
     return "<br>".join(escape(p) for p in parts if p and p.strip(", "))
 
 
-PAY_LABEL = {"square": "card", "cash_app": "Cash App Pay", "paypal": "PayPal", "zelle": "Zelle", "test_card": "test card"}
+PAY_LABEL = {"square": "card", "cash_app": "Cash App Pay", "paypal": "PayPal", "apple_pay": "Apple Pay", "zelle": "Zelle", "test_card": "test card"}
 STATUS_COPY = {
     "confirmed": ("Your order is confirmed", "We've received your payment and are getting your order ready."),
     "out_for_delivery": ("Your order is out for delivery", "Your Puff2Door order is on its way. Keep your ID handy — deliveries are 21+ only."),

@@ -11,6 +11,7 @@ import { ecommerce } from "../seo/Analytics";
 import PaymentMethodPicker, { enabledMethods } from "../components/checkout/PaymentMethodPicker";
 import SquarePayment from "../components/checkout/SquarePayment";
 import PayPalCheckout from "../components/checkout/PayPalCheckout";
+import ApplePayCheckout from "../components/checkout/ApplePayCheckout";
 import ZelleInstructions from "../components/checkout/ZelleInstructions";
 import RewardsPanel from "../components/checkout/RewardsPanel";
 import DeliveryCountdown, { useDeliveryWindow } from "../components/DeliveryCountdown";
@@ -177,7 +178,7 @@ const CheckoutPage = () => {
 
   const payError = (msg) => toast({ title: "Payment problem", description: typeof msg === "string" && msg ? msg : "Please try again.", variant: "destructive" });
   const methods = payConfig ? enabledMethods(payConfig) : [];
-  const buttonDriven = method === "paypal" || method === "cash_app";
+  const buttonDriven = method === "paypal" || method === "apple_pay" || method === "cash_app";
   const outOfZone = Boolean(zone && !zone.eligible);
   const blocked = outOfZone || stockIssues.length > 0;
 
@@ -308,6 +309,11 @@ const CheckoutPage = () => {
                       onCancel={() => toast({ title: "PayPal cancelled", description: "You were not charged. Choose a payment method to try again." })}
                       onApprove={(paypalOrderId) => submitOrder({ paypalOrderId }).catch(() => {})} />
                   )}
+                  {method === "apple_pay" && (
+                    <ApplePayCheckout config={payConfig.applePay} total={total} validate={validateShipping} createOrder={paypalCreate} onError={payError}
+                      onCancel={() => toast({ title: "Apple Pay cancelled", description: "You were not charged. Choose a payment method to try again." })}
+                      onApprove={(paypalOrderId) => submitOrder({ paypalOrderId })} />
+                  )}
                   {method === "zelle" && <ZelleInstructions recipient={payConfig.zelle.email} name={payConfig.zelle.name} amount={total} />}
                   {method === "test_card" && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-testid="test-card-form">
@@ -354,7 +360,7 @@ const CheckoutPage = () => {
             ) : stockIssues.length > 0 ? (
               <p data-testid="checkout-submit-stock-blocked" className="mt-5 text-center text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-full py-3 px-4">Update your cart to continue — some items are unavailable</p>
             ) : buttonDriven ? (
-              <p data-testid="checkout-button-hint" className="mt-5 text-center text-xs text-neutral-500 border border-dashed rounded-full py-3 px-4">Complete your payment with the {method === "paypal" ? "PayPal" : "Cash App Pay"} button in the Payment section.</p>
+              <p data-testid="checkout-button-hint" className="mt-5 text-center text-xs text-neutral-500 border border-dashed rounded-full py-3 px-4">Complete your payment with the {method === "paypal" ? "PayPal" : method === "apple_pay" ? "Apple Pay" : "Cash App Pay"} button in the Payment section.</p>
             ) : (
               <button disabled={busy || !method || blocked} data-testid="checkout-submit" className="w-full mt-5 py-3.5 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
                 <ShieldCheck className="h-5 w-5" /> {busy ? "Processing..." : method === "zelle" ? "Place Order — Pay via Zelle" : `Pay $${total.toFixed(2)}`}

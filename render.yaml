@@ -27,5 +27,7 @@ services:
         value: "false"
       - key: PAYPAL_ENV
         value: live
+      - key: APPLE_PAY_ENABLED
+        value: "false"
       - key: SQUARE_ENV
         value: production

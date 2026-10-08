@@ -5,13 +5,15 @@ export const METHOD_META = {
   square: { label: "Credit / Debit Card", hint: "Visa, Mastercard, Amex, Discover", icon: CreditCard },
   cash_app: { label: "Cash App Pay", hint: "Approve in the Cash App", icon: Smartphone },
   paypal: { label: "PayPal / Card", hint: "PayPal balance, Pay Later, or debit & credit card", icon: Wallet },
+  apple_pay: { label: "Apple Pay", hint: "Fast, secure checkout with Touch ID or Face ID", icon: Smartphone },
   zelle: { label: "Zelle", hint: "Send from your bank app — we confirm manually", icon: Landmark },
   test_card: { label: "Test Card", hint: "Demo only — no real charge (4242 4242 4242 4242)", icon: TestTube2 },
 };
 
 export const enabledMethods = (config) =>
-  ["square", "cash_app", "paypal", "zelle", "test_card"].filter((m) => {
+  ["square", "cash_app", "paypal", "apple_pay", "zelle", "test_card"].filter((m) => {
     if (m === "cash_app") return config?.cashApp?.enabled;
+    if (m === "apple_pay") return config?.applePay?.enabled && Boolean(window.ApplePaySession?.canMakePayments?.());
     if (m === "test_card") return config?.testCard?.visible ?? config?.testCard?.enabled;
     return config?.[m]?.enabled;
   });

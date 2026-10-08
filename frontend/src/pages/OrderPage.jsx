@@ -5,7 +5,7 @@ import api, { imgUrl } from "../api";
 import { ecommerce } from "../seo/Analytics";
 import ZelleInstructions from "../components/checkout/ZelleInstructions";
 
-const PAY_LABEL = { square: "Card", cash_app: "Cash App Pay", paypal: "PayPal", zelle: "Zelle", test_card: "Test card" };
+const PAY_LABEL = { square: "Card", cash_app: "Cash App Pay", paypal: "PayPal", apple_pay: "Apple Pay", zelle: "Zelle", test_card: "Test card" };
 
 const ICONS = { placed: Package, confirmed: CheckCircle2, out_for_delivery: Truck, delivered: Home };
 
@@ -146,7 +146,7 @@ const OrderPage = () => {
               {order.refundedAmount > 0 && <div className="flex justify-between text-red-600" data-testid="order-refunded"><span>Refunded</span><span>-${order.refundedAmount.toFixed(2)}</span></div>}
               <div className="flex justify-between font-heading text-lg border-t pt-2 mt-2"><span>Total</span><span>${order.total.toFixed(2)}</span></div>
               <p className="text-xs text-neutral-400 pt-1" data-testid="order-payment-info">
-                {order.paymentStatus === "awaiting_payment" ? `Awaiting ${PAY_LABEL[order.paymentMethod]} payment` : order.paymentStatus === "refunded" ? "Refunded" : `Paid via ${order.paymentBrand || PAY_LABEL[order.paymentMethod]}${order.paymentLast4 && order.paymentMethod !== "paypal" ? ` •••• ${order.paymentLast4}` : ""}`}
+                {order.paymentStatus === "awaiting_payment" ? `Awaiting ${PAY_LABEL[order.paymentMethod]} payment` : order.paymentStatus === "refunded" ? "Refunded" : `Paid via ${order.paymentBrand || PAY_LABEL[order.paymentMethod]}${order.paymentLast4 && !["paypal", "apple_pay"].includes(order.paymentMethod) ? ` •••• ${order.paymentLast4}` : ""}`}
               </p>
             </div>
           </div>

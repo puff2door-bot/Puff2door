@@ -171,6 +171,7 @@ PAYPAL_CLIENT_ID = os.environ.get("PAYPAL_CLIENT_ID", "").strip()
 PAYPAL_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET", "").strip()
 PAYPAL_ENV = os.environ.get("PAYPAL_ENV", "sandbox").strip().lower()
 PAYPAL_ENABLED = bool(PAYPAL_CLIENT_ID and PAYPAL_SECRET)
+APPLE_PAY_ENABLED = PAYPAL_ENABLED and os.environ.get("APPLE_PAY_ENABLED", "false").strip().lower() == "true"
 PAYPAL_BASE = "https://api-m.paypal.com" if PAYPAL_ENV in ("production", "live") else "https://api-m.sandbox.paypal.com"
 ZELLE_EMAIL = os.environ.get("ZELLE_EMAIL", "").strip()
 ZELLE_NAME = os.environ.get("ZELLE_NAME", "").strip()
@@ -178,7 +179,7 @@ ZELLE_ENABLED = bool(ZELLE_EMAIL)
 REAL_CARD_PROVIDER = SQUARE_ENABLED or PAYPAL_ENABLED
 # ALLOW_TEST_CARD=true keeps the simulated card usable for QA even when a real provider exists (hidden in UI). Leave unset in production.
 TEST_CARD_ENABLED = (not REAL_CARD_PROVIDER) or os.environ.get("ALLOW_TEST_CARD", "").lower() == "true"
-PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "zelle"}
+PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "apple_pay", "zelle"}
 DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32832", "deliveryRadiusMiles": 20.0,
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
                     "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6]}
@@ -568,6 +569,7 @@ def payments_config() -> dict:
         "square": {"enabled": SQUARE_ENABLED, "applicationId": SQUARE_APP_ID if SQUARE_ENABLED else None, "locationId": SQUARE_LOCATION if SQUARE_ENABLED else None, "env": SQUARE_ENV},
         "cashApp": {"enabled": SQUARE_ENABLED},
         "paypal": {"enabled": PAYPAL_ENABLED, "clientId": PAYPAL_CLIENT_ID if PAYPAL_ENABLED else None, "env": PAYPAL_ENV},
+        "applePay": {"enabled": APPLE_PAY_ENABLED, "clientId": PAYPAL_CLIENT_ID if APPLE_PAY_ENABLED else None, "env": PAYPAL_ENV},
         "zelle": {"enabled": ZELLE_ENABLED, "email": ZELLE_EMAIL, "name": ZELLE_NAME},
         "testCard": {"enabled": TEST_CARD_ENABLED, "visible": TEST_CARD_ENABLED and not REAL_CARD_PROVIDER},
     }
@@ -1256,7 +1258,7 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
     if not inp.items:
         raise HTTPException(status_code=400, detail="Your cart is empty")
     method = inp.paymentMethod
-    enabled = {"test_card": TEST_CARD_ENABLED, "square": SQUARE_ENABLED, "cash_app": SQUARE_ENABLED, "paypal": PAYPAL_ENABLED, "zelle": ZELLE_ENABLED}
+    enabled = {"test_card": TEST_CARD_ENABLED, "square": SQUARE_ENABLED, "cash_app": SQUARE_ENABLED, "paypal": PAYPAL_ENABLED, "apple_pay": APPLE_PAY_ENABLED, "zelle": ZELLE_ENABLED}
     if method not in PAYMENT_METHODS or not enabled[method]:
         raise HTTPException(status_code=400, detail="That payment method is not available")
     zone = require_delivery_zone(inp.shipping.zip, await get_settings())
@@ -1264,7 +1266,7 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
     if inp.expectSameDay and not window["sameDayOpen"]:
         raise HTTPException(status_code=409, detail=window["message"] or "Same-day delivery is not available right now. Your order will be scheduled for the next available delivery day.")
     pending = None
-    if method == "paypal":
+    if method in ("paypal", "apple_pay"):
         if not inp.paypalOrderId:
             raise HTTPException(status_code=400, detail="Missing PayPal order")
         pending = await db.paypal_orders.find_one({"paypalOrderId": inp.paypalOrderId})
@@ -1295,7 +1297,7 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
                 raise HTTPException(status_code=402, detail=f"Payment {pay.get('status', 'failed').lower()}")
             card = pay.get("card_details", {}).get("card", {})
             payment.update({"paymentRef": pay.get("id", ""), "paymentLast4": card.get("last_4", ""), "paymentBrand": card.get("card_brand", "Cash App" if method == "cash_app" else "")})
-        elif method == "paypal":
+        elif method in ("paypal", "apple_pay"):
             lock = await db.paypal_orders.update_one({"paypalOrderId": inp.paypalOrderId, "captured": False, "capturing": {"$ne": True}}, {"$set": {"capturing": True, "capturingAt": now_utc(), "orderId": order_id}})
             if lock.modified_count == 0:
                 raise HTTPException(status_code=409, detail="This PayPal payment is already being processed. Please wait a moment.")
@@ -1305,7 +1307,7 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
                 raise HTTPException(status_code=402, detail=f"PayPal payment {cap.get('status', 'failed').lower()}")
             capture_id = cap["purchase_units"][0]["payments"]["captures"][0]["id"]
             await db.paypal_orders.update_one({"paypalOrderId": inp.paypalOrderId}, {"$set": {"captured": True, "capturing": False, "capturedAt": now_utc(), "captureId": capture_id, "orderId": order_id}})
-            payment.update({"paymentRef": capture_id, "paymentBrand": "PayPal", "paymentLast4": (cap.get("payer", {}).get("email_address") or "")})
+            payment.update({"paymentRef": capture_id, "paymentBrand": "Apple Pay" if method == "apple_pay" else "PayPal", "paymentLast4": (cap.get("payer", {}).get("email_address") or "")})
         elif method == "zelle":
             payment.update({"paymentStatus": "awaiting_payment", "paymentBrand": "Zelle"})
         elif method == "test_card":
