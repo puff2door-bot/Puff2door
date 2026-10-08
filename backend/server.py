@@ -17,6 +17,7 @@ import random
 import re
 import json
 import math
+import mimetypes
 import secrets
 import zipcodes
 from datetime import datetime, timedelta, timezone, date, time as dtime
@@ -2629,6 +2630,11 @@ async def shutdown_db_client():
 # handles browser assets and client-side routes such as /shop and /admin.
 FRONTEND_BUILD_DIR = ROOT_DIR.parent / "frontend" / "build"
 if FRONTEND_BUILD_DIR.exists():
+    # Some minimal Linux images do not register WebP, causing product images
+    # to be served as text/plain. Register it explicitly for browser-safe MIME
+    # headers when the portable build serves localized catalog assets.
+    mimetypes.add_type("image/webp", ".webp")
+
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_frontend(full_path: str):
         candidate = (FRONTEND_BUILD_DIR / full_path).resolve()
