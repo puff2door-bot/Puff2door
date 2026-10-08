@@ -124,9 +124,9 @@ const AuthPage = () => {
   const doGoogle = async () => {
     setBusy(true);
     try {
-      await loginWithGoogle();
+      const loggedInUser = await loginWithGoogle();
       toast({ title: "Welcome to Puff2Door!" });
-      navigate("/my-account");
+      navigate(loggedInUser?.role === "admin" ? "/admin" : "/my-account");
     } catch (err) {
       fail("Google sign-in failed", err);
     } finally {
@@ -138,9 +138,9 @@ const AuthPage = () => {
     e.preventDefault();
     setBusy(true);
     try {
-      await login(loginData.email, loginData.password, loginData.rememberMe);
+      const loggedInUser = await login(loginData.email, loginData.password, loginData.rememberMe);
       toast({ title: "Welcome back!", description: loginData.rememberMe ? "We'll keep you signed in for 30 days." : undefined });
-      navigate("/");
+      navigate(loggedInUser?.role === "admin" ? "/admin" : "/");
     } catch (err) {
       fail("Login failed", err);
     } finally { setBusy(false); }
