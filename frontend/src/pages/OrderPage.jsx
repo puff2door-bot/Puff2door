@@ -142,6 +142,7 @@ const OrderPage = () => {
               {order.tax > 0 && <div className="flex justify-between" data-testid="order-tax"><span className="text-neutral-500">Sales tax ({(order.taxRate * 100).toFixed(1).replace(/\.0$/, "")}%)</span><span>${order.tax.toFixed(2)}</span></div>}
               {order.discount > 0 && <div className="flex justify-between text-emerald-600" data-testid="order-discount"><span>Discount{order.promoCode ? ` (${order.promoCode})` : ""}</span><span>-${order.discount.toFixed(2)}</span></div>}
               {order.rewardDiscount > 0 && <div className="flex justify-between text-emerald-600" data-testid="order-reward"><span>Rewards ({order.rewardPoints.toLocaleString()} pts)</span><span>-${order.rewardDiscount.toFixed(2)}</span></div>}
+              {order.tip > 0 && <div className="flex justify-between" data-testid="order-tip"><span className="text-neutral-500">Driver tip</span><span>${order.tip.toFixed(2)}</span></div>}
               {order.refundedAmount > 0 && <div className="flex justify-between text-red-600" data-testid="order-refunded"><span>Refunded</span><span>-${order.refundedAmount.toFixed(2)}</span></div>}
               <div className="flex justify-between font-heading text-lg border-t pt-2 mt-2"><span>Total</span><span>${order.total.toFixed(2)}</span></div>
               <p className="text-xs text-neutral-400 pt-1" data-testid="order-payment-info">

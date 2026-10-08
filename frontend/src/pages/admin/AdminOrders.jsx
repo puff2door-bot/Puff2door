@@ -99,6 +99,7 @@ const AdminOrders = () => {
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="font-heading text-xl">${o.total.toFixed(2)}</span>
+                  {o.tip > 0 && <span data-testid={`order-tip-${o.orderNumber}`} className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">Tip ${o.tip.toFixed(2)}</span>}
                   <span data-testid={`order-pay-badge-${o.orderNumber}`} className={`text-xs font-bold px-2.5 py-1 rounded-full ${payTone[o.paymentStatus] || payTone.paid}`}>{PAY_LABEL[o.paymentMethod] || "Card"} · {o.paymentStatus === "awaiting_payment" ? "Unpaid" : o.paymentStatus === "refunded" ? "Refunded" : "Paid"}</span>
                   {o.paymentStatus === "awaiting_payment" && (
                     <button onClick={() => markPaid(o)} data-testid={`mark-paid-${o.orderNumber}`} className="inline-flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-full bg-neutral-900 text-white hover:bg-emerald-600 transition-colors"><BadgeDollarSign className="h-3.5 w-3.5" /> Mark Paid</button>

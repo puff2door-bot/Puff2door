@@ -69,10 +69,11 @@ def items_table(order: dict) -> str:
     tax_row = f'<tr><td style="padding:4px 0;font-size:14px;color:#737373;">Sales tax ({order.get("taxRate", 0) * 100:g}%)</td><td align="right" style="padding:4px 0;font-size:14px;">{_money(order["tax"])}</td></tr>' if order.get("tax") else ""
     disc_row = f'<tr><td style="padding:4px 0;font-size:14px;color:#059669;">Discount {escape(order.get("promoCode") or "")}</td><td align="right" style="padding:4px 0;font-size:14px;color:#059669;">-{_money(order["discount"])}</td></tr>' if order.get("discount") else ""
     reward_row = f'<tr><td style="padding:4px 0;font-size:14px;color:#059669;">Puff2door Rewards ({order.get("rewardPoints", 0)} pts)</td><td align="right" style="padding:4px 0;font-size:14px;color:#059669;">-{_money(order["rewardDiscount"])}</td></tr>' if order.get("rewardDiscount") else ""
+    tip_row = f'<tr><td style="padding:4px 0;font-size:14px;color:#737373;">Driver tip</td><td align="right" style="padding:4px 0;font-size:14px;">{_money(order["tip"])}</td></tr>' if order.get("tip") else ""
     return f"""<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0;">{rows}
 <tr><td style="padding:8px 0;font-size:14px;color:#737373;">Subtotal</td><td align="right" style="padding:8px 0;font-size:14px;">{_money(order["subtotal"])}</td></tr>
 {disc_row}{reward_row}<tr><td style="padding:4px 0;font-size:14px;color:#737373;">Delivery</td><td align="right" style="padding:4px 0;font-size:14px;">{ship}</td></tr>
-{tax_row}<tr><td style="padding:10px 0;font-size:18px;font-weight:800;">Total</td><td align="right" style="padding:10px 0;font-size:18px;font-weight:800;">{_money(order["total"])}</td></tr>
+{tax_row}{tip_row}<tr><td style="padding:10px 0;font-size:18px;font-weight:800;">Total</td><td align="right" style="padding:10px 0;font-size:18px;font-weight:800;">{_money(order["total"])}</td></tr>
 </table>"""
 
 

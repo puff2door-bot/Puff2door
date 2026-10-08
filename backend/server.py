@@ -144,6 +144,7 @@ class OrderInput(BaseModel):
     paypalOrderId: str = ""
     promoCode: str = ""
     redeemPoints: int = 0
+    tip: float = Field(default=0, ge=0, le=500)
     expectSameDay: Optional[bool] = None
 
 
@@ -152,6 +153,7 @@ class PayPalCreateInput(BaseModel):
     promoCode: str = ""
     zip: str = ""
     redeemPoints: int = 0
+    tip: float = Field(default=0, ge=0, le=500)
 
 
 class PaymentStatusInput(BaseModel):
@@ -622,7 +624,7 @@ async def paypal_request(method: str, path: str, body: Optional[dict] = None) ->
     return data
 
 
-async def price_cart(items: List[CartItem], promo_code: str = "", redeem_points: int = 0, user: Optional[dict] = None):
+async def price_cart(items: List[CartItem], promo_code: str = "", redeem_points: int = 0, user: Optional[dict] = None, tip: float = 0):
     problems, priced = [], []
     for it in items:
         prod = await db.products.find_one({"id": it.productId})
@@ -654,6 +656,8 @@ async def price_cart(items: List[CartItem], promo_code: str = "", redeem_points:
     totals["rewardDiscount"] = reward
     totals["rewardPoints"] = int(redeem_points or 0) if reward else 0
     totals["promoCode"] = promo["code"] if promo else ""
+    totals["tip"] = r2(tip)
+    totals["total"] = r2(totals["total"] + totals["tip"])
     return priced, totals
 
 
@@ -944,6 +948,7 @@ def order_response(o: dict) -> dict:
         "taxRate": o.get("taxRate", 0),
         "discount": o.get("discount", 0),
         "promoCode": o.get("promoCode", ""),
+        "tip": o.get("tip", 0),
         "total": o["total"],
         "rewardDiscount": o.get("rewardDiscount", 0.0),
         "rewardPoints": o.get("rewardPoints", 0),
@@ -1221,7 +1226,7 @@ async def paypal_create_order(inp: PayPalCreateInput, user: Optional[dict] = Dep
     if not inp.items:
         raise HTTPException(status_code=400, detail="Your cart is empty")
     require_delivery_zone(inp.zip, await get_settings())
-    _, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user)
+    _, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user, inp.tip)
     total = totals["total"]
     data = await paypal_request("POST", "/v2/checkout/orders", {
         "intent": "CAPTURE",
@@ -1272,7 +1277,7 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
             raise HTTPException(status_code=402, detail="This PayPal payment was already used.")
         if pending.get("capturing"):
             raise HTTPException(status_code=409, detail="This PayPal payment is already being processed. Please wait a moment.")
-    priced_items, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user)
+    priced_items, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user, inp.tip)
     subtotal, shipping_cost, total = totals["subtotal"], totals["shippingCost"], totals["total"]
     if pending and abs(pending["total"] - total) > 0.01:
         raise HTTPException(status_code=402, detail="PayPal order does not match your cart. Please try again.")
@@ -1334,6 +1339,7 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
         "promoCode": totals["promoCode"],
         "rewardDiscount": totals["rewardDiscount"],
         "rewardPoints": totals["rewardPoints"],
+        "tip": totals["tip"],
         "total": total,
         **payment,
         "createdAt": now_utc(),

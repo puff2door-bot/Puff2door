@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { CreditCard, Lock, ChevronRight, ShieldCheck, MapPin, CheckCircle2, XCircle } from "lucide-react";
+import { CreditCard, Lock, ChevronRight, ShieldCheck, MapPin, CheckCircle2, XCircle, Heart } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { useApp } from "../context/AppContext";
 import { useCatalog } from "../context/CatalogContext";
@@ -24,7 +24,14 @@ const CheckoutPage = () => {
   const [busy, setBusy] = useState(false);
   const [placed, setPlaced] = useState(false);
 
-  const { shipping, tax, discount, reward, total } = totals;
+  const { shipping, tax, discount, reward, total: totalBeforeTip } = totals;
+  const [tipChoice, setTipChoice] = useState("none");
+  const [customTip, setCustomTip] = useState("");
+  const tipBase = Math.max(subtotal - discount - reward, 0);
+  const tip = tipChoice === "custom"
+    ? Math.min(Math.max(Math.round((Number(customTip) || 0) * 100) / 100, 0), 500)
+    : tipChoice === "none" ? 0 : Math.round(tipBase * Number(tipChoice)) / 100;
+  const total = Math.round((totalBeforeTip + tip) * 100) / 100;
   const redeemRef = useRef(redeemPoints);
   redeemRef.current = redeemPoints;
   const { window: deliveryWin, sameDayOpen } = useDeliveryWindow();
@@ -96,7 +103,7 @@ const CheckoutPage = () => {
   const submitOrder = useCallback(async (extra) => {
     setBusy(true);
     try {
-      const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: form, paymentMethod: method, promoCode: promo?.code || "", redeemPoints: user ? redeemRef.current : 0, expectSameDay: sameDayRef.current, ...extra });
+      const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: form, paymentMethod: method, promoCode: promo?.code || "", redeemPoints: user ? redeemRef.current : 0, tip, expectSameDay: sameDayRef.current, ...extra });
       ecommerce.purchase(data);
       setPlaced(true);
       clearCart();
@@ -113,7 +120,7 @@ const CheckoutPage = () => {
       throw err;
     } finally { setBusy(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, method, promo, toServerItem, clearCart, navigate, toast, user]);
+  }, [form, method, promo, tip, toServerItem, clearCart, navigate, toast, user]);
 
   const validateShipping = () => {
     if (!formRef.current?.reportValidity()) {
@@ -159,7 +166,7 @@ const CheckoutPage = () => {
   const paypalCreate = async () => {
     if (stockIssues.length) throw new Error(stockIssues.map((s) => s.message).join(" "));
     try {
-      const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "", zip: form.zip, redeemPoints: user ? redeemRef.current : 0 });
+      const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "", zip: form.zip, redeemPoints: user ? redeemRef.current : 0, tip });
       return data.id;
     } catch (err) {
       const detail = err?.response?.data?.detail;
@@ -214,6 +221,56 @@ const CheckoutPage = () => {
 
           <RewardsPanel />
 
+          {/* Driver tip */}
+          <section className="border border-neutral-200 rounded-xl p-5" data-testid="checkout-tip-section">
+            <h2 className="font-heading text-xl uppercase tracking-wide mb-1 flex items-center gap-2"><Heart className="h-5 w-5 text-emerald-600" /> Tip Your Driver</h2>
+            <p className="text-xs text-neutral-500 mb-4">100% of your tip goes to your delivery driver.</p>
+            <div className="grid grid-cols-4 gap-2">
+              {[10, 15, 20].map((percent) => (
+                <button
+                  key={percent}
+                  type="button"
+                  data-testid={`checkout-tip-${percent}`}
+                  aria-pressed={tipChoice === String(percent)}
+                  onClick={() => { setTipChoice(String(percent)); setCustomTip(""); }}
+                  className={`rounded-lg border px-3 py-2.5 text-sm font-bold transition-colors ${tipChoice === String(percent) ? "border-emerald-600 bg-emerald-600 text-white" : "border-neutral-300 hover:border-emerald-600"}`}
+                >
+                  {percent}%
+                </button>
+              ))}
+              <button
+                type="button"
+                data-testid="checkout-tip-none"
+                aria-pressed={tipChoice === "none"}
+                onClick={() => { setTipChoice("none"); setCustomTip(""); }}
+                className={`rounded-lg border px-3 py-2.5 text-sm font-bold transition-colors ${tipChoice === "none" ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-300 hover:border-neutral-900"}`}
+              >
+                No tip
+              </button>
+            </div>
+            <div className="mt-3">
+              <label htmlFor="checkout-custom-tip" className="block text-xs font-bold text-neutral-600 mb-1.5">Custom tip</label>
+              <div className={`flex items-center rounded-lg border px-3 transition-colors ${tipChoice === "custom" ? "border-emerald-600" : "border-neutral-300"}`}>
+                <span className="text-neutral-500 font-semibold">$</span>
+                <input
+                  id="checkout-custom-tip"
+                  type="number"
+                  min="0"
+                  max="500"
+                  step="0.01"
+                  inputMode="decimal"
+                  data-testid="checkout-tip-custom"
+                  placeholder="Enter amount"
+                  value={customTip}
+                  onFocus={() => setTipChoice("custom")}
+                  onChange={(e) => { setTipChoice("custom"); setCustomTip(e.target.value); }}
+                  className="w-full px-2 py-2.5 text-sm outline-none"
+                />
+              </div>
+            </div>
+            {tip > 0 && <p className="mt-3 text-sm font-semibold text-emerald-700" data-testid="checkout-tip-selected">Tip: ${tip.toFixed(2)}</p>}
+          </section>
+
           {/* Payment */}
           <section>
             <h2 className="font-heading text-xl uppercase tracking-wide mb-1 flex items-center gap-2"><CreditCard className="h-5 w-5 text-emerald-600" /> Payment</h2>
@@ -235,14 +292,14 @@ const CheckoutPage = () => {
               <p className="text-sm text-red-500">No payment methods are available right now. Please contact us.</p>
             ) : (
               <>
-                <PaymentMethodPicker methods={methods} value={method} onChange={(m) => { setMethod(m); ecommerce.addPaymentInfo(m, totals.total); }} />
+                <PaymentMethodPicker methods={methods} value={method} onChange={(m) => { setMethod(m); ecommerce.addPaymentInfo(m, total); }} />
                 <div className="mt-5" data-testid="payment-panel">
                   {method === "square" && (
                     <SquarePayment key="square" config={payConfig.square} mode="square" total={total} onReady={(fn) => { tokenizeRef.current = fn; }} onError={payError} />
                   )}
                   {method === "cash_app" && (
                     <div>
-                      <SquarePayment key="cash_app" config={payConfig.square} mode="cash_app" total={total} onReady={() => {}} onError={payError}
+                      <SquarePayment key={`cash_app-${total.toFixed(2)}`} config={payConfig.square} mode="cash_app" total={total} onReady={() => {}} onError={payError}
                         onCashAppToken={(token) => { if (validateShipping()) submitOrder({ paymentToken: token }).catch(() => {}); }} />
                     </div>
                   )}
@@ -286,6 +343,7 @@ const CheckoutPage = () => {
               {reward > 0 && <div className="flex justify-between text-emerald-600" data-testid="checkout-reward"><span>Rewards ({redeemPoints.toLocaleString()} pts)</span><span className="font-semibold">-${reward.toFixed(2)}</span></div>}
               <div className="flex justify-between"><span className="text-neutral-500">Delivery</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
               <div className="flex justify-between" data-testid="checkout-tax"><span className="text-neutral-500">{pricing.taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>
+              {tip > 0 && <div className="flex justify-between" data-testid="checkout-tip"><span className="text-neutral-500">Driver tip</span><span className="font-semibold">${tip.toFixed(2)}</span></div>}
             </div>
             <div className="flex justify-between items-center border-t mt-4 pt-4">
               <span className="font-heading text-lg uppercase">Total</span>
