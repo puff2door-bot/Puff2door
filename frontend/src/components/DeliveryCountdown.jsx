@@ -55,20 +55,21 @@ const DeliveryCountdown = ({ variant = "home" }) => {
     return (
       <p data-testid="checkout-delivery-countdown" className={`mt-2 flex items-start gap-2 rounded-lg px-4 py-2.5 text-xs sm:text-sm font-semibold ${sameDayOpen ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-700 border border-neutral-200"}`}>
         {sameDayOpen ? <Truck className="h-4 w-4 mt-0.5 shrink-0 text-emerald-400" /> : <Clock className="h-4 w-4 mt-0.5 shrink-0 text-neutral-500" />}
-        <span>{text}{sameDayOpen ? <span className="text-emerald-300 font-normal"> · cutoff {win.cutoffLabel} ET</span> : win.nextDeliveryLabel && win.todayOpen ? <span className="font-normal"> Next delivery: {win.nextDeliveryLabel}.</span> : null}</span>
+        <span>{text}{sameDayOpen ? <span className="text-emerald-300 font-normal"> · cutoff {win.cutoffLabel} ET</span> : win.nextDeliveryLabel && win.todayOpen ? <span className="font-normal"> Next delivery: {win.nextDeliveryLabel}.</span> : null}<span className="block font-normal mt-0.5">Deliveries run {win.deliveryStartLabel}–{win.deliveryEndLabel} ET. No deliveries before or after those hours.</span></span>
       </p>
     );
   }
 
   return (
     <div data-testid="delivery-countdown" className="bg-neutral-950 text-white">
-      <p className="max-w-[1280px] mx-auto px-4 py-2 flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold tracking-wide text-center">
-        {sameDayOpen ? <Truck className="h-4 w-4 shrink-0 text-emerald-400" /> : <Clock className="h-4 w-4 shrink-0 text-neutral-400" />}
-        <span data-testid="delivery-countdown-text">
-          {sameDayOpen ? (<>Order within <span className="text-emerald-400 tabular-nums">{text.replace("Order within ", "").replace(" for today's local delivery", "")}</span> for today's local delivery</>) : text}
-        </span>
-        {!sameDayOpen && win.todayOpen && win.nextDeliveryLabel && <span className="hidden sm:inline text-neutral-400 font-normal">· Next: {win.nextDeliveryLabel}</span>}
-      </p>
+      <div className="max-w-[1280px] mx-auto px-4 py-2 text-center">
+        <p className="flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold tracking-wide">
+          {sameDayOpen ? <Truck className="h-4 w-4 shrink-0 text-emerald-400" /> : <Clock className="h-4 w-4 shrink-0 text-neutral-400" />}
+          <span data-testid="delivery-countdown-text">{sameDayOpen ? (<>Order within <span className="text-emerald-400 tabular-nums">{text.replace("Order within ", "").replace(" for today's local delivery", "")}</span> for today's local delivery</>) : text}</span>
+          {!sameDayOpen && win.todayOpen && win.nextDeliveryLabel && <span className="hidden sm:inline text-neutral-400 font-normal">· Next: {win.nextDeliveryLabel}</span>}
+        </p>
+        <p className="mt-0.5 text-[11px] text-neutral-400" data-testid="delivery-hours">Same-day cutoff is {win.cutoffLabel} ET. No deliveries after {win.deliveryEndLabel} or before {win.deliveryStartLabel}.</p>
+      </div>
     </div>
   );
 };

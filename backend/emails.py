@@ -161,6 +161,9 @@ async def send_order_confirmation(order: dict, zelle: Optional[dict] = None, rew
     body += items_table(order)
     body += rewards_box(rewards)
     body += f'<p style="font-size:13px;color:#6b7280;margin:0 0 6px;"><strong style="color:#171717;">Delivering to</strong><br>{address_block(order["shipping"])}</p>'
+    if order.get("deliveryWindow", {}).get("label"):
+        body += f'<p style="font-size:13px;color:#065f46;"><strong>Arrival window:</strong> {escape(order["deliveryWindow"]["label"])}</p>'
+    body += '<p style="font-size:12px;color:#6b7280;">A valid government-issued photo ID proving age 21+ is checked at the door. Orders cannot be left with anyone under 21.</p>'
     body += f'<p style="margin:24px 0 0;">{button("Track your order", order_link(order))}</p>'
     await _send([to], title, layout(title, body, intro), "order_confirmation", {"orderId": order["id"]})
     await notify_admin_new_order(order)

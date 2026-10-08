@@ -21,7 +21,7 @@ const AdminSettings = () => {
   const { toast } = useToast();
 
   const toForm = (data) => ({ taxPercent: +(data.taxRate * 100).toFixed(3), deliveryFee: data.deliveryFee, freeDeliveryMin: data.freeDeliveryMin, deliveryZip: data.deliveryZip || "32832", deliveryRadiusMiles: data.deliveryRadiusMiles ?? 20,
-    sameDayEnabled: data.sameDayEnabled ?? true, deliveryCutoff: data.deliveryCutoff || "20:00", deliveryDays: data.deliveryDays || [0, 1, 2, 3, 4, 5, 6] });
+    sameDayEnabled: data.sameDayEnabled ?? true, deliveryCutoff: data.deliveryCutoff || "20:00", deliveryStart: data.deliveryStart || "11:00", deliveryEnd: data.deliveryEnd || "21:00", deliveryDays: data.deliveryDays || [0, 1, 2, 3, 4, 5, 6] });
 
   useEffect(() => {
     api.get("/admin/settings").then(({ data }) => setF(toForm(data)));
@@ -32,7 +32,7 @@ const AdminSettings = () => {
     setBusy(true);
     try {
       const { data } = await api.put("/admin/settings", { taxRate: Number(f.taxPercent) / 100, deliveryFee: Number(f.deliveryFee), freeDeliveryMin: Number(f.freeDeliveryMin), deliveryZip: f.deliveryZip, deliveryRadiusMiles: Number(f.deliveryRadiusMiles),
-        sameDayEnabled: Boolean(f.sameDayEnabled), deliveryCutoff: f.deliveryCutoff, deliveryDays: f.deliveryDays });
+        sameDayEnabled: Boolean(f.sameDayEnabled), deliveryCutoff: f.deliveryCutoff, deliveryStart: f.deliveryStart, deliveryEnd: f.deliveryEnd, deliveryDays: f.deliveryDays });
       setF(toForm(data));
       toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
     } catch (err) {
@@ -83,12 +83,20 @@ const AdminSettings = () => {
           <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer"><input type="checkbox" data-testid="settings-sameday-enabled" className="accent-emerald-600 h-4 w-4" checked={f.sameDayEnabled} onChange={(e) => setF({ ...f, sameDayEnabled: e.target.checked })} /> {f.sameDayEnabled ? "ON" : "OFF"}</label>
         </div>
         <p className="text-xs text-neutral-500 mb-4">Shows "Order within Xh Ym for today's local delivery" on the homepage and checkout. Times are Orlando (Eastern) time on the server — customers' device clocks are ignored, and checkout re-checks the cutoff.</p>
-        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-bold text-neutral-600 mb-1">Daily cutoff time (ET)</label>
             <input required type="time" data-testid="settings-cutoff" className={inputCls} value={f.deliveryCutoff} onChange={(e) => setF({ ...f, deliveryCutoff: e.target.value })} />
           </div>
           <div>
+            <label className="block text-xs font-bold text-neutral-600 mb-1">First delivery time (ET)</label>
+            <input required type="time" data-testid="settings-delivery-start" className={inputCls} value={f.deliveryStart} onChange={(e) => setF({ ...f, deliveryStart: e.target.value })} />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-neutral-600 mb-1">Last delivery time (ET)</label>
+            <input required type="time" data-testid="settings-delivery-end" className={inputCls} value={f.deliveryEnd} onChange={(e) => setF({ ...f, deliveryEnd: e.target.value })} />
+          </div>
+          <div className="md:col-span-3">
             <label className="block text-xs font-bold text-neutral-600 mb-1">Delivery days (unticked = closed, customers see the next open day)</label>
             <div className="flex flex-wrap gap-2">
               {DAYS.map((d, i) => {

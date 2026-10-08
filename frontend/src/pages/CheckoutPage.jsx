@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { CreditCard, Lock, ChevronRight, ShieldCheck, MapPin, CheckCircle2, XCircle, Heart } from "lucide-react";
+import { CreditCard, Lock, ChevronRight, ShieldCheck, MapPin, CheckCircle2, XCircle, Heart, Clock3, RefreshCw } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { useApp } from "../context/AppContext";
 import { useCatalog } from "../context/CatalogContext";
@@ -35,17 +35,20 @@ const CheckoutPage = () => {
   const total = Math.round((totalBeforeTip + tip) * 100) / 100;
   const redeemRef = useRef(redeemPoints);
   redeemRef.current = redeemPoints;
-  const { window: deliveryWin, sameDayOpen } = useDeliveryWindow();
+  const { window: deliveryWin } = useDeliveryWindow();
+  const [deliveryWindowId, setDeliveryWindowId] = useState("");
   const sameDayRef = useRef(false);
-  sameDayRef.current = Boolean(deliveryWin?.enabled) && sameDayOpen;
+  const chosenDeliveryWindow = deliveryWin?.availableWindows?.find((w) => w.id === deliveryWindowId);
+  sameDayRef.current = Boolean(chosenDeliveryWindow?.sameDay);
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", phone: "",
-    address: "", city: "", state: "", zip: "",
+    address: "", city: "", state: "", zip: "", dateOfBirth: "",
   });
   const [card, setCard] = useState({ number: "", name: "", expiry: "", cvc: "" });
   const [payConfig, setPayConfig] = useState(null);
   const [method, setMethod] = useState("");
+  const [paymentError, setPaymentError] = useState("");
   const [zone, setZone] = useState(null);
   const formRef = useRef(null);
   const tokenizeRef = useRef(null);
@@ -92,6 +95,11 @@ const CheckoutPage = () => {
   }, [user]);
 
   useEffect(() => {
+    const windows = deliveryWin?.availableWindows || [];
+    if (windows.length && !windows.some((w) => w.id === deliveryWindowId)) setDeliveryWindowId(windows[0].id);
+  }, [deliveryWin, deliveryWindowId]);
+
+  useEffect(() => {
     if (items.length === 0 && !placed) navigate("/cart");
   }, [items.length, navigate, placed]);
 
@@ -104,7 +112,8 @@ const CheckoutPage = () => {
   const submitOrder = useCallback(async (extra) => {
     setBusy(true);
     try {
-      const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: form, paymentMethod: method, promoCode: promo?.code || "", redeemPoints: user ? redeemRef.current : 0, tip, expectSameDay: sameDayRef.current, ...extra });
+      setPaymentError("");
+      const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: form, dateOfBirth: form.dateOfBirth, deliveryWindowId, paymentMethod: method, promoCode: promo?.code || "", redeemPoints: user ? redeemRef.current : 0, tip, expectSameDay: sameDayRef.current, ...extra });
       ecommerce.purchase(data);
       setPlaced(true);
       clearCart();
@@ -117,11 +126,13 @@ const CheckoutPage = () => {
       const detail = err?.response?.data?.detail;
       if (status === 409) refreshCatalog();
       const title = status === 409 ? (String(detail || "").includes("delivery") ? "Delivery window changed" : String(detail || "").includes("PayPal") ? "Payment in progress" : "Stock changed") : status === 402 ? "Payment declined" : "Checkout failed";
-      toast({ title, description: typeof detail === "string" ? detail : "Try again", variant: "destructive" });
+      const message = typeof detail === "string" ? detail : "Try again or choose another payment method.";
+      setPaymentError(message);
+      toast({ title, description: message, variant: "destructive" });
       throw err;
     } finally { setBusy(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, method, promo, tip, toServerItem, clearCart, navigate, toast, user]);
+  }, [form, deliveryWindowId, method, promo, tip, toServerItem, clearCart, navigate, toast, user]);
 
   const validateShipping = () => {
     if (!formRef.current?.reportValidity()) {
@@ -130,6 +141,10 @@ const CheckoutPage = () => {
     }
     if (!zoneRef.current?.eligible) {
       toast({ title: "Outside delivery area", description: zoneRef.current?.message || `Sorry, we only deliver within ${delivery.radiusMiles} miles of ${delivery.zip}.`, variant: "destructive" });
+      return false;
+    }
+    if (!deliveryWindowId) {
+      toast({ title: "Choose a delivery time", description: "Select one of the available delivery windows.", variant: "destructive" });
       return false;
     }
     return true;
@@ -167,7 +182,7 @@ const CheckoutPage = () => {
   const paypalCreate = async () => {
     if (stockIssues.length) throw new Error(stockIssues.map((s) => s.message).join(" "));
     try {
-      const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "", zip: form.zip, redeemPoints: user ? redeemRef.current : 0, tip });
+      const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "", zip: form.zip, redeemPoints: user ? redeemRef.current : 0, tip, dateOfBirth: form.dateOfBirth, deliveryWindowId });
       return data.id;
     } catch (err) {
       const detail = err?.response?.data?.detail;
@@ -176,13 +191,19 @@ const CheckoutPage = () => {
     }
   };
 
-  const payError = (msg) => toast({ title: "Payment problem", description: typeof msg === "string" && msg ? msg : "Please try again.", variant: "destructive" });
+  const payError = (msg) => {
+    const message = typeof msg === "string" && msg ? msg : "Please try again or choose another payment method.";
+    setPaymentError(message);
+    toast({ title: "Payment problem", description: message, variant: "destructive" });
+  };
   const methods = payConfig ? enabledMethods(payConfig) : [];
   const buttonDriven = method === "paypal" || method === "apple_pay" || method === "cash_app";
   const outOfZone = Boolean(zone && !zone.eligible);
   const blocked = outOfZone || stockIssues.length > 0;
 
   const inputCls = "w-full border border-neutral-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-600 transition-colors";
+  const maxDob = (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 21); return d.toISOString().slice(0, 10); })();
+  const acceptedLabels = methods.map((m) => ({ square: "debit/credit card", cash_app: "Cash App Pay", paypal: "PayPal or debit/credit card", apple_pay: "Apple Pay", zelle: "Zelle", test_card: "test card" }[m])).filter(Boolean);
 
   return (
     <div className="max-w-[1280px] mx-auto px-4 py-8">
@@ -209,7 +230,9 @@ const CheckoutPage = () => {
               <div><label className="block text-sm font-medium mb-1.5">City *</label><input required data-testid="checkout-city" className={inputCls} value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></div>
               <div><label className="block text-sm font-medium mb-1.5">State *</label><select required data-testid="checkout-state" className={inputCls} value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })}><option value="">Select...</option>{usStates.map((s) => (<option key={s} value={s}>{s}</option>))}</select></div>
               <div><label className="block text-sm font-medium mb-1.5">ZIP *</label><input required data-testid="checkout-zip" inputMode="numeric" className={`${inputCls} ${outOfZone ? "border-red-400" : zone?.eligible ? "border-emerald-500" : ""}`} value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value.replace(/\D/g, "").slice(0, 5) })} /></div>
+              <div><label className="block text-sm font-medium mb-1.5">Date of Birth *</label><input required type="date" max={maxDob} data-testid="checkout-dob" className={inputCls} value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} /></div>
             </div>
+            <p className="mt-3 text-xs text-neutral-600 flex items-start gap-1.5"><ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" /> You must be 21+. A valid government-issued photo ID is checked at the door, and orders cannot be left with anyone under 21.</p>
             <p className="mt-3 text-xs text-neutral-500 flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-emerald-600" /> We deliver within {delivery.radiusMiles} miles of {delivery.zip} only.</p>
             {zone && (
               <div data-testid="checkout-zone-status" className={`mt-2 flex items-start gap-2 rounded-lg px-4 py-3 text-sm font-semibold ${zone.eligible ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
@@ -218,6 +241,18 @@ const CheckoutPage = () => {
               </div>
             )}
             {zone?.eligible && <DeliveryCountdown variant="inline" />}
+            {zone?.eligible && (
+              <div className="mt-4" data-testid="checkout-delivery-windows">
+                <h3 className="text-sm font-bold flex items-center gap-2 mb-2"><Clock3 className="h-4 w-4 text-emerald-600" /> Choose a delivery window *</h3>
+                {(deliveryWin?.availableWindows || []).length ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {deliveryWin.availableWindows.map((w) => (
+                      <button key={w.id} type="button" data-testid={`delivery-window-${w.id}`} aria-pressed={deliveryWindowId === w.id} onClick={() => setDeliveryWindowId(w.id)} className={`rounded-lg border px-4 py-3 text-left text-sm font-semibold transition-colors ${deliveryWindowId === w.id ? "border-emerald-600 bg-emerald-50 text-emerald-900" : "border-neutral-300 hover:border-emerald-500"}`}>{w.label}</button>
+                    ))}
+                  </div>
+                ) : <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">No delivery windows are currently available. Please contact us.</p>}
+              </div>
+            )}
           </section>
 
           <RewardsPanel />
@@ -275,7 +310,14 @@ const CheckoutPage = () => {
           {/* Payment */}
           <section>
             <h2 className="font-heading text-xl uppercase tracking-wide mb-1 flex items-center gap-2"><CreditCard className="h-5 w-5 text-emerald-600" /> Payment</h2>
-            <p className="text-xs text-neutral-500 mb-4">Choose how you'd like to pay.</p>
+            <p className="text-xs text-neutral-500 mb-1">Choose how you'd like to pay.</p>
+            {acceptedLabels.length > 0 && <p className="text-xs font-semibold text-neutral-700 mb-4" data-testid="accepted-payments">Accepted now: {acceptedLabels.join(", ")}.</p>}
+            {paymentError && (
+              <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" data-testid="payment-retry">
+                <span><b>Payment wasn’t completed.</b> {paymentError} Your cart is still saved.</span>
+                <button type="button" onClick={() => setPaymentError("")} className="shrink-0 inline-flex items-center gap-1 font-bold underline"><RefreshCw className="h-3.5 w-3.5" /> Retry or switch method</button>
+              </div>
+            )}
             {outOfZone ? (
               <p data-testid="payment-blocked" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">Sorry, we only deliver within {delivery.radiusMiles} miles of {delivery.zip}. Enter an eligible ZIP code to continue to payment.</p>
             ) : stockIssues.length > 0 ? (
@@ -293,7 +335,7 @@ const CheckoutPage = () => {
               <p className="text-sm text-red-500">No payment methods are available right now. Please contact us.</p>
             ) : (
               <>
-                <PaymentMethodPicker methods={methods} value={method} onChange={(m) => { setMethod(m); ecommerce.addPaymentInfo(m, total); }} />
+                <PaymentMethodPicker methods={methods} value={method} onChange={(m) => { setPaymentError(""); setMethod(m); ecommerce.addPaymentInfo(m, total); }} />
                 <div className="mt-5" data-testid="payment-panel">
                   {method === "square" && (
                     <SquarePayment key="square" config={payConfig.square} mode="square" total={total} onReady={(fn) => { tokenizeRef.current = fn; }} onError={payError} />
@@ -306,12 +348,12 @@ const CheckoutPage = () => {
                   )}
                   {method === "paypal" && (
                     <PayPalCheckout config={payConfig.paypal} validate={validateShipping} createOrder={paypalCreate} onError={payError}
-                      onCancel={() => toast({ title: "PayPal cancelled", description: "You were not charged. Choose a payment method to try again." })}
+                      onCancel={() => { setPaymentError("PayPal was cancelled. You were not charged. Retry or choose another payment method."); toast({ title: "PayPal cancelled", description: "You were not charged. Choose a payment method to try again." }); }}
                       onApprove={(paypalOrderId) => submitOrder({ paypalOrderId }).catch(() => {})} />
                   )}
                   {method === "apple_pay" && (
                     <ApplePayCheckout config={payConfig.applePay} total={total} validate={validateShipping} createOrder={paypalCreate} onError={payError}
-                      onCancel={() => toast({ title: "Apple Pay cancelled", description: "You were not charged. Choose a payment method to try again." })}
+                      onCancel={() => { setPaymentError("Apple Pay was cancelled. You were not charged. Retry or choose another payment method."); toast({ title: "Apple Pay cancelled", description: "You were not charged. Choose a payment method to try again." }); }}
                       onApprove={(paypalOrderId) => submitOrder({ paypalOrderId })} />
                   )}
                   {method === "zelle" && <ZelleInstructions recipient={payConfig.zelle.email} name={payConfig.zelle.name} amount={total} />}

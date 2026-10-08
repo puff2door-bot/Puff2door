@@ -146,6 +146,8 @@ class OrderInput(BaseModel):
     redeemPoints: int = 0
     tip: float = Field(default=0, ge=0, le=500)
     expectSameDay: Optional[bool] = None
+    dateOfBirth: str = ""
+    deliveryWindowId: str = ""
 
 
 class PayPalCreateInput(BaseModel):
@@ -154,6 +156,8 @@ class PayPalCreateInput(BaseModel):
     zip: str = ""
     redeemPoints: int = 0
     tip: float = Field(default=0, ge=0, le=500)
+    dateOfBirth: str = ""
+    deliveryWindowId: str = ""
 
 
 class PaymentStatusInput(BaseModel):
@@ -182,9 +186,10 @@ TEST_CARD_ENABLED = (not REAL_CARD_PROVIDER) or os.environ.get("ALLOW_TEST_CARD"
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "apple_pay", "zelle"}
 DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32832", "deliveryRadiusMiles": 20.0,
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
-                    "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6]}
+                    "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryStart": "11:00", "deliveryEnd": "21:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6]}
 STORE_TZ = ZoneInfo("America/New_York")
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+DELIVERY_SLOTS = [("12:00", "14:00"), ("16:00", "18:00"), ("18:00", "20:00")]
 _settings_cache: dict = {}
 
 
@@ -247,6 +252,65 @@ def day_label(d: date, today: date) -> str:
     return d.strftime("%a, %b ") + str(d.day)
 
 
+def validate_age_21(date_of_birth: str, today: Optional[date] = None) -> date:
+    try:
+        born = date.fromisoformat((date_of_birth or "").strip())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Enter a valid date of birth.")
+    today = today or datetime.now(STORE_TZ).date()
+    if born > today:
+        raise HTTPException(status_code=400, detail="Enter a valid date of birth.")
+    age = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+    if age < 21:
+        raise HTTPException(status_code=400, detail="You must be 21 or older to place an order.")
+    return born
+
+
+def available_delivery_windows(settings: dict, now: Optional[datetime] = None) -> List[dict]:
+    now = (now or now_utc()).astimezone(STORE_TZ)
+    same_day_enabled = bool(settings.get("sameDayEnabled", True))
+    days = sorted({int(d) for d in settings.get("deliveryDays", DEFAULT_SETTINGS["deliveryDays"]) if 0 <= int(d) <= 6})
+    cutoff = parse_cutoff(settings.get("deliveryCutoff", DEFAULT_SETTINGS["deliveryCutoff"]))
+    delivery_start = parse_cutoff(settings.get("deliveryStart", DEFAULT_SETTINGS["deliveryStart"]))
+    delivery_end = parse_cutoff(settings.get("deliveryEnd", DEFAULT_SETTINGS["deliveryEnd"]))
+    windows = []
+    for offset in range(0, 15):
+        d = now.date() + timedelta(days=offset)
+        if d.weekday() not in days:
+            continue
+        if offset == 0 and (not same_day_enabled or now >= datetime.combine(d, cutoff, tzinfo=STORE_TZ)):
+            continue
+        for start_value, end_value in DELIVERY_SLOTS:
+            start_t, end_t = parse_cutoff(start_value), parse_cutoff(end_value)
+            if start_t < delivery_start or end_t > delivery_end:
+                continue
+            start_dt = datetime.combine(d, start_t, tzinfo=STORE_TZ)
+            if offset == 0 and start_dt <= now + timedelta(minutes=30):
+                continue
+            label_day = day_label(d, now.date())
+            window_id = f"{d.isoformat()}|{start_value}|{end_value}"
+            windows.append({
+                "id": window_id,
+                "date": d.isoformat(),
+                "start": start_value,
+                "end": end_value,
+                "label": f"{label_day} {fmt_clock(start_t)}–{fmt_clock(end_t)}",
+                "sameDay": offset == 0,
+            })
+        if len({w["date"] for w in windows}) >= 2:
+            break
+    return windows
+
+
+def require_delivery_window(window_id: str, settings: dict, now: Optional[datetime] = None) -> dict:
+    if not window_id:
+        raise HTTPException(status_code=400, detail="Choose a delivery window.")
+    match = next((w for w in available_delivery_windows(settings, now) if w["id"] == window_id), None)
+    if not match:
+        raise HTTPException(status_code=409, detail="That delivery window is no longer available. Choose another time and try again.")
+    return match
+
+
 def delivery_window(settings: dict, now: Optional[datetime] = None) -> dict:
     """Same-day cutoff logic in the store's timezone (Orlando). Server time is the only source of truth."""
     now = (now or now_utc()).astimezone(STORE_TZ)
@@ -265,6 +329,10 @@ def delivery_window(settings: dict, now: Optional[datetime] = None) -> dict:
             if d.weekday() in days:
                 next_day = d
                 break
+    windows = available_delivery_windows(settings, now)
+    same_day = same_day and any(w["sameDay"] for w in windows)
+    if windows:
+        next_day = date.fromisoformat(windows[0]["date"])
     seconds = int((cutoff_dt - now).total_seconds()) if same_day else 0
     if not enabled:
         message = ""
@@ -279,8 +347,11 @@ def delivery_window(settings: dict, now: Optional[datetime] = None) -> dict:
         message = f"No local delivery today. Order now for the next available delivery day ({day_label(next_day, today)})."
     return {
         "enabled": enabled, "timezone": str(STORE_TZ), "serverTime": now.isoformat(), "cutoff": cutoff.strftime("%H:%M"), "cutoffLabel": fmt_clock(cutoff),
+        "deliveryStart": settings.get("deliveryStart", DEFAULT_SETTINGS["deliveryStart"]), "deliveryStartLabel": fmt_clock(parse_cutoff(settings.get("deliveryStart", DEFAULT_SETTINGS["deliveryStart"]))),
+        "deliveryEnd": settings.get("deliveryEnd", DEFAULT_SETTINGS["deliveryEnd"]), "deliveryEndLabel": fmt_clock(parse_cutoff(settings.get("deliveryEnd", DEFAULT_SETTINGS["deliveryEnd"]))),
         "deliveryDays": days, "todayOpen": today_open, "sameDayOpen": same_day, "secondsRemaining": max(seconds, 0),
-        "nextDeliveryDate": next_day.isoformat() if next_day else None, "nextDeliveryLabel": day_label(next_day, today) if next_day else None, "message": message,
+        "nextDeliveryDate": windows[0]["date"] if windows else (next_day.isoformat() if next_day else None), "nextDeliveryLabel": day_label(next_day, today) if next_day else None, "message": message,
+        "availableWindows": windows,
     }
 
 
@@ -292,11 +363,18 @@ class StoreSettingsInput(BaseModel):
     deliveryRadiusMiles: float = Field(default=20.0, gt=0, le=500)
     sameDayEnabled: bool = True
     deliveryCutoff: str = "20:00"
+    deliveryStart: str = "11:00"
+    deliveryEnd: str = "21:00"
     deliveryDays: List[int] = Field(default=[0, 1, 2, 3, 4, 5, 6])
 
     @field_validator("deliveryCutoff")
     @classmethod
     def _cutoff(cls, v):
+        return parse_cutoff(v).strftime("%H:%M")
+
+    @field_validator("deliveryStart", "deliveryEnd")
+    @classmethod
+    def _delivery_hours(cls, v):
         return parse_cutoff(v).strftime("%H:%M")
 
     @field_validator("deliveryDays")
@@ -705,6 +783,19 @@ class OrderStatusInput(BaseModel):
     status: str
 
 
+class DeliveryDetailsInput(BaseModel):
+    deliveryPhotoUrl: str = ""
+    driverTextSent: bool = False
+
+    @field_validator("deliveryPhotoUrl")
+    @classmethod
+    def _photo_url(cls, v):
+        v = v.strip()
+        if v and not re.match(r"^https?://", v, re.I):
+            raise ValueError("Delivery photo must use an http or https URL")
+        return v
+
+
 class HeroSlide(BaseModel):
     id: int
     image: str = ""
@@ -887,33 +978,42 @@ async def get_optional_user(request: Request):
 # ----------------------------- Tracking logic -----------------------------
 TRACK_STAGES = [
     ("placed", "Order Placed", 0),
-    ("confirmed", "Order Confirmed", 30),
-    ("out_for_delivery", "Out for Delivery", 90),
-    ("delivered", "Delivered", 180),
+    ("confirmed", "Preparing", 0),
+    ("out_for_delivery", "Out for Delivery", 0),
+    ("delivered", "Delivered", 0),
 ]
 
 
 STAGE_KEYS = [s[0] for s in TRACK_STAGES]
 
 
-def build_tracking(created_at: datetime, manual_status: Optional[str] = None, status_updated_at: Optional[datetime] = None):
+def build_tracking(created_at: datetime, manual_status: Optional[str] = None, status_history: Optional[dict] = None, status_updated_at: Optional[datetime] = None):
     if created_at.tzinfo is None:
         created_at = created_at.replace(tzinfo=timezone.utc)
-    elapsed = (now_utc() - created_at).total_seconds()
+    status_history = status_history or {}
     timeline = []
     current = "placed"
     manual_idx = STAGE_KEYS.index(manual_status) if manual_status in STAGE_KEYS else None
     for idx, (key, label, offset) in enumerate(TRACK_STAGES):
-        done = idx <= manual_idx if manual_idx is not None else elapsed >= offset
+        done = idx <= manual_idx if manual_idx is not None else idx == 0
         if done:
             current = key
-        at = created_at + timedelta(seconds=offset)
-        if manual_idx is not None and idx == manual_idx and status_updated_at:
-            at = status_updated_at if status_updated_at.tzinfo else status_updated_at.replace(tzinfo=timezone.utc)
+        at = status_history.get(key)
+        if key == "placed" and not at:
+            at = created_at
+        if manual_idx is not None and idx == manual_idx and not at and status_updated_at:
+            at = status_updated_at
+        if isinstance(at, str):
+            try:
+                at = datetime.fromisoformat(at)
+            except ValueError:
+                at = None
+        if isinstance(at, datetime) and at.tzinfo is None:
+            at = at.replace(tzinfo=timezone.utc)
         timeline.append({
             "key": key,
             "label": label,
-            "at": at.isoformat() if done else None,
+            "at": at.isoformat() if done and isinstance(at, datetime) else None,
             "done": done,
         })
     return current, timeline
@@ -930,12 +1030,19 @@ def order_response(o: dict) -> dict:
         created_dt = created
     awaiting = o.get("paymentStatus") == "awaiting_payment"
     cancelled = o.get("manualStatus") == "cancelled"
-    if awaiting or cancelled:
-        status, timeline = build_tracking(created_dt, "placed", None)
-        if cancelled:
-            status = "cancelled"
+    if cancelled:
+        cancelled_at = o.get("statusUpdatedAt")
+        if isinstance(cancelled_at, datetime) and cancelled_at.tzinfo is None:
+            cancelled_at = cancelled_at.replace(tzinfo=timezone.utc)
+        status = "cancelled"
+        timeline = [
+            {"key": "placed", "label": "Order Placed", "at": created_dt.isoformat(), "done": True},
+            {"key": "cancelled", "label": "Cancelled", "at": cancelled_at.isoformat() if isinstance(cancelled_at, datetime) else None, "done": True},
+        ]
+    elif awaiting:
+        status, timeline = build_tracking(created_dt, "placed", o.get("statusHistory"), None)
     else:
-        status, timeline = build_tracking(created_dt, o.get("manualStatus"), o.get("statusUpdatedAt"))
+        status, timeline = build_tracking(created_dt, o.get("manualStatus"), o.get("statusHistory"), o.get("statusUpdatedAt"))
     return {
         "id": o["id"],
         "orderNumber": o["orderNumber"],
@@ -944,6 +1051,11 @@ def order_response(o: dict) -> dict:
         "shipping": o["shipping"],
         "deliveryDate": o.get("deliveryDate"),
         "sameDay": o.get("sameDay"),
+        "deliveryWindow": o.get("deliveryWindow"),
+        "arrivalLabel": (o.get("deliveryWindow") or {}).get("label", ""),
+        "ageVerified": bool(o.get("ageVerifiedAt")),
+        "deliveryPhotoUrl": o.get("deliveryPhotoUrl", ""),
+        "driverTextSent": bool(o.get("driverTextSentAt")),
         "subtotal": o["subtotal"],
         "shippingCost": o.get("shippingCost", 0),
         "tax": o.get("tax", 0),
@@ -1227,7 +1339,10 @@ async def paypal_create_order(inp: PayPalCreateInput, user: Optional[dict] = Dep
         raise HTTPException(status_code=503, detail="PayPal is not configured")
     if not inp.items:
         raise HTTPException(status_code=400, detail="Your cart is empty")
-    require_delivery_zone(inp.zip, await get_settings())
+    settings = await get_settings()
+    require_delivery_zone(inp.zip, settings)
+    validate_age_21(inp.dateOfBirth)
+    require_delivery_window(inp.deliveryWindowId, settings)
     _, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user, inp.tip)
     total = totals["total"]
     data = await paypal_request("POST", "/v2/checkout/orders", {
@@ -1261,10 +1376,13 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
     enabled = {"test_card": TEST_CARD_ENABLED, "square": SQUARE_ENABLED, "cash_app": SQUARE_ENABLED, "paypal": PAYPAL_ENABLED, "apple_pay": APPLE_PAY_ENABLED, "zelle": ZELLE_ENABLED}
     if method not in PAYMENT_METHODS or not enabled[method]:
         raise HTTPException(status_code=400, detail="That payment method is not available")
-    zone = require_delivery_zone(inp.shipping.zip, await get_settings())
-    window = delivery_window(await get_settings())
-    if inp.expectSameDay and not window["sameDayOpen"]:
-        raise HTTPException(status_code=409, detail=window["message"] or "Same-day delivery is not available right now. Your order will be scheduled for the next available delivery day.")
+    settings = await get_settings()
+    zone = require_delivery_zone(inp.shipping.zip, settings)
+    validate_age_21(inp.dateOfBirth)
+    chosen_window = require_delivery_window(inp.deliveryWindowId, settings)
+    window = delivery_window(settings)
+    if inp.expectSameDay and not chosen_window["sameDay"]:
+        raise HTTPException(status_code=409, detail=window["message"] or "Same-day delivery is not available right now. Choose the next available delivery window.")
     pending = None
     if method in ("paypal", "apple_pay"):
         if not inp.paypalOrderId:
@@ -1331,8 +1449,10 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
         "items": priced_items,
         "shipping": inp.shipping.model_dump(),
         "deliveryDistanceMiles": zone["distanceMiles"],
-        "deliveryDate": window["nextDeliveryDate"],
-        "sameDay": bool(window["sameDayOpen"]),
+        "deliveryDate": chosen_window["date"],
+        "sameDay": bool(chosen_window["sameDay"]),
+        "deliveryWindow": chosen_window,
+        "ageVerifiedAt": now_utc(),
         "subtotal": subtotal,
         "shippingCost": shipping_cost,
         "tax": totals["tax"],
@@ -1345,6 +1465,7 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
         "total": total,
         **payment,
         "createdAt": now_utc(),
+        "statusHistory": {"placed": now_utc()},
     }
     await db.orders.insert_one(order)
     if totals["rewardPoints"] and user:
@@ -1681,7 +1802,7 @@ async def delivery_area():
                 cities.setdefault(z["city"].title(), []).append({"zip": z["zip_code"], "distanceMiles": round(d, 1)})
     areas = [{"city": c, "state": center["state"] if center else "", "zips": sorted(v, key=lambda x: x["zip"])} for c, v in cities.items()]
     areas.sort(key=lambda a: (-len(a["zips"]), a["city"]))
-    result = {"centerZip": key[0], "centerCity": center["city"].title() if center else "", "radiusMiles": key[1], "zipCount": sum(len(a["zips"]) for a in areas), "areas": areas}
+    result = {"centerZip": key[0], "centerCity": center["city"].title() if center else "", "centerLat": center["lat"] if center else None, "centerLng": center["lng"] if center else None, "radiusMiles": key[1], "zipCount": sum(len(a["zips"]) for a in areas), "areas": areas}
     _area_cache.clear()
     _area_cache[key] = result
     return result
@@ -2090,10 +2211,13 @@ async def admin_update_order_status(order_id: str, inp: OrderStatusInput, admin:
     o = await db.orders.find_one({"id": order_id})
     if not o:
         raise HTTPException(status_code=404, detail="Order not found")
-    updates = {"manualStatus": inp.status, "statusUpdatedAt": now_utc(), "statusUpdatedBy": admin["id"]}
+    changed_at = now_utc()
+    updates = {"manualStatus": inp.status, "statusUpdatedAt": changed_at, "statusUpdatedBy": admin["id"]}
     if inp.status == "cancelled" and not o.get("stockReleased"):
         await release_stock(o["items"])
         updates["stockReleased"] = True
+    if inp.status in STAGE_KEYS:
+        updates[f"statusHistory.{inp.status}"] = changed_at
     await db.orders.update_one({"id": order_id}, {"$set": updates})
     updated = await db.orders.find_one({"id": order_id})
     if inp.status == "cancelled":
@@ -2102,6 +2226,20 @@ async def admin_update_order_status(order_id: str, inp: OrderStatusInput, admin:
         await loyalty_award_for_order(updated)
     if inp.status in STAGE_KEYS:
         asyncio.create_task(emails.send_status_update(updated, inp.status))
+    return order_response(await db.orders.find_one({"id": order_id}))
+
+
+@api_router.put("/admin/orders/{order_id}/delivery-details")
+async def admin_update_delivery_details(order_id: str, inp: DeliveryDetailsInput, admin: dict = Depends(get_admin_user)):
+    o = await db.orders.find_one({"id": order_id})
+    if not o:
+        raise HTTPException(status_code=404, detail="Order not found")
+    updates = {
+        "deliveryPhotoUrl": inp.deliveryPhotoUrl,
+        "driverTextSentAt": now_utc() if inp.driverTextSent else None,
+        "deliveryDetailsUpdatedBy": admin["id"],
+    }
+    await db.orders.update_one({"id": order_id}, {"$set": updates})
     return order_response(await db.orders.find_one({"id": order_id}))
 
 
@@ -2117,6 +2255,7 @@ async def admin_update_order_payment(order_id: str, inp: PaymentStatusInput, adm
         updates["paidAt"] = now_utc()
         updates["manualStatus"] = "confirmed"
         updates["statusUpdatedAt"] = now_utc()
+        updates["statusHistory.confirmed"] = updates["statusUpdatedAt"]
     if inp.paymentStatus == "refunded":
         if not o.get("stockReleased"):
             await release_stock(o["items"])

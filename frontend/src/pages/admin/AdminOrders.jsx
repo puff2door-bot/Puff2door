@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink, BadgeDollarSign } from "lucide-react";
+import { ExternalLink, BadgeDollarSign, Camera, MessageSquareText, Save } from "lucide-react";
 import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
 
 const STATUSES = [
   { key: "placed", label: "Order Placed" },
-  { key: "confirmed", label: "Confirmed" },
+  { key: "confirmed", label: "Preparing" },
   { key: "out_for_delivery", label: "Out for Delivery" },
   { key: "delivered", label: "Delivered" },
 ];
@@ -22,6 +22,7 @@ const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [deliveryDrafts, setDeliveryDrafts] = useState({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -66,6 +67,19 @@ const AdminOrders = () => {
     }
   };
 
+  const draftFor = (o) => deliveryDrafts[o.id] || { deliveryPhotoUrl: o.deliveryPhotoUrl || "", driverTextSent: Boolean(o.driverTextSent) };
+  const updateDraft = (o, patch) => setDeliveryDrafts((prev) => ({ ...prev, [o.id]: { ...draftFor(o), ...patch } }));
+  const saveDelivery = async (o) => {
+    try {
+      const { data } = await api.put(`/admin/orders/${o.id}/delivery-details`, draftFor(o));
+      setOrders((prev) => prev.map((x) => (x.id === o.id ? data : x)));
+      setDeliveryDrafts((prev) => { const next = { ...prev }; delete next[o.id]; return next; });
+      toast({ title: "Delivery details saved", description: `${o.orderNumber} tracking is updated.` });
+    } catch (e) {
+      toast({ title: "Save failed", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
+    }
+  };
+
   const list = filter === "all" ? orders : filter === "awaiting_payment" ? orders.filter((o) => o.paymentStatus === "awaiting_payment") : orders.filter((o) => o.status === filter);
 
   return (
@@ -96,6 +110,7 @@ const AdminOrders = () => {
                   <p className="font-medium text-neutral-900">{o.shipping.firstName} {o.shipping.lastName} <span className="text-neutral-400 font-normal">· {o.shipping.email || "guest"}</span></p>
                   <p className="text-xs text-neutral-500 line-clamp-1">{o.items.map((i) => `${i.qty}× ${i.name}`).join(", ")}</p>
                   <p className="text-xs text-neutral-500">{[o.shipping.address, o.shipping.city, o.shipping.state, o.shipping.zip].filter(Boolean).join(", ")}</p>
+                  {o.arrivalLabel && <p className="text-xs font-semibold text-emerald-700">Delivery window: {o.arrivalLabel}</p>}
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="font-heading text-xl">${o.total.toFixed(2)}</span>
@@ -116,6 +131,17 @@ const AdminOrders = () => {
                   </select>
                   <Link to={`/order/${o.id}`} target="_blank" className="text-neutral-400 hover:text-emerald-600" aria-label="Open"><ExternalLink className="h-4 w-4" /></Link>
                 </div>
+              </div>
+              <div className="mt-4 pt-4 border-t border-neutral-100 grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-3 items-center" data-testid={`delivery-details-${o.orderNumber}`}>
+                <label className="flex items-center gap-2 rounded-lg border border-neutral-300 px-3 focus-within:border-emerald-600">
+                  <Camera className="h-4 w-4 text-neutral-400 shrink-0" />
+                  <input type="url" placeholder="Optional delivery photo URL (https://…)" value={draftFor(o).deliveryPhotoUrl} onChange={(e) => updateDraft(o, { deliveryPhotoUrl: e.target.value })} className="w-full py-2 text-xs outline-none" />
+                </label>
+                <label className="flex items-center gap-2 text-xs font-semibold text-neutral-700 cursor-pointer">
+                  <input type="checkbox" checked={draftFor(o).driverTextSent} onChange={(e) => updateDraft(o, { driverTextSent: e.target.checked })} className="accent-emerald-600" />
+                  <MessageSquareText className="h-4 w-4 text-emerald-600" /> Driver text sent
+                </label>
+                <button type="button" onClick={() => saveDelivery(o)} className="inline-flex items-center justify-center gap-1.5 rounded-full bg-neutral-900 text-white px-4 py-2 text-xs font-bold hover:bg-emerald-600"><Save className="h-3.5 w-3.5" /> Save tracking details</button>
               </div>
             </div>
           ))}
