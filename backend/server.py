@@ -2790,5 +2790,7 @@ if FRONTEND_BUILD_DIR.exists():
         except ValueError:
             raise HTTPException(status_code=404, detail="Not found")
         if candidate.is_file():
+            if full_path == ".well-known/apple-developer-merchantid-domain-association":
+                return FileResponse(candidate, media_type="application/octet-stream", headers={"Cache-Control": "public, max-age=3600"})
             return FileResponse(candidate)
         return FileResponse(FRONTEND_BUILD_DIR / "index.html")
