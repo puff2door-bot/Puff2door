@@ -19,6 +19,7 @@
 .mobile-bottom-nav { position: fixed; z-index: 55; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(5,1fr); background: rgba(255,255,255,.96); border-top: 1px solid #e5e5e5; padding: 7px 6px calc(7px + env(safe-area-inset-bottom)); backdrop-filter: blur(14px); }
 .mobile-bottom-nav a { display:flex; flex-direction:column; align-items:center; gap:2px; color:#737373; font-size:10px; font-weight:700; }
 .mobile-bottom-nav a.active { color:#059669; }
+@media (min-width: 1024px) { .mobile-bottom-nav { display: none; } }
 .compare-tray { position:fixed; z-index:70; right:18px; bottom:22px; width:min(620px,calc(100vw - 36px)); background:white; border:1px solid #d4d4d4; border-radius:16px; padding:16px; box-shadow:0 22px 60px rgba(0,0,0,.2); }
 .compare-tray th,.compare-tray td { text-align:left; padding:6px 8px; border-bottom:1px solid #f0f0f0; min-width:115px; }
 .compare-tray th { color:#737373; min-width:72px; }
