@@ -133,7 +133,7 @@ const ChatWidget = () => {
     <>
       {!open && (
         <button type="button" data-testid="chat-launcher" onClick={() => setOpen(true)} aria-label="Chat with us"
-          className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[60] inline-flex items-center gap-2 p-3.5 sm:pl-4 sm:pr-5 sm:py-3 rounded-full bg-neutral-900 text-white shadow-xl hover:bg-emerald-600 transition-colors">
+          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-4 sm:bottom-6 sm:right-6 z-[60] inline-flex items-center gap-2 p-3.5 sm:pl-4 sm:pr-5 sm:py-3 rounded-full bg-neutral-900 text-white shadow-xl hover:bg-emerald-600 transition-colors">
           <span className="relative"><MessageCircle className="h-6 w-6 sm:h-5 sm:w-5" /><span className={`absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-neutral-900 ${status.online ? "bg-emerald-400" : "bg-neutral-400"}`} /></span>
           <span className="hidden sm:inline text-sm font-bold">Chat with us</span>
           {unread > 0 && <span data-testid="chat-unread-badge" className="absolute -top-1.5 -left-1.5 sm:static sm:ml-1 text-[11px] font-bold bg-emerald-500 text-white rounded-full px-1.5 py-0.5">{unread}</span>}

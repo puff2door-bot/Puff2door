@@ -68,7 +68,7 @@ const PwaExperience = () => {
         </aside>
       )}
       {!showInstall && notificationState === "default" && (
-        <button onClick={enableNotifications} data-testid="notification-opt-in" className="fixed z-[70] right-4 bottom-20 sm:bottom-5 rounded-full bg-neutral-950 text-white shadow-xl px-4 py-3 text-sm font-bold flex items-center gap-2 hover:bg-emerald-700"><Bell className="h-4 w-4" /> Enable order alerts</button>
+        <button onClick={enableNotifications} data-testid="notification-opt-in" className="fixed z-[70] left-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] sm:left-auto sm:right-4 sm:bottom-5 rounded-full bg-neutral-950 text-white shadow-xl px-4 py-3 text-sm font-bold flex items-center gap-2 hover:bg-emerald-700"><Bell className="h-4 w-4" /> Enable order alerts</button>
       )}
       {showIos && (
         <div className="fixed inset-0 z-[100] bg-black/60 grid place-items-end sm:place-items-center p-3" role="dialog" aria-modal="true" aria-labelledby="ios-install-title">
