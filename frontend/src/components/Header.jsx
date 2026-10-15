@@ -10,6 +10,8 @@ import {
   Phone,
   MapPin,
   Heart,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { announcements, BRAND } from "../mock";
 import { useCatalog } from "../context/CatalogContext";
@@ -29,6 +31,12 @@ const Header = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [openMenu, setOpenMenu] = useState(null);
+  const [dark, setDark] = useState(() => localStorage.getItem("p2d_theme") === "dark");
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("p2d-dark", dark);
+    localStorage.setItem("p2d_theme", dark ? "dark" : "light");
+  }, [dark]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60);
@@ -79,6 +87,9 @@ const Header = () => {
             <SmartSearch query={query} setQuery={setQuery} onSubmit={submitSearch} />
 
             <div className="flex items-center gap-0.5 sm:gap-1 ml-auto lg:ml-0 shrink-0">
+              <button onClick={() => setDark((value) => !value)} data-testid="theme-toggle" aria-label={dark ? "Use light mode" : "Use dark mode"} className="p-2.5 rounded-lg hover:bg-neutral-100 transition-colors">
+                {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              </button>
               <Link to="/my-account" className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
                 <User className="h-5 w-5" />
                 <span className="text-xs leading-tight">
