@@ -220,7 +220,7 @@ const Header = () => {
 
               <li className="ml-auto flex items-center gap-5 text-[12px] text-neutral-300">
                 <span className="flex items-center gap-1.5"><Phone className="h-4 w-4 text-emerald-400" /> {BRAND.phone}</span>
-                <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-emerald-400" /> Orlando, FL</span>
+                <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-emerald-400" /> Altamonte Springs, FL</span>
               </li>
             </ul>
           </div>
