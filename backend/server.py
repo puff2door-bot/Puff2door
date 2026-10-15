@@ -2420,7 +2420,7 @@ async def admin_delete_promo(promo_id: str, admin: dict = Depends(get_admin_user
 
 @api_router.get("/admin/stats")
 async def admin_stats(admin: dict = Depends(get_admin_user)):
-    orders = await db.orders.find({}, {"total": 1, "createdAt": 1, "manualStatus": 1, "items": 1}).to_list(5000)
+    orders = await db.orders.find({}, {"total": 1, "createdAt": 1, "manualStatus": 1, "items": 1, "userId": 1}).to_list(5000)
     revenue = round(sum(o.get("total", 0) for o in orders), 2)
     today = now_utc().date()
     today_orders = 0
@@ -2433,6 +2433,18 @@ async def admin_stats(admin: dict = Depends(get_admin_user)):
     products = await db.products.find({"active": True}, {"stock": 1, "name": 1, "id": 1, "slug": 1}).to_list(5000)
     low_stock = [{"id": p["id"], "name": p["name"], "stock": int(p.get("stock", 0))} for p in products if int(p.get("stock", 0)) <= 5]
     pending_alerts = await db.stock_alerts.count_documents({"notified": False})
+    customer_orders = {}
+    product_sales = {}
+    for order in orders:
+        if order.get("userId"):
+            customer_orders[order["userId"]] = customer_orders.get(order["userId"], 0) + 1
+        for item in order.get("items", []):
+            key = str(item.get("productId") or item.get("id") or item.get("name"))
+            row = product_sales.setdefault(key, {"name": item.get("name", "Product"), "qty": 0, "revenue": 0})
+            row["qty"] += int(item.get("qty", 1))
+            row["revenue"] += float(item.get("price", 0)) * int(item.get("qty", 1))
+    identified = len(customer_orders)
+    repeat = sum(1 for count in customer_orders.values() if count > 1)
     return {
         "totalOrders": len(orders),
         "todayOrders": today_orders,
@@ -2441,6 +2453,9 @@ async def admin_stats(admin: dict = Depends(get_admin_user)):
         "lowStock": sorted(low_stock, key=lambda x: x["stock"]),
         "pendingAlerts": pending_alerts,
         "customers": await db.users.count_documents({}),
+        "repeatPurchaseRate": round((repeat / identified * 100) if identified else 0, 1),
+        "repeatCustomers": repeat,
+        "bestSellers": sorted(product_sales.values(), key=lambda x: x["qty"], reverse=True)[:5],
     }
 
 

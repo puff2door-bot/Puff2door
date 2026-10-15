@@ -13,6 +13,7 @@ import { useCart } from "../context/CartContext";
 import { imgUrl } from "../api";
 import Seo from "../seo/Seo";
 import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, HOME_FAQS, faqJsonLd, titleCase } from "../seo/config";
+import PersonalizedShelf from "../components/PersonalizedShelf";
 
 const tabCats = [
   { name: "Disposable Vapes", slug: "disposable" },
@@ -95,6 +96,7 @@ const Home = () => {
       </section>
 
       <DealOfTheDay />
+      <PersonalizedShelf />
 
       {/* Category pills */}
       <section className="max-w-[1280px] mx-auto px-4 pt-10">

@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { Package, LogOut, ChevronRight, KeyRound } from "lucide-react";
+import { Package, LogOut, ChevronRight, KeyRound, RotateCcw } from "lucide-react";
 import { PasswordInput, isStrongEnough, formatApiError } from "../components/PasswordInput";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../hooks/use-toast";
 import { usStates } from "../mock";
 import api from "../api";
 import MyRewards from "../components/account/MyRewards";
+import { useCart } from "../context/CartContext";
 
 const STATUS_LABEL = {
   placed: "Order Placed",
@@ -21,6 +22,13 @@ const AccountView = () => {
   const { toast } = useToast();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { addItem } = useCart();
+
+  const buyAgain = (e, order) => {
+    e.preventDefault();
+    (order.items || []).forEach((item) => addItem({ id: item.productId || item.id, slug: item.slug, name: item.name, price: item.price, image: item.image, category: item.category, categorySlug: item.categorySlug, inStock: true }, item.qty || 1));
+    toast({ title: "Order added to cart", description: `${order.items?.length || 0} item(s) are ready to review.` });
+  };
 
   useEffect(() => {
     api.get("/orders").then(({ data }) => setOrders(data.orders || [])).catch(() => {}).finally(() => setLoading(false));
@@ -64,6 +72,7 @@ const AccountView = () => {
                       <p className="text-xs text-neutral-500">{new Date(o.createdAt).toLocaleString()} · {o.items.length} item(s)</p>
                     </div>
                     <div className="flex items-center gap-3">
+                      <button onClick={(e) => buyAgain(e, o)} className="hidden sm:inline-flex items-center gap-1 text-xs font-bold text-emerald-700 border border-emerald-200 rounded-full px-3 py-1.5 hover:bg-emerald-50"><RotateCcw className="h-3.5 w-3.5" /> Buy again</button>
                       <span className={`text-xs font-bold px-3 py-1 rounded-full ${o.status === "delivered" ? "bg-emerald-100 text-emerald-700" : o.status === "cancelled" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
                         {STATUS_LABEL[o.status]}
                       </span>

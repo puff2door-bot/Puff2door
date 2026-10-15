@@ -17,6 +17,7 @@ import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
 import { useApp } from "../context/AppContext";
 import AnimatedLogo from "./AnimatedLogo";
+import SmartSearch from "./SmartSearch";
 
 const Header = () => {
   const navigate = useNavigate();
@@ -75,19 +76,7 @@ const Header = () => {
             </Link>
 
             {/* Search */}
-            <form onSubmit={submitSearch} className="hidden md:flex flex-1 max-w-xl mx-auto">
-              <div className="flex w-full items-center border border-neutral-300 rounded-full overflow-hidden focus-within:border-emerald-600 transition-colors">
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search for products, brands..."
-                  className="flex-1 px-5 py-2.5 text-sm outline-none"
-                />
-                <button type="submit" className="px-5 py-2.5 bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
-                  <Search className="h-5 w-5" />
-                </button>
-              </div>
-            </form>
+            <SmartSearch query={query} setQuery={setQuery} onSubmit={submitSearch} />
 
             <div className="flex items-center gap-0.5 sm:gap-1 ml-auto lg:ml-0 shrink-0">
               <Link to="/my-account" className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
@@ -123,19 +112,7 @@ const Header = () => {
           </div>
 
           {/* Mobile search */}
-          <form onSubmit={submitSearch} className="md:hidden pb-3">
-            <div className="flex w-full items-center border border-neutral-300 rounded-full overflow-hidden">
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search products..."
-                className="flex-1 px-4 py-2 text-sm outline-none"
-              />
-              <button type="submit" className="px-4 py-2 bg-emerald-600 text-white">
-                <Search className="h-5 w-5" />
-              </button>
-            </div>
-          </form>
+          <SmartSearch query={query} setQuery={setQuery} onSubmit={submitSearch} mobile />
         </div>
 
         {/* Desktop nav */}

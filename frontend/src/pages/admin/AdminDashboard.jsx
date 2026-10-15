@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { DollarSign, ShoppingBag, Package, Users, AlertTriangle, Bell } from "lucide-react";
+import { DollarSign, ShoppingBag, Package, Users, AlertTriangle, Bell, Repeat2, TrendingUp } from "lucide-react";
 import api from "../../api";
 
 const Stat = ({ icon: Icon, label, value, tone = "emerald", testId }) => (
@@ -55,6 +55,17 @@ const AdminDashboard = () => {
           <p className="font-heading text-4xl mb-1" data-testid="stat-pending-alerts">{stats.pendingAlerts}</p>
           <p className="text-sm text-neutral-500 mb-4">customers waiting for sold-out products. Restocking a product notifies them automatically.</p>
           <Link to="/admin/alerts" className="text-sm font-bold text-emerald-600 hover:underline">View all alerts</Link>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <div className="border border-neutral-200 rounded-2xl p-5">
+          <h2 className="font-heading text-xl uppercase tracking-wide mb-2 flex items-center gap-2"><Repeat2 className="h-5 w-5 text-emerald-600" /> Customer retention</h2>
+          <p className="font-heading text-4xl">{Number(stats.repeatPurchaseRate || 0).toFixed(1)}%</p>
+          <p className="text-sm text-neutral-500">{stats.repeatCustomers || 0} signed-in customers have ordered more than once.</p>
+        </div>
+        <div className="border border-neutral-200 rounded-2xl p-5">
+          <h2 className="font-heading text-xl uppercase tracking-wide mb-3 flex items-center gap-2"><TrendingUp className="h-5 w-5 text-emerald-600" /> Best sellers</h2>
+          <ol className="space-y-2">{(stats.bestSellers || []).map((p, i) => <li key={`${p.name}-${i}`} className="flex justify-between gap-3 text-sm"><span className="truncate"><b className="text-neutral-400 mr-2">{i + 1}</b>{p.name}</span><span className="font-bold whitespace-nowrap">{p.qty} sold</span></li>)}</ol>
         </div>
       </div>
     </div>

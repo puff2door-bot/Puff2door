@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Gift, ArrowDownRight, ArrowUpRight, RotateCcw, Wrench } from "lucide-react";
+import { Gift, ArrowDownRight, ArrowUpRight, RotateCcw, Wrench, Crown } from "lucide-react";
 import api from "../../api";
 
 export const TX_META = {
@@ -50,6 +50,8 @@ const MyRewards = () => {
 
   const per = data.rules.pointsPerReward;
   const progress = per ? ((data.available % per) / per) * 100 : 0;
+  const tier = data.lifetimeEarned >= 1500 ? { name: "VIP", next: null, floor: 1500, color: "text-amber-300" } : data.lifetimeEarned >= 500 ? { name: "Gold", next: 1500, floor: 500, color: "text-amber-300" } : { name: "Green", next: 500, floor: 0, color: "text-emerald-300" };
+  const tierProgress = tier.next ? Math.min(100, ((data.lifetimeEarned - tier.floor) / (tier.next - tier.floor)) * 100) : 100;
 
   return (
     <section data-testid="my-rewards" className="mb-10">
@@ -59,6 +61,7 @@ const MyRewards = () => {
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-2">Available points</p>
           <p className="font-heading text-4xl" data-testid="rewards-available-points">{data.available.toLocaleString()}</p>
           <p className="text-sm text-emerald-400 font-semibold mt-1" data-testid="rewards-available-value">= ${data.availableValue.toFixed(2)} in rewards</p>
+          <div className="mt-5 pt-4 border-t border-white/10"><p className={`text-xs font-bold flex items-center gap-1 ${tier.color}`}><Crown className="h-4 w-4" /> {tier.name} member</p>{tier.next ? <><div className="h-1.5 bg-white/10 rounded-full mt-2 overflow-hidden"><div className="h-full bg-amber-400" style={{width:`${tierProgress}%`}} /></div><p className="text-[10px] text-neutral-400 mt-1">{tier.next - data.lifetimeEarned} lifetime points to the next level</p></> : <p className="text-[10px] text-neutral-400 mt-1">You reached the highest level.</p>}</div>
         </div>
         <div className="border border-neutral-200 rounded-2xl p-6">
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-2">Next ${data.rules.rewardValue.toFixed(2)} reward</p>

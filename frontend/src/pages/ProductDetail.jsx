@@ -13,6 +13,7 @@ import api, { imgUrl } from "../api";
 import Seo from "../seo/Seo";
 import { ecommerce } from "../seo/Analytics";
 import { absUrl, breadcrumbJsonLd, productJsonLd, productSeoDescription, productSpecs, titleCase } from "../seo/config";
+import { rememberViewed } from "../lib/customerExperience";
 
 const ProductDetail = () => {
   const { slug } = useParams();
@@ -27,6 +28,7 @@ const ProductDetail = () => {
   const [added, setAdded] = useState(false);
   const [reviewSummary, setReviewSummary] = useState(null);
   useEffect(() => { if (product) ecommerce.viewItem(product, getPrice(product)); }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (product) rememberViewed({ ...product, price: getPrice(product) }); }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [alertEmail, setAlertEmail] = useState(user?.email || "");
   const [alertBusy, setAlertBusy] = useState(false);
 

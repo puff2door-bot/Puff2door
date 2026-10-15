@@ -1,11 +1,12 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { ShoppingCart, Check, Heart } from "lucide-react";
+import { ShoppingCart, Check, Heart, Scale } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
 import { useToast } from "../hooks/use-toast";
 import { useCatalog } from "../context/CatalogContext";
 import { imgUrl } from "../api";
+import { toggleCompare } from "../lib/customerExperience";
 
 const ProductCard = ({ product }) => {
   const { addItem } = useCart();
@@ -73,6 +74,7 @@ const ProductCard = ({ product }) => {
       >
         <Heart className={`h-4 w-4 ${wished ? "fill-current" : ""}`} />
       </button>
+      <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); const added = toggleCompare({ ...product, price }); toast({ title: added ? "Added to compare" : "Removed from compare", description: product.name }); }} aria-label="Compare product" className="absolute top-12 right-3 z-10 grid place-items-center h-8 w-8 rounded-full bg-white/90 shadow-sm text-neutral-400 hover:text-emerald-600 hover:scale-110 transition-all"><Scale className="h-4 w-4" /></button>
 
       <div className="p-4 flex flex-col flex-1">
         <p className="text-[10px] font-bold text-emerald-600 tracking-[0.15em] uppercase mb-1">
