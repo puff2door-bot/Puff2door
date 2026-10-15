@@ -6,7 +6,7 @@ const links = [["/", "Home", Home], ["/shop", "Shop", Store], ["/shop?focus=sear
 const MobileBottomNav = () => {
   const { pathname } = useLocation();
   if (pathname.startsWith("/admin") || pathname === "/checkout") return null;
-  return <nav className="mobile-bottom-nav lg:hidden" aria-label="Mobile navigation">
+  return <nav className="mobile-bottom-nav" aria-label="Main app navigation">
     {links.map(([to, label, Icon]) => <Link key={label} to={to} className={pathname === to || (to === "/shop" && pathname.startsWith("/shop")) ? "active" : ""}><Icon className="h-5 w-5" /><span>{label}</span></Link>)}
   </nav>;
 };
