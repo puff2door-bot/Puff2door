@@ -22,7 +22,4 @@
 .compare-tray { position:fixed; z-index:70; right:18px; bottom:22px; width:min(620px,calc(100vw - 36px)); background:white; border:1px solid #d4d4d4; border-radius:16px; padding:16px; box-shadow:0 22px 60px rgba(0,0,0,.2); }
 .compare-tray th,.compare-tray td { text-align:left; padding:6px 8px; border-bottom:1px solid #f0f0f0; min-width:115px; }
 .compare-tray th { color:#737373; min-width:72px; }
-.install-prompt { position:fixed; z-index:65; left:18px; bottom:22px; max-width:390px; display:flex; align-items:center; gap:10px; padding:13px 15px; border:1px solid #d4d4d4; border-radius:14px; background:white; box-shadow:0 14px 40px rgba(0,0,0,.17); font-size:13px; }
-.install-prompt p { color:#737373; font-size:11px; }
-.install-action { color:#047857; font-weight:800; }
-@media(max-width:1023px){ main{padding-bottom:68px}.compare-tray{bottom:82px}.install-prompt{bottom:82px}.compare-tray{max-height:45vh;overflow:auto} }
+@media(max-width:1023px){ main{padding-bottom:68px}.compare-tray{bottom:82px}.compare-tray{max-height:45vh;overflow:auto} }

@@ -40,7 +40,6 @@ import Seo, { setJsonLd } from "./seo/Seo";
 import Analytics from "./seo/Analytics";
 import MobileBottomNav from "./components/MobileBottomNav";
 import CompareTray from "./components/CompareTray";
-import InstallPrompt from "./components/InstallPrompt";
 import { organizationJsonLd, websiteJsonLd } from "./seo/config";
 
 const GSC_TOKEN = (process.env.REACT_APP_GOOGLE_SITE_VERIFICATION || "").trim();
@@ -127,7 +126,6 @@ function App() {
               <Footer />
               <ChatWidget />
               <CompareTray />
-              <InstallPrompt />
               <MobileBottomNav />
               <Toaster />
             </BrowserRouter>
