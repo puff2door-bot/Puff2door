@@ -82,9 +82,13 @@ const AdminOrders = () => {
   const resolveIssue = async (o, issue, status) => {
     const resolution = status === "resolved" ? (window.prompt("Resolution note", issue.resolution || "") ?? null) : issue.resolution || "";
     if (resolution === null) return;
-    const { data } = await api.put(`/admin/orders/${o.id}/issues/${issue.id}`, { status, resolution });
-    setOrders((prev) => prev.map((x) => x.id === o.id ? data : x));
-    toast({ title: "Help request updated" });
+    try {
+      const { data } = await api.put(`/admin/orders/${o.id}/issues/${issue.id}`, { status, resolution });
+      setOrders((prev) => prev.map((x) => x.id === o.id ? data : x));
+      toast({ title: "Help request updated" });
+    } catch (e) {
+      toast({ title: "Update failed", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
+    }
   };
 
   const list = filter === "all" ? orders : filter === "awaiting_payment" ? orders.filter((o) => o.paymentStatus === "awaiting_payment") : orders.filter((o) => o.status === filter);
