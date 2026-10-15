@@ -164,6 +164,32 @@ class PaymentStatusInput(BaseModel):
     paymentStatus: str
 
 
+class OrderIssueInput(BaseModel):
+    email: str
+    kind: str
+    message: str = ""
+
+    @field_validator("kind")
+    @classmethod
+    def valid_issue_kind(cls, v):
+        allowed = {"driver_late", "wrong_item", "missing_item", "payment_problem", "other"}
+        if v not in allowed:
+            raise ValueError("Choose a valid problem type")
+        return v
+
+
+class IssueResolutionInput(BaseModel):
+    status: str
+    resolution: str = ""
+
+    @field_validator("status")
+    @classmethod
+    def valid_issue_status(cls, v):
+        if v not in {"open", "working", "resolved"}:
+            raise ValueError("Choose a valid status")
+        return v
+
+
 # ---- Payment providers config ----
 SQUARE_APP_ID = os.environ.get("SQUARE_APPLICATION_ID", "").strip()
 SQUARE_TOKEN = os.environ.get("SQUARE_ACCESS_TOKEN", "").strip()
@@ -1056,6 +1082,7 @@ def order_response(o: dict) -> dict:
         "ageVerified": bool(o.get("ageVerifiedAt")),
         "deliveryPhotoUrl": o.get("deliveryPhotoUrl", ""),
         "driverTextSent": bool(o.get("driverTextSentAt")),
+        "issues": [{**i, "createdAt": i["createdAt"].isoformat() if isinstance(i.get("createdAt"), datetime) else i.get("createdAt"), "updatedAt": i["updatedAt"].isoformat() if isinstance(i.get("updatedAt"), datetime) else i.get("updatedAt")} for i in o.get("issues", [])],
         "subtotal": o["subtotal"],
         "shippingCost": o.get("shippingCost", 0),
         "tax": o.get("tax", 0),
@@ -1502,6 +1529,20 @@ async def get_order(order_id: str):
     return order_response(o)
 
 
+@api_router.post("/orders/{order_id}/issues")
+async def create_order_issue(order_id: str, inp: OrderIssueInput, user: Optional[dict] = Depends(get_optional_user)):
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    customer_email = (order.get("shipping") or {}).get("email", "").strip().lower()
+    if (not user or user.get("id") != order.get("userId")) and inp.email.strip().lower() != customer_email:
+        raise HTTPException(status_code=403, detail="Enter the email address used for this order")
+    issue = {"id": str(uuid.uuid4()), "kind": inp.kind, "message": inp.message.strip()[:1000], "status": "open", "resolution": "", "createdAt": now_utc(), "updatedAt": now_utc()}
+    await db.orders.update_one({"id": order_id}, {"$push": {"issues": issue}})
+    updated = await db.orders.find_one({"id": order_id})
+    return order_response(updated)
+
+
 # ---- Products (public) ----
 @api_router.get("/products")
 async def list_products():
@@ -1829,6 +1870,14 @@ async def get_admin_user(user: dict = Depends(get_current_user)):
     if not is_admin(user):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+
+@api_router.put("/admin/orders/{order_id}/issues/{issue_id}")
+async def resolve_order_issue(order_id: str, issue_id: str, inp: IssueResolutionInput, admin: dict = Depends(get_admin_user)):
+    result = await db.orders.update_one({"id": order_id, "issues.id": issue_id}, {"$set": {"issues.$.status": inp.status, "issues.$.resolution": inp.resolution.strip()[:1000], "issues.$.updatedAt": now_utc(), "issues.$.updatedBy": admin["id"]}})
+    if not result.matched_count:
+        raise HTTPException(status_code=404, detail="Order problem not found")
+    return order_response(await db.orders.find_one({"id": order_id}))
 
 
 @api_router.get("/admin/brands")

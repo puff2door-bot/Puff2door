@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
-import { CheckCircle2, MapPin, Clock, Gift, XCircle, ShieldCheck } from "lucide-react";
+import { CheckCircle2, MapPin, Clock, Gift, XCircle, ShieldCheck, LifeBuoy } from "lucide-react";
 import api, { imgUrl } from "../api";
 import { ecommerce } from "../seo/Analytics";
 import ZelleInstructions from "../components/checkout/ZelleInstructions";
@@ -12,6 +12,15 @@ const OrderPage = () => {
   const { id } = useParams();
   const [order, setOrder] = useState(null);
   const [error, setError] = useState(false);
+  const [issue, setIssue] = useState({ kind: "driver_late", message: "", email: "" });
+  const [issueBusy, setIssueBusy] = useState(false);
+
+  const reportIssue = async (e) => {
+    e.preventDefault(); setIssueBusy(true);
+    try { const { data } = await api.post(`/orders/${id}/issues`, issue); setOrder(data); setIssue((v) => ({...v, message:""})); }
+    catch (err) { window.alert(err?.response?.data?.detail || "Could not send your request. Please try again."); }
+    finally { setIssueBusy(false); }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -64,6 +73,17 @@ const OrderPage = () => {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8">
         <div className="space-y-8">
           <OrderTracking order={order} />
+          <div className="border border-neutral-200 rounded-xl p-6" data-testid="order-help-center">
+            <h2 className="font-heading text-xl uppercase tracking-wide mb-2 flex items-center gap-2"><LifeBuoy className="h-5 w-5 text-emerald-600" /> Order Help</h2>
+            <p className="text-sm text-neutral-500 mb-4">Tell us what happened. Your cart and order details stay attached to this request.</p>
+            {(order.issues || []).map((i) => <div key={i.id} className="mb-3 rounded-lg bg-neutral-50 border p-3 text-sm"><b>{i.kind.replaceAll("_", " ")}</b> · <span className="capitalize text-emerald-700">{i.status}</span>{i.message && <p className="text-neutral-600 mt-1">{i.message}</p>}{i.resolution && <p className="mt-1"><b>Resolution:</b> {i.resolution}</p>}</div>)}
+            <form onSubmit={reportIssue} className="grid sm:grid-cols-2 gap-3">
+              <select value={issue.kind} onChange={(e)=>setIssue({...issue,kind:e.target.value})} className="border rounded-lg px-3 py-2 text-sm"><option value="driver_late">Driver is late</option><option value="wrong_item">Wrong item</option><option value="missing_item">Missing item</option><option value="payment_problem">Payment problem</option><option value="other">Something else</option></select>
+              <input required type="email" placeholder="Order email" value={issue.email} onChange={(e)=>setIssue({...issue,email:e.target.value})} className="border rounded-lg px-3 py-2 text-sm" />
+              <textarea placeholder="Tell us what happened" value={issue.message} onChange={(e)=>setIssue({...issue,message:e.target.value})} className="sm:col-span-2 border rounded-lg px-3 py-2 text-sm min-h-20" />
+              <button disabled={issueBusy} className="sm:col-span-2 rounded-full bg-neutral-900 text-white py-2.5 font-bold hover:bg-emerald-600 disabled:opacity-50">{issueBusy ? "Sending…" : "Send help request"}</button>
+            </form>
+          </div>
           <div className="border border-neutral-200 rounded-xl p-6">
             <h2 className="font-heading text-xl uppercase tracking-wide mb-4">Items</h2>
             <div className="space-y-4">

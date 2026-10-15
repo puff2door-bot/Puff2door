@@ -79,6 +79,13 @@ const AdminOrders = () => {
       toast({ title: "Save failed", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
     }
   };
+  const resolveIssue = async (o, issue, status) => {
+    const resolution = status === "resolved" ? (window.prompt("Resolution note", issue.resolution || "") ?? null) : issue.resolution || "";
+    if (resolution === null) return;
+    const { data } = await api.put(`/admin/orders/${o.id}/issues/${issue.id}`, { status, resolution });
+    setOrders((prev) => prev.map((x) => x.id === o.id ? data : x));
+    toast({ title: "Help request updated" });
+  };
 
   const list = filter === "all" ? orders : filter === "awaiting_payment" ? orders.filter((o) => o.paymentStatus === "awaiting_payment") : orders.filter((o) => o.status === filter);
 
@@ -143,6 +150,7 @@ const AdminOrders = () => {
                 </label>
                 <button type="button" onClick={() => saveDelivery(o)} className="inline-flex items-center justify-center gap-1.5 rounded-full bg-neutral-900 text-white px-4 py-2 text-xs font-bold hover:bg-emerald-600"><Save className="h-3.5 w-3.5" /> Save tracking details</button>
               </div>
+              {(o.issues || []).length > 0 && <div className="mt-4 border-t pt-4 space-y-2">{o.issues.map((i)=><div key={i.id} className="rounded-xl bg-amber-50 border border-amber-200 p-3 flex flex-wrap items-center gap-2 text-sm"><b className="capitalize">{i.kind.replaceAll("_"," ")}</b><span className="text-neutral-600 flex-1">{i.message || "No details provided"}</span><select value={i.status} onChange={(e)=>resolveIssue(o,i,e.target.value)} className="border rounded-lg px-2 py-1 text-xs"><option value="open">Open</option><option value="working">Working</option><option value="resolved">Resolved</option></select></div>)}</div>}
             </div>
           ))}
         </div>
