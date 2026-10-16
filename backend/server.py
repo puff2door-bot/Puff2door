@@ -88,6 +88,17 @@ class ForgotPasswordInput(BaseModel):
     email: EmailStr
 
 
+class ContactInput(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+    email: EmailStr
+    subject: str = Field(min_length=2, max_length=160)
+    message: str = Field(min_length=5, max_length=5000)
+
+
+class NewsletterInput(BaseModel):
+    email: EmailStr
+
+
 class ResetPasswordInput(BaseModel):
     token: str
     password: str
@@ -1280,6 +1291,33 @@ async def logout(request: Request, response: Response):
         await db.user_sessions.delete_one({"session_token": token})
     response.delete_cookie("session_token", path="/", secure=True, samesite="none")
     return {"ok": True}
+
+
+@api_router.post("/contact")
+async def contact(inp: ContactInput):
+    record = {
+        "id": str(uuid.uuid4()),
+        "name": inp.name.strip(),
+        "email": inp.email.lower(),
+        "subject": inp.subject.strip(),
+        "message": inp.message.strip(),
+        "createdAt": now_utc(),
+        "status": "new",
+    }
+    await db.contact_messages.insert_one(record)
+    asyncio.create_task(emails.notify_admin_contact(record))
+    return {"ok": True, "message": "Thanks — your message was received. We'll get back to you shortly."}
+
+
+@api_router.post("/newsletter")
+async def newsletter(inp: NewsletterInput):
+    email = inp.email.lower()
+    await db.newsletter_subscribers.update_one(
+        {"email": email},
+        {"$set": {"email": email, "active": True, "updatedAt": now_utc()}, "$setOnInsert": {"id": str(uuid.uuid4()), "createdAt": now_utc()}},
+        upsert=True,
+    )
+    return {"ok": True, "message": "You're subscribed for Puff2Door updates."}
 
 
 # ---- Wishlist ----

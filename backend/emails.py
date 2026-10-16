@@ -193,6 +193,16 @@ async def notify_admin_chat(conv: dict, text: str, offline: bool):
     await _send([NOTIFY_EMAIL], title, layout(title, body), "admin_chat", {"conversationId": conv["id"]})
 
 
+async def notify_admin_contact(message: dict):
+    if not NOTIFY_EMAIL:
+        return
+    title = f"Website message: {message.get('subject') or 'Contact request'}"
+    body = f'<p style="font-size:14px;color:#374151;"><strong>{escape(message.get("name", ""))}</strong> · {escape(message.get("email", ""))}</p>'
+    body += f'<blockquote style="margin:12px 0;padding:12px 16px;background:#f5f5f5;border-left:4px solid #059669;border-radius:8px;font-size:14px;color:#111;white-space:pre-wrap;">{escape(message.get("message", ""))}</blockquote>'
+    body += f'<p style="font-size:13px;color:#6b7280;">Reply directly to {escape(message.get("email", ""))}.</p>'
+    await _send([NOTIFY_EMAIL], title, layout(title, body), "admin_contact", {"contactId": message["id"], "replyTo": message.get("email")})
+
+
 async def send_payment_received(order: dict, rewards: Optional[dict] = None):
     to = order.get("shipping", {}).get("email")
     n = order["orderNumber"]

@@ -120,7 +120,7 @@ export const AppProvider = ({ children }) => {
 
   return (
     <AppContext.Provider
-      value={{ ageVerified, verifyAge, user, setUser, login, register, resetPassword, loginWithGoogle, logout, authLoading }}
+      value={{ ageVerified, verifyAge, user, setUser, login, register, resetPassword, loginWithGoogle, googleSignInEnabled: Boolean(googleClientId), logout, authLoading }}
     >
       {children}
     </AppContext.Provider>

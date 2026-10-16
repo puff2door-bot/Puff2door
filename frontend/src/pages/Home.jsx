@@ -10,10 +10,11 @@ import BrandLogo from "../components/BrandLogo";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../components/ui/accordion";
 import { useCatalog } from "../context/CatalogContext";
 import { useCart } from "../context/CartContext";
-import { imgUrl } from "../api";
+import api, { imgUrl } from "../api";
 import Seo from "../seo/Seo";
 import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, HOME_FAQS, faqJsonLd, titleCase } from "../seo/config";
 import PersonalizedShelf from "../components/PersonalizedShelf";
+import { useToast } from "../hooks/use-toast";
 
 const tabCats = [
   { name: "Disposable Vapes", slug: "disposable" },
@@ -48,6 +49,22 @@ const SectionHeader = ({ title, link, linkLabel = "View All" }) => (
 
 const Home = () => {
   const [activeTab, setActiveTab] = useState("disposable");
+  const { toast } = useToast();
+  const [newsletterEmail, setNewsletterEmail] = useState("");
+  const [newsletterBusy, setNewsletterBusy] = useState(false);
+  const subscribe = async (e) => {
+    e.preventDefault();
+    setNewsletterBusy(true);
+    try {
+      const { data } = await api.post("/newsletter", { email: newsletterEmail });
+      toast({ title: "Subscribed", description: data.message });
+      setNewsletterEmail("");
+    } catch (err) {
+      toast({ title: "Could not subscribe", description: err?.response?.data?.detail || "Please try again.", variant: "destructive" });
+    } finally {
+      setNewsletterBusy(false);
+    }
+  };
   const { newProducts, getProductsByCategory, promoTiles, activeCategories, activeBrands } = useCatalog();
   const { delivery, pricing } = useCart();
   const tabProducts = getProductsByCategory(activeTab).slice(0, 12);
@@ -235,10 +252,10 @@ const Home = () => {
               Get 10% off your first order
             </h2>
             <p className="text-neutral-300 mb-6">Join the Puff2Door club for exclusive deals, new drops and same-day delivery updates.</p>
-            <form onSubmit={(e) => e.preventDefault()} className="flex flex-col sm:flex-row gap-3 max-w-md">
+            <form onSubmit={subscribe} className="flex flex-col sm:flex-row gap-3 max-w-md">
               <label htmlFor="newsletter-email" className="sr-only">Email address</label>
-              <input id="newsletter-email" type="email" required placeholder="Enter your email" className="flex-1 px-5 py-3 rounded-full text-sm outline-none" />
-              <button className="px-7 py-3 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors">Subscribe</button>
+              <input id="newsletter-email" type="email" required placeholder="Enter your email" className="flex-1 px-5 py-3 rounded-full text-sm outline-none" value={newsletterEmail} onChange={(e) => setNewsletterEmail(e.target.value)} />
+              <button disabled={newsletterBusy} className="px-7 py-3 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-60">{newsletterBusy ? "Subscribing…" : "Subscribe"}</button>
             </form>
           </div>
         </div>

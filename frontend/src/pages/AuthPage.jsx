@@ -114,7 +114,7 @@ const Divider = () => (
 );
 
 const AuthPage = () => {
-  const { user, login, register, resetPassword, loginWithGoogle, authLoading } = useApp();
+  const { user, login, register, resetPassword, loginWithGoogle, googleSignInEnabled, authLoading } = useApp();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -266,8 +266,7 @@ const AuthPage = () => {
 
         {tab === "login" ? (
           <form onSubmit={doLogin} data-testid="login-form" className="max-w-md mx-auto space-y-4">
-            <GoogleButton onClick={doGoogle} />
-            <Divider />
+            {googleSignInEnabled && <><GoogleButton onClick={doGoogle} /><Divider /></>}
             <div>
               <label className="block text-sm font-medium mb-1.5">Email <span className="text-red-500">*</span></label>
               <input required type="email" data-testid="login-email" autoComplete="email" className={inputCls} value={loginData.email} onChange={(e) => setLoginData({ ...loginData, email: e.target.value })} />
@@ -284,7 +283,7 @@ const AuthPage = () => {
           </form>
         ) : (
           <form onSubmit={doRegister} data-testid="register-form" className="max-w-2xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2 max-w-md mx-auto w-full space-y-4"><GoogleButton onClick={doGoogle} /><Divider /></div>
+            {googleSignInEnabled && <div className="sm:col-span-2 max-w-md mx-auto w-full space-y-4"><GoogleButton onClick={doGoogle} /><Divider /></div>}
             <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">Email address <span className="text-red-500">*</span></label><input required type="email" data-testid="register-email" autoComplete="email" className={inputCls} value={reg.email} onChange={(e) => setReg({ ...reg, email: e.target.value })} /></div>
             <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">Password <span className="text-red-500">*</span></label><PasswordInput testId="register-password" className={inputCls} value={reg.password} onChange={(e) => setReg({ ...reg, password: e.target.value })} showStrength autoComplete="new-password" /></div>
             <div><label className="block text-sm font-medium mb-1.5">First Name <span className="text-red-500">*</span></label><input required data-testid="register-first-name" className={inputCls} value={reg.firstName} onChange={(e) => setReg({ ...reg, firstName: e.target.value })} /></div>

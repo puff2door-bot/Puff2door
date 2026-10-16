@@ -4,14 +4,24 @@ import { BRAND } from "../mock";
 import { useToast } from "../hooks/use-toast";
 import Seo from "../seo/Seo";
 import { breadcrumbJsonLd } from "../seo/config";
+import api from "../api";
 
 const ContactPage = () => {
   const { toast } = useToast();
   const [form, setForm] = useState({ name: "", email: "", subject: "", message: "" });
-  const submit = (e) => {
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
     e.preventDefault();
-    toast({ title: "Message sent!", description: "We'll get back to you shortly (demo)." });
-    setForm({ name: "", email: "", subject: "", message: "" });
+    setBusy(true);
+    try {
+      const { data } = await api.post("/contact", form);
+      toast({ title: "Message sent!", description: data.message });
+      setForm({ name: "", email: "", subject: "", message: "" });
+    } catch (err) {
+      toast({ title: "Message wasn't sent", description: err?.response?.data?.detail || "Please try again or call us.", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
   };
   const inputCls = "w-full border border-neutral-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-600 transition-colors";
   const info = [
@@ -41,7 +51,7 @@ const ContactPage = () => {
           </div>
           <div><label className="block text-sm font-medium mb-1.5">Subject</label><input required className={inputCls} value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} /></div>
           <div><label className="block text-sm font-medium mb-1.5">Message</label><textarea required rows={6} className={inputCls} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} /></div>
-          <button className="inline-flex items-center gap-2 px-7 py-3 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors">Send Message <Send className="h-4 w-4" /></button>
+          <button disabled={busy} className="inline-flex items-center gap-2 px-7 py-3 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-60">{busy ? "Sending…" : "Send Message"} <Send className="h-4 w-4" /></button>
         </form>
         <div className="space-y-4">
           {info.map((i, k) => (
