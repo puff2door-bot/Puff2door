@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Save, Percent, Truck, Gift, MapPin, Radius, Clock } from "lucide-react";
+import { Save, Percent, Truck, Gift, MapPin, Radius, Clock, LayoutTemplate } from "lucide-react";
 import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
 
@@ -21,7 +21,7 @@ const AdminSettings = () => {
   const { toast } = useToast();
 
   const toForm = (data) => ({ taxPercent: +(data.taxRate * 100).toFixed(3), deliveryFee: data.deliveryFee, freeDeliveryMin: data.freeDeliveryMin, deliveryZip: data.deliveryZip || "32832", deliveryRadiusMiles: data.deliveryRadiusMiles ?? 20, allowedZipCodes: (data.allowedZipCodes || []).join(", "),
-    sameDayEnabled: data.sameDayEnabled ?? true, deliveryCutoff: data.deliveryCutoff || "20:00", deliveryStart: data.deliveryStart || "11:00", deliveryEnd: data.deliveryEnd || "21:00", deliveryDays: data.deliveryDays || [0, 1, 2, 3, 4, 5, 6] });
+    sameDayEnabled: data.sameDayEnabled ?? true, deliveryCutoff: data.deliveryCutoff || "20:00", deliveryStart: data.deliveryStart || "11:00", deliveryEnd: data.deliveryEnd || "21:00", deliveryDays: data.deliveryDays || [0, 1, 2, 3, 4, 5, 6], homepageLayout: data.homepageLayout || "classic" });
 
   useEffect(() => {
     api.get("/admin/settings").then(({ data }) => setF(toForm(data)));
@@ -32,7 +32,7 @@ const AdminSettings = () => {
     setBusy(true);
     try {
       const { data } = await api.put("/admin/settings", { taxRate: Number(f.taxPercent) / 100, deliveryFee: Number(f.deliveryFee), freeDeliveryMin: Number(f.freeDeliveryMin), deliveryZip: f.deliveryZip, deliveryRadiusMiles: Number(f.deliveryRadiusMiles), allowedZipCodes: f.allowedZipCodes.split(/[\s,]+/).map((z) => z.trim()).filter(Boolean),
-        sameDayEnabled: Boolean(f.sameDayEnabled), deliveryCutoff: f.deliveryCutoff, deliveryStart: f.deliveryStart, deliveryEnd: f.deliveryEnd, deliveryDays: f.deliveryDays });
+        sameDayEnabled: Boolean(f.sameDayEnabled), deliveryCutoff: f.deliveryCutoff, deliveryStart: f.deliveryStart, deliveryEnd: f.deliveryEnd, deliveryDays: f.deliveryDays, homepageLayout: f.homepageLayout });
       setF(toForm(data));
       toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
     } catch (err) {
@@ -66,6 +66,24 @@ const AdminSettings = () => {
         <Field icon={Gift} label="Free delivery from ($)" hint="Carts at or above this subtotal get free delivery. Set 0 to always deliver free.">
           <input required type="number" min="0" step="0.01" data-testid="settings-free-min" className={inputCls} value={f.freeDeliveryMin} onChange={(e) => setF({ ...f, freeDeliveryMin: e.target.value })} />
         </Field>
+      </div>
+
+      <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-homepage-layout">
+        <div className="flex items-center gap-2 mb-1"><LayoutTemplate className="h-4 w-4 text-emerald-600" /><label className="text-sm font-bold text-neutral-900">Homepage layout</label></div>
+        <p className="text-xs text-neutral-500 mb-4">Choose the storefront style visitors see. Products, prices, banners and settings stay shared across every layout.</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {[
+            ["classic", "Classic Store", "The current familiar storefront with balanced product sections."],
+            ["showcase", "Modern Showcase", "Bold cards, immersive hero presentation and energetic spacing."],
+            ["minimal", "Premium Minimal", "Clean editorial spacing and a restrained high-end presentation."],
+          ].map(([value, title, description]) => {
+            const selected = f.homepageLayout === value;
+            return <button type="button" key={value} data-testid={`homepage-layout-${value}`} onClick={() => setF({ ...f, homepageLayout: value })} className={`text-left rounded-xl border-2 p-4 transition-all ${selected ? "border-emerald-600 bg-emerald-50 shadow-sm" : "border-neutral-200 hover:border-emerald-300"}`}>
+              <span className="flex items-center justify-between gap-2"><strong className="text-sm text-neutral-900">{title}</strong><span className={`h-4 w-4 rounded-full border-2 ${selected ? "border-emerald-600 bg-emerald-600 shadow-[inset_0_0_0_3px_white]" : "border-neutral-300"}`} /></span>
+              <span className="block text-xs text-neutral-500 mt-2 leading-relaxed">{description}</span>
+            </button>;
+          })}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">

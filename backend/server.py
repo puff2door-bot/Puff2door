@@ -223,7 +223,7 @@ TEST_CARD_ENABLED = (not REAL_CARD_PROVIDER) or os.environ.get("ALLOW_TEST_CARD"
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "apple_pay", "zelle"}
 DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32832", "deliveryRadiusMiles": 20.0, "allowedZipCodes": [],
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
-                    "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryStart": "11:00", "deliveryEnd": "21:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6]}
+                    "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryStart": "11:00", "deliveryEnd": "21:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6], "homepageLayout": "classic"}
 STORE_TZ = ZoneInfo("America/New_York")
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 DELIVERY_SLOTS = [("12:00", "14:00"), ("16:00", "18:00"), ("18:00", "20:00")]
@@ -409,6 +409,14 @@ class StoreSettingsInput(BaseModel):
     deliveryStart: str = "11:00"
     deliveryEnd: str = "21:00"
     deliveryDays: List[int] = Field(default=[0, 1, 2, 3, 4, 5, 6])
+    homepageLayout: str = "classic"
+
+    @field_validator("homepageLayout")
+    @classmethod
+    def _homepage_layout(cls, v):
+        if v not in {"classic", "showcase", "minimal"}:
+            raise ValueError("Choose a valid homepage layout")
+        return v
 
     @field_validator("deliveryCutoff")
     @classmethod
@@ -1794,7 +1802,7 @@ async def serve_file(path: str):
 @api_router.get("/settings")
 async def public_settings():
     settings = await get_settings()
-    return {"pricing": pricing_rules(settings), "delivery": delivery_rules(settings), "loyalty": loyalty_public_rules(settings)}
+    return {"pricing": pricing_rules(settings), "delivery": delivery_rules(settings), "loyalty": loyalty_public_rules(settings), "presentation": {"homepageLayout": settings.get("homepageLayout", "classic")}}
 
 
 # ---- Loyalty rewards (customer) ----

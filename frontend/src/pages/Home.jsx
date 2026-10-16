@@ -66,51 +66,36 @@ const Home = () => {
     }
   };
   const { newProducts, getProductsByCategory, promoTiles, activeCategories, activeBrands } = useCatalog();
-  const { delivery, pricing } = useCart();
+  const { delivery, pricing, presentation } = useCart();
   const tabProducts = getProductsByCategory(activeTab).slice(0, 12);
   const tabs = tabCats.filter((t) => activeCategories.some((c) => c.slug === t.slug));
+  const layout = presentation?.homepageLayout || "classic";
+  const intro = (
+    <section className="home-intro bg-white border-b" data-testid="home-intro">
+      <div className="max-w-[1280px] mx-auto px-4 py-8">
+        <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full" />
+        <h1 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-700 text-neutral-900 uppercase tracking-tight mb-3">Online Smoke Shop &amp; Vape Delivery</h1>
+        <p className="text-neutral-600 leading-relaxed max-w-3xl">Puff2door is your online smoke shop for disposable vapes, hemp-derived delta products, glass pipes, kratom and other smoke shop essentials. Browse trusted brands, order online in minutes and get local vape delivery to your door in the Orlando, Florida area — {delivery.mode === "selected_zips" ? `${delivery.allowedZipCodes.length} selected delivery ZIP codes` : `within ${delivery.radiusMiles} miles of ZIP ${delivery.zip}`}. Adults 21+ only.</p>
+      </div>
+    </section>
+  );
+  const featureBar = (
+    <section className="home-feature-bar bg-neutral-50 border-b" aria-labelledby="why-shop-heading">
+      <div className="max-w-[1280px] mx-auto px-4 pt-6"><h2 id="why-shop-heading" className="font-heading text-xl sm:text-2xl font-700 text-neutral-900 uppercase tracking-tight">Why Shop With Puff2door?</h2></div>
+      <div className="home-feature-grid max-w-[1280px] mx-auto px-4 grid grid-cols-2 lg:grid-cols-4 divide-x divide-neutral-200">
+        {features.map((f, i) => <div key={i} className="home-feature flex items-center gap-3 py-5 px-4"><span className="grid place-items-center h-11 w-11 rounded-full bg-emerald-100 text-emerald-700 shrink-0"><f.icon className="h-5 w-5" aria-hidden="true" /></span><div><h3 className="font-semibold text-sm text-neutral-900">{f.title}</h3><p className="text-xs text-neutral-500">{f.desc}</p></div></div>)}
+      </div>
+    </section>
+  );
 
   return (
-    <div>
+    <div className={`home-shell home-layout-${layout}`} data-home-layout={layout}>
       <Seo title={DEFAULT_TITLE} description={DEFAULT_DESCRIPTION} path="/" jsonLd={faqJsonLd(HOME_FAQS)} />
       <DeliveryBanner />
       <DeliveryCountdown />
-      <HeroSlider />
-
-      {/* Intro / H1 */}
-      <section className="bg-white border-b" data-testid="home-intro">
-        <div className="max-w-[1280px] mx-auto px-4 py-8">
-          <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full" />
-          <h1 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-700 text-neutral-900 uppercase tracking-tight mb-3">
-            Online Smoke Shop &amp; Vape Delivery
-          </h1>
-          <p className="text-neutral-600 leading-relaxed max-w-3xl">
-            Puff2door is your online smoke shop for disposable vapes, hemp-derived delta products, glass pipes, kratom and other
-            smoke shop essentials. Browse trusted brands, order online in minutes and get local vape delivery to your door in the
-            Orlando, Florida area — {delivery.mode === "selected_zips" ? `${delivery.allowedZipCodes.length} selected delivery ZIP codes` : `within ${delivery.radiusMiles} miles of ZIP ${delivery.zip}`}. Adults 21+ only.
-          </p>
-        </div>
-      </section>
-
-      {/* Feature bar */}
-      <section className="bg-neutral-50 border-b" aria-labelledby="why-shop-heading">
-        <div className="max-w-[1280px] mx-auto px-4 pt-6">
-          <h2 id="why-shop-heading" className="font-heading text-xl sm:text-2xl font-700 text-neutral-900 uppercase tracking-tight">Why Shop With Puff2door?</h2>
-        </div>
-        <div className="max-w-[1280px] mx-auto px-4 grid grid-cols-2 lg:grid-cols-4 divide-x divide-neutral-200">
-          {features.map((f, i) => (
-            <div key={i} className="flex items-center gap-3 py-5 px-4">
-              <span className="grid place-items-center h-11 w-11 rounded-full bg-emerald-100 text-emerald-700 shrink-0">
-                <f.icon className="h-5 w-5" aria-hidden="true" />
-              </span>
-              <div>
-                <h3 className="font-semibold text-sm text-neutral-900">{f.title}</h3>
-                <p className="text-xs text-neutral-500">{f.desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      {layout === "minimal" && intro}
+      <div className="home-hero"><HeroSlider /></div>
+      {layout === "showcase" ? <>{featureBar}{intro}</> : <>{layout !== "minimal" && intro}{featureBar}</>}
 
       <DealOfTheDay />
       <PersonalizedShelf />

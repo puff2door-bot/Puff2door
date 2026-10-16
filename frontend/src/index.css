@@ -200,3 +200,86 @@ html.p2d-dark .border-neutral-300 { border-color: #404040 !important; }
 html.p2d-dark input,
 html.p2d-dark select,
 html.p2d-dark textarea { background: #171717; color: #f5f5f5; }
+
+/* Admin-selectable homepage presets. Content and commerce behavior remain shared. */
+.home-layout-showcase {
+  background: linear-gradient(180deg, #ecfdf5 0, #f8faf9 34rem, #fff 70rem);
+}
+.home-layout-showcase .home-hero {
+  max-width: 1380px;
+  margin: 1.25rem auto 0;
+  padding: 0 1rem;
+}
+.home-layout-showcase .home-hero > section {
+  border-radius: 1.5rem;
+  box-shadow: 0 24px 70px rgb(6 78 59 / 0.18);
+}
+.home-layout-showcase .home-feature-bar {
+  max-width: 1280px;
+  margin: 1.5rem auto 0;
+  border: 0;
+  background: transparent;
+}
+.home-layout-showcase .home-feature-grid {
+  gap: .75rem;
+  padding-top: .75rem;
+}
+.home-layout-showcase .home-feature {
+  border: 1px solid #d1fae5;
+  border-radius: 1rem;
+  background: rgb(255 255 255 / .9);
+  box-shadow: 0 8px 24px rgb(6 78 59 / .07);
+}
+.home-layout-showcase .home-intro {
+  background: transparent;
+  border: 0;
+  text-align: center;
+}
+.home-layout-showcase .home-intro span,
+.home-layout-showcase .home-intro p { margin-left: auto; margin-right: auto; }
+
+.home-layout-minimal { background: #fff; }
+.home-layout-minimal .home-intro {
+  border: 0;
+  text-align: center;
+}
+.home-layout-minimal .home-intro > div { padding-top: 4.5rem; padding-bottom: 3.25rem; }
+.home-layout-minimal .home-intro span,
+.home-layout-minimal .home-intro p { margin-left: auto; margin-right: auto; }
+.home-layout-minimal .home-intro h1 { letter-spacing: -.035em; }
+.home-layout-minimal .home-hero {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+.home-layout-minimal .home-hero > section {
+  border-radius: .75rem;
+  height: min(500px, 65vw);
+}
+.home-layout-minimal .home-feature-bar {
+  max-width: 1180px;
+  margin: 2.5rem auto 0;
+  background: #fff;
+  border: 0;
+}
+.home-layout-minimal .home-feature-bar > div:first-child { text-align: center; }
+.home-layout-minimal .home-feature-grid { gap: 1rem; padding-top: 1rem; }
+.home-layout-minimal .home-feature {
+  border: 1px solid #e5e5e5;
+  border-radius: .75rem;
+  justify-content: center;
+}
+
+@media (max-width: 767px) {
+  .home-layout-showcase .home-feature-grid,
+  .home-layout-minimal .home-feature-grid { gap: .5rem; }
+  .home-layout-showcase .home-feature,
+  .home-layout-minimal .home-feature { align-items: flex-start; padding: .9rem .7rem; }
+  .home-layout-minimal .home-intro > div { padding-top: 2.5rem; padding-bottom: 2rem; }
+}
+
+html.p2d-dark .home-layout-showcase,
+html.p2d-dark .home-layout-minimal,
+html.p2d-dark .home-layout-minimal .home-feature-bar { background: #0a0a0a; }
+html.p2d-dark .home-layout-showcase .home-feature,
+html.p2d-dark .home-layout-minimal .home-feature { background: #171717; border-color: #404040; }

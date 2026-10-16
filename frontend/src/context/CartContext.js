@@ -41,13 +41,14 @@ export const CartProvider = ({ children }) => {
   const [pricing, setPricing] = useState(DEFAULT_PRICING);
   const [delivery, setDelivery] = useState(DEFAULT_DELIVERY);
   const [loyalty, setLoyalty] = useState(DEFAULT_LOYALTY);
+  const [presentation, setPresentation] = useState({ homepageLayout: "classic" });
   const [redeemPoints, setRedeemPoints] = useState(0);
   const [promo, setPromo] = useState(() => {
     try { return JSON.parse(localStorage.getItem("p2d_promo")) || null; } catch { return null; }
   });
 
   useEffect(() => {
-    api.get("/settings").then(({ data }) => { setPricing(data.pricing); if (data.delivery) setDelivery(data.delivery); if (data.loyalty) setLoyalty(data.loyalty); }).catch(() => {});
+    api.get("/settings").then(({ data }) => { setPricing(data.pricing); if (data.delivery) setDelivery(data.delivery); if (data.loyalty) setLoyalty(data.loyalty); if (data.presentation) setPresentation(data.presentation); }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -136,7 +137,7 @@ export const CartProvider = ({ children }) => {
 
   return (
     <CartContext.Provider
-      value={{ items, addItem, removeItem, updateQty, clearCart, count, subtotal, toServerItem, pricing, delivery, promo, applyPromo, removePromo, totals, loyalty, redeemPoints, setRedeemPoints }}
+      value={{ items, addItem, removeItem, updateQty, clearCart, count, subtotal, toServerItem, pricing, delivery, presentation, promo, applyPromo, removePromo, totals, loyalty, redeemPoints, setRedeemPoints }}
     >
       {children}
     </CartContext.Provider>
