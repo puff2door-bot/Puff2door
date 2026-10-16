@@ -144,7 +144,7 @@ export const CartProvider = ({ children }) => {
 };
 
 export const DEFAULT_PRICING = { taxRate: 0.065, taxLabel: "Sales tax (6.5%)", deliveryFee: 15, freeDeliveryMin: 99 };
-export const DEFAULT_DELIVERY = { zip: "32832", radiusMiles: 20 };
+export const DEFAULT_DELIVERY = { zip: "32832", radiusMiles: 20, allowedZipCodes: [], mode: "radius" };
 export const DEFAULT_LOYALTY = { enabled: true, pointsPerDollar: 1, pointsPerReward: 100, rewardValue: 5, minRedeemPoints: 100, maxRedeemPerOrder: 0, minPurchaseForRedeem: 0 };
 
 export const promoDiscount = (promo, subtotal) => {

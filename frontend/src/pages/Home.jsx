@@ -70,7 +70,7 @@ const Home = () => {
           <p className="text-neutral-600 leading-relaxed max-w-3xl">
             Puff2door is your online smoke shop for disposable vapes, hemp-derived delta products, glass pipes, kratom and other
             smoke shop essentials. Browse trusted brands, order online in minutes and get local vape delivery to your door in the
-            Orlando, Florida area — within {delivery.radiusMiles} miles of ZIP {delivery.zip}. Adults 21+ only.
+            Orlando, Florida area — {delivery.mode === "selected_zips" ? `${delivery.allowedZipCodes.length} selected delivery ZIP codes` : `within ${delivery.radiusMiles} miles of ZIP ${delivery.zip}`}. Adults 21+ only.
           </p>
         </div>
       </section>
@@ -193,8 +193,7 @@ const Home = () => {
             <div>
               <h3 className="font-heading text-lg uppercase mb-2">Vape Delivery in Orlando, FL</h3>
               <p className="text-sm text-neutral-600 leading-relaxed">
-                Puff2door is an online store with local smoke shop delivery — we bring your order to addresses within {delivery.radiusMiles} miles of ZIP {delivery.zip}{" "}
-                in the Orlando area. Check your ZIP code at the top of this page, or see the full list of{" "}
+                Puff2door is an online store with local smoke shop delivery — we bring your order to {delivery.mode === "selected_zips" ? `${delivery.allowedZipCodes.length} selected ZIP codes` : `addresses within ${delivery.radiusMiles} miles of ZIP ${delivery.zip}`} in the Orlando area. Check your ZIP code at the top of this page, or see the full list of{" "}
                 <Link to="/delivery-area" className="text-emerald-600 font-semibold hover:underline">Orlando neighborhoods and ZIP codes we deliver to</Link>.
               </p>
             </div>

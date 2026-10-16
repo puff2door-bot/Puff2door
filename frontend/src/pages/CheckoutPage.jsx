@@ -233,7 +233,7 @@ const CheckoutPage = () => {
               <div><label className="block text-sm font-medium mb-1.5">Date of Birth *</label><input required type="date" max={maxDob} data-testid="checkout-dob" className={inputCls} value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} /></div>
             </div>
             <p className="mt-3 text-xs text-neutral-600 flex items-start gap-1.5"><ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" /> You must be 21+. A valid government-issued photo ID is checked at the door, and orders cannot be left with anyone under 21.</p>
-            <p className="mt-3 text-xs text-neutral-500 flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-emerald-600" /> We deliver within {delivery.radiusMiles} miles of {delivery.zip} only.</p>
+            <p className="mt-3 text-xs text-neutral-500 flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-emerald-600" /> {delivery.mode === "selected_zips" ? `We deliver to ${delivery.allowedZipCodes.length} selected ZIP codes.` : `We deliver within ${delivery.radiusMiles} miles of ${delivery.zip} only.`}</p>
             {zone && (
               <div data-testid="checkout-zone-status" className={`mt-2 flex items-start gap-2 rounded-lg px-4 py-3 text-sm font-semibold ${zone.eligible ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
                 {zone.eligible ? <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" /> : <XCircle className="h-4 w-4 mt-0.5 shrink-0" />}
@@ -319,7 +319,7 @@ const CheckoutPage = () => {
               </div>
             )}
             {outOfZone ? (
-              <p data-testid="payment-blocked" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">Sorry, we only deliver within {delivery.radiusMiles} miles of {delivery.zip}. Enter an eligible ZIP code to continue to payment.</p>
+              <p data-testid="payment-blocked" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">Delivery is not available to this ZIP code. Enter an eligible ZIP code to continue to payment.</p>
             ) : stockIssues.length > 0 ? (
               <div data-testid="stock-blocked" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
                 <p className="font-bold mb-1">Some items in your cart are no longer available:</p>
@@ -398,7 +398,7 @@ const CheckoutPage = () => {
               <span className="font-heading text-2xl">${total.toFixed(2)}</span>
             </div>
             {outOfZone ? (
-              <p data-testid="checkout-submit-blocked" className="mt-5 text-center text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-full py-3 px-4">Outside our {delivery.radiusMiles}-mile delivery area</p>
+              <p data-testid="checkout-submit-blocked" className="mt-5 text-center text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-full py-3 px-4">Outside our delivery area</p>
             ) : stockIssues.length > 0 ? (
               <p data-testid="checkout-submit-stock-blocked" className="mt-5 text-center text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-full py-3 px-4">Update your cart to continue — some items are unavailable</p>
             ) : buttonDriven ? (

@@ -25,6 +25,8 @@ const DeliveryAreaPage = () => {
 
   const radius = area?.radiusMiles ?? delivery.radiusMiles;
   const center = area?.centerZip ?? delivery.zip;
+  const selected = (area?.mode || delivery.mode) === "selected_zips";
+  const zoneDescription = selected ? `${area?.zipCount ?? delivery.allowedZipCodes.length} selected ZIP codes in the Orlando, Florida area` : `addresses within ${radius} miles of ZIP ${center} in the Orlando, Florida area`;
   const mapSrc = area?.centerLat && area?.centerLng ? (() => {
     const latSpan = Math.max(radius / 69, 0.08);
     const lngSpan = Math.max(radius / (69 * Math.cos(area.centerLat * Math.PI / 180)), 0.08);
@@ -32,7 +34,7 @@ const DeliveryAreaPage = () => {
     return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${area.centerLat}%2C${area.centerLng}`;
   })() : "";
   const faqs = [
-    { q: "Where does Puff2door deliver?", a: `Puff2door delivers to addresses within ${radius} miles of ZIP ${center} in the Orlando, Florida area${area?.zipCount ? ` — that covers ${area.zipCount} ZIP codes` : ""}. Enter your ZIP code above to confirm instantly.` },
+    { q: "Where does Puff2door deliver?", a: `Puff2door delivers to ${zoneDescription}. Enter your ZIP code above to confirm instantly.` },
     { q: "Is there a delivery fee in Orlando?", a: `Local delivery is free on orders over $${pricing.freeDeliveryMin}. Orders below that carry a $${pricing.deliveryFee} delivery fee, shown before you pay.` },
     { q: "Do I need ID for vape delivery?", a: "Yes. You must be 21 or older, and a valid government-issued ID may be checked at delivery. Orders cannot be left with anyone under 21." },
     { q: "What can I order for delivery?", a: `Everything in our online smoke shop: ${activeCategories.map((c) => titleCase(c.name).toLowerCase()).join(", ")}.` },
@@ -55,7 +57,7 @@ const DeliveryAreaPage = () => {
     <div data-testid="delivery-area-page">
       <Seo
         title="Vape Delivery Orlando, FL | Puff2door Delivery Area"
-        description={`Puff2door delivers vapes, delta products, glass and smoke shop essentials within ${radius} miles of Orlando ZIP ${center}. Check your ZIP code and see every area we serve. 21+ only.`}
+        description={`Puff2door delivers vapes, delta products, glass and smoke shop essentials to ${zoneDescription}. Check your ZIP code and see every area we serve. 21+ only.`}
         path="/delivery-area"
         jsonLd={jsonLd}
       />
@@ -68,7 +70,7 @@ const DeliveryAreaPage = () => {
         <h1 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-700 text-neutral-900 uppercase tracking-tight mb-3">Vape Delivery in Orlando, FL</h1>
         <p className="text-neutral-600 leading-relaxed max-w-3xl mb-10">
           Puff2door is an online smoke shop with local vape delivery — not a walk-in store. Order disposable vapes, hemp-derived delta products,
-          glass pipes, kratom and more, and we bring them to your door anywhere within {radius} miles of ZIP {center}. Same-day local delivery is
+          glass pipes, kratom and more, and we bring them to your door in {zoneDescription}. Same-day local delivery is
           available, every order is age-verified (21+), and delivery is free on orders over ${pricing.freeDeliveryMin}.
         </p>
 
@@ -89,8 +91,8 @@ const DeliveryAreaPage = () => {
           <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full" />
           <h2 id="areas-heading" className="font-heading text-3xl sm:text-4xl font-700 text-neutral-900 uppercase tracking-tight mb-2">Areas We Deliver To</h2>
           <p className="text-sm text-neutral-500 mb-6">
-            {area ? `${area.zipCount} ZIP codes across ${area.areas.length} cities and communities within ${radius} miles of ${area.centerCity || "Orlando"} ${center}.` : "Loading delivery zone…"}
-            {" "}Distances are straight-line from the center of each ZIP code.
+            {area ? `${area.zipCount} ZIP codes across ${area.areas.length} cities and communities${selected ? "." : ` within ${radius} miles of ${area.centerCity || "Orlando"} ${center}.`}` : "Loading delivery zone…"}
+            {!selected && " Distances are straight-line from the center of each ZIP code."}
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="delivery-area-list">
             {(area?.areas || []).map((a) => (
@@ -98,7 +100,7 @@ const DeliveryAreaPage = () => {
                 <h3 className="font-heading text-lg uppercase flex items-center gap-2 mb-2"><MapPin className="h-4 w-4 text-emerald-600" aria-hidden="true" /> {a.city}, {a.state}</h3>
                 <p className="text-sm text-neutral-600 leading-relaxed">
                   {a.zips.map((z, i) => (
-                    <span key={z.zip}>{i > 0 && ", "}<span className="font-medium text-neutral-800">{z.zip}</span> <span className="text-neutral-400 text-xs">({z.distanceMiles} mi)</span></span>
+                    <span key={z.zip}>{i > 0 && ", "}<span className="font-medium text-neutral-800">{z.zip}</span>{z.distanceMiles != null && <span className="text-neutral-400 text-xs"> ({z.distanceMiles} mi)</span>}</span>
                   ))}
                 </p>
               </div>

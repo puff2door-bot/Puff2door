@@ -20,7 +20,7 @@ const AdminSettings = () => {
   const [busy, setBusy] = useState(false);
   const { toast } = useToast();
 
-  const toForm = (data) => ({ taxPercent: +(data.taxRate * 100).toFixed(3), deliveryFee: data.deliveryFee, freeDeliveryMin: data.freeDeliveryMin, deliveryZip: data.deliveryZip || "32832", deliveryRadiusMiles: data.deliveryRadiusMiles ?? 20,
+  const toForm = (data) => ({ taxPercent: +(data.taxRate * 100).toFixed(3), deliveryFee: data.deliveryFee, freeDeliveryMin: data.freeDeliveryMin, deliveryZip: data.deliveryZip || "32832", deliveryRadiusMiles: data.deliveryRadiusMiles ?? 20, allowedZipCodes: (data.allowedZipCodes || []).join(", "),
     sameDayEnabled: data.sameDayEnabled ?? true, deliveryCutoff: data.deliveryCutoff || "20:00", deliveryStart: data.deliveryStart || "11:00", deliveryEnd: data.deliveryEnd || "21:00", deliveryDays: data.deliveryDays || [0, 1, 2, 3, 4, 5, 6] });
 
   useEffect(() => {
@@ -31,7 +31,7 @@ const AdminSettings = () => {
     e.preventDefault();
     setBusy(true);
     try {
-      const { data } = await api.put("/admin/settings", { taxRate: Number(f.taxPercent) / 100, deliveryFee: Number(f.deliveryFee), freeDeliveryMin: Number(f.freeDeliveryMin), deliveryZip: f.deliveryZip, deliveryRadiusMiles: Number(f.deliveryRadiusMiles),
+      const { data } = await api.put("/admin/settings", { taxRate: Number(f.taxPercent) / 100, deliveryFee: Number(f.deliveryFee), freeDeliveryMin: Number(f.freeDeliveryMin), deliveryZip: f.deliveryZip, deliveryRadiusMiles: Number(f.deliveryRadiusMiles), allowedZipCodes: f.allowedZipCodes.split(/[\s,]+/).map((z) => z.trim()).filter(Boolean),
         sameDayEnabled: Boolean(f.sameDayEnabled), deliveryCutoff: f.deliveryCutoff, deliveryStart: f.deliveryStart, deliveryEnd: f.deliveryEnd, deliveryDays: f.deliveryDays });
       setF(toForm(data));
       toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
@@ -75,6 +75,12 @@ const AdminSettings = () => {
         <Field icon={Radius} label="Delivery radius (miles)" hint="Orders with a delivery ZIP farther than this are blocked at checkout. Shown in the homepage banner.">
           <input required type="number" min="1" max="500" step="1" data-testid="settings-delivery-radius" className={inputCls} value={f.deliveryRadiusMiles} onChange={(e) => setF({ ...f, deliveryRadiusMiles: e.target.value })} />
         </Field>
+      </div>
+
+      <div className="border border-emerald-200 bg-emerald-50/40 rounded-2xl p-5 mb-6">
+        <div className="flex items-center gap-2 mb-1"><MapPin className="h-4 w-4 text-emerald-600" /><label className="text-sm font-bold text-neutral-900">Allowed ZIP codes</label></div>
+        <p className="text-xs text-neutral-600 mb-3">Enter ZIP codes separated by commas or spaces. When this list has ZIP codes, only these ZIP codes can place delivery orders. Leave it empty to use the mileage radius above.</p>
+        <textarea rows={3} data-testid="settings-allowed-zips" className={inputCls} placeholder="32701, 32714, 32779" value={f.allowedZipCodes} onChange={(e) => setF({ ...f, allowedZipCodes: e.target.value.replace(/[^\d,\s]/g, "") })} />
       </div>
 
       <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-sameday">

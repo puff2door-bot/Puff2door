@@ -210,7 +210,7 @@ REAL_CARD_PROVIDER = SQUARE_ENABLED or PAYPAL_ENABLED
 # ALLOW_TEST_CARD=true keeps the simulated card usable for QA even when a real provider exists (hidden in UI). Leave unset in production.
 TEST_CARD_ENABLED = (not REAL_CARD_PROVIDER) or os.environ.get("ALLOW_TEST_CARD", "").lower() == "true"
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "apple_pay", "zelle"}
-DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32832", "deliveryRadiusMiles": 20.0,
+DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32832", "deliveryRadiusMiles": 20.0, "allowedZipCodes": [],
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
                     "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryStart": "11:00", "deliveryEnd": "21:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6]}
 STORE_TZ = ZoneInfo("America/New_York")
@@ -238,10 +238,15 @@ def miles_between(a: dict, b: dict) -> float:
 
 def delivery_zone_check(zip_code: str, settings: dict) -> dict:
     center_zip, radius = settings["deliveryZip"], float(settings["deliveryRadiusMiles"])
-    base = {"zip": re.sub(r"\D", "", zip_code or "")[:5], "centerZip": center_zip, "radiusMiles": radius, "eligible": False, "distanceMiles": None, "city": "", "state": ""}
+    allowed = settings.get("allowedZipCodes") or []
+    base = {"zip": re.sub(r"\D", "", zip_code or "")[:5], "centerZip": center_zip, "radiusMiles": radius, "allowedZipCodes": allowed, "mode": "selected_zips" if allowed else "radius", "eligible": False, "distanceMiles": None, "city": "", "state": ""}
     target = zip_lookup(zip_code)
     if not target:
         return {**base, "message": "Please enter a valid 5-digit US ZIP code."}
+    if allowed:
+        ok = target["zip"] in allowed
+        msg = f"Great news! We deliver to {target['city']}, {target['state']} {target['zip']}." if ok else f"Sorry, delivery is not currently available to ZIP {target['zip']}."
+        return {**base, "city": target["city"], "state": target["state"], "eligible": ok, "message": msg}
     center = zip_lookup(center_zip)
     if not center:
         return {**base, "city": target["city"], "state": target["state"], "message": "Delivery area is not configured. Please contact us."}
@@ -387,6 +392,7 @@ class StoreSettingsInput(BaseModel):
     freeDeliveryMin: float = Field(ge=0)
     deliveryZip: str = "32832"
     deliveryRadiusMiles: float = Field(default=20.0, gt=0, le=500)
+    allowedZipCodes: List[str] = Field(default=[])
     sameDayEnabled: bool = True
     deliveryCutoff: str = "20:00"
     deliveryStart: str = "11:00"
@@ -414,6 +420,20 @@ class StoreSettingsInput(BaseModel):
         if not zip_lookup(v):
             raise ValueError("Delivery ZIP must be a valid US ZIP code")
         return re.sub(r"\D", "", v)[:5]
+
+    @field_validator("allowedZipCodes")
+    @classmethod
+    def _allowed_zips(cls, values):
+        cleaned = []
+        for value in values:
+            z = re.sub(r"\D", "", str(value or ""))[:5]
+            if not zip_lookup(z):
+                raise ValueError(f"{value} is not a valid US ZIP code")
+            if z not in cleaned:
+                cleaned.append(z)
+        if len(cleaned) > 250:
+            raise ValueError("You can select up to 250 delivery ZIP codes")
+        return cleaned
 
 
 class LoyaltySettingsInput(BaseModel):
@@ -483,7 +503,8 @@ def pricing_rules(settings: dict) -> dict:
 
 
 def delivery_rules(settings: dict) -> dict:
-    return {"zip": settings["deliveryZip"], "radiusMiles": float(settings["deliveryRadiusMiles"])}
+    allowed = settings.get("allowedZipCodes") or []
+    return {"zip": settings["deliveryZip"], "radiusMiles": float(settings["deliveryRadiusMiles"]), "allowedZipCodes": allowed, "mode": "selected_zips" if allowed else "radius"}
 
 
 def promo_public(p: dict) -> dict:
@@ -1827,14 +1848,20 @@ _area_cache: dict = {}
 
 @api_router.get("/delivery/area")
 async def delivery_area():
-    """All ZIP codes (grouped by city) inside the configured delivery radius — computed from the ZIP database."""
+    """Configured ZIP whitelist, or all ZIP codes inside the configured radius."""
     settings = await get_settings()
-    key = (settings["deliveryZip"], float(settings["deliveryRadiusMiles"]))
+    allowed = tuple(settings.get("allowedZipCodes") or [])
+    key = (settings["deliveryZip"], float(settings["deliveryRadiusMiles"]), allowed)
     if key in _area_cache:
         return _area_cache[key]
     center = zip_lookup(settings["deliveryZip"])
     cities: dict = {}
-    if center:
+    if allowed:
+        for code in allowed:
+            z = zip_lookup(code)
+            if z:
+                cities.setdefault(z["city"].title(), []).append({"zip": z["zip"], "distanceMiles": round(miles_between(center, z), 1) if center else None})
+    elif center:
         for z in zipcodes.filter_by_state(center["state"]):
             if z.get("zip_code_type") != "STANDARD" or not z.get("lat") or z.get("active") is False:
                 continue
@@ -1843,7 +1870,7 @@ async def delivery_area():
                 cities.setdefault(z["city"].title(), []).append({"zip": z["zip_code"], "distanceMiles": round(d, 1)})
     areas = [{"city": c, "state": center["state"] if center else "", "zips": sorted(v, key=lambda x: x["zip"])} for c, v in cities.items()]
     areas.sort(key=lambda a: (-len(a["zips"]), a["city"]))
-    result = {"centerZip": key[0], "centerCity": center["city"].title() if center else "", "centerLat": center["lat"] if center else None, "centerLng": center["lng"] if center else None, "radiusMiles": key[1], "zipCount": sum(len(a["zips"]) for a in areas), "areas": areas}
+    result = {"centerZip": key[0], "centerCity": center["city"].title() if center else "", "centerLat": center["lat"] if center else None, "centerLng": center["lng"] if center else None, "radiusMiles": key[1], "mode": "selected_zips" if allowed else "radius", "zipCount": sum(len(a["zips"]) for a in areas), "areas": areas}
     _area_cache.clear()
     _area_cache[key] = result
     return result
