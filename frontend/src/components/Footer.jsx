@@ -10,9 +10,11 @@ const SOCIALS = [
 import { BRAND } from "../mock";
 import { useCatalog } from "../context/CatalogContext";
 import AnimatedLogo from "./AnimatedLogo";
+import { useApp } from "../context/AppContext";
 
 const Footer = () => {
   const { activeCategories: categories } = useCatalog();
+  const { user } = useApp();
   return (
     <footer className="bg-neutral-900 text-neutral-300 mt-16">
       {/* Age banner */}
@@ -92,6 +94,7 @@ const Footer = () => {
         <div className="max-w-[1280px] mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-neutral-500">
           <p>© {new Date().getFullYear()} Puff2Door. All rights reserved.</p>
           <p className="text-center">These products are not intended to diagnose, treat, cure or prevent any disease. Keep out of reach of children.</p>
+          {user?.role === "admin" && <Link to="/admin" data-testid="footer-admin-link" className="font-bold text-amber-300 hover:text-amber-200">Admin Panel</Link>}
         </div>
       </div>
     </footer>

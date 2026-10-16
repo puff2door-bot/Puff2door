@@ -198,14 +198,6 @@ const Header = () => {
                   Track Order
                 </Link>
               </li>
-              {user?.role === "admin" && (
-                <li>
-                  <Link to="/admin" data-testid="header-admin-link" className="block px-4 py-3.5 text-[13px] font-semibold tracking-wide uppercase text-amber-300 hover:text-amber-200 transition-colors">
-                    Admin
-                  </Link>
-                </li>
-              )}
-
               <li className="ml-auto flex items-center gap-5 text-[12px] text-neutral-300">
                 <span className="flex items-center gap-1.5"><Phone className="h-4 w-4 text-emerald-400" /> {BRAND.phone}</span>
                 <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-emerald-400" /> Altamonte Springs, FL</span>
