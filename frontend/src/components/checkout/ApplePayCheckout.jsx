@@ -3,6 +3,24 @@ import React, { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { loadScript } from "../../lib/loadScript";
 
+export const buildApplePayPaymentRequest = (applePayConfig, total) => ({
+  countryCode: applePayConfig.countryCode || "US",
+  currencyCode: "USD",
+  merchantCapabilities: applePayConfig.merchantCapabilities,
+  supportedNetworks: applePayConfig.supportedNetworks,
+  // PayPal uses the billing postal address when it confirms the Apple Pay token.
+  // Without requesting it, Safari can authorize the sheet but PayPal rejects
+  // confirmOrder with a generic internal-server error.
+  requiredBillingContactFields: ["postalAddress"],
+  total: { label: "Puff2Door", type: "final", amount: Number(total).toFixed(2) },
+});
+
+const paymentErrorMessage = (error) => {
+  const message = error?.details?.[0]?.description || error?.message || "";
+  if (/internal server error/i.test(message)) return "Apple Pay could not authorize this card. Check the card's billing address or choose another payment method.";
+  return message || "Apple Pay could not complete the payment.";
+};
+
 const ApplePayCheckout = ({ config, total, createOrder, onApprove, onError, onCancel, validate }) => {
   const [state, setState] = useState("loading");
   const applePayRef = useRef(null);
@@ -39,13 +57,7 @@ const ApplePayCheckout = ({ config, total, createOrder, onApprove, onError, onCa
     const applepay = applePayRef.current;
     const applePayConfig = applePayConfigRef.current;
     try {
-      const paymentRequest = {
-        countryCode: applePayConfig.countryCode || "US",
-        currencyCode: "USD",
-        merchantCapabilities: applePayConfig.merchantCapabilities,
-        supportedNetworks: applePayConfig.supportedNetworks,
-        total: { label: "Puff2Door", type: "final", amount: Number(total).toFixed(2) },
-      };
+      const paymentRequest = buildApplePayPaymentRequest(applePayConfig, total);
       const session = new window.ApplePaySession(4, paymentRequest);
       session.onvalidatemerchant = async (event) => {
         try {
@@ -68,7 +80,7 @@ const ApplePayCheckout = ({ config, total, createOrder, onApprove, onError, onCa
           session.completePayment(window.ApplePaySession.STATUS_SUCCESS);
         } catch (err) {
           session.completePayment(window.ApplePaySession.STATUS_FAILURE);
-          handlers.current.onError(err?.message || "Apple Pay could not complete the payment.");
+          handlers.current.onError(paymentErrorMessage(err));
         }
       };
       session.oncancel = () => handlers.current.onCancel?.();
