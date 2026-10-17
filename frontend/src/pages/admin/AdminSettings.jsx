@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Save, Percent, Truck, Gift, MapPin, Radius, Clock, LayoutTemplate } from "lucide-react";
+import { Save, Percent, Truck, Gift, MapPin, Radius, Clock, LayoutTemplate, Gauge } from "lucide-react";
 import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
 
@@ -21,7 +21,8 @@ const AdminSettings = () => {
   const { toast } = useToast();
 
   const toForm = (data) => ({ taxPercent: +(data.taxRate * 100).toFixed(3), deliveryFee: data.deliveryFee, freeDeliveryMin: data.freeDeliveryMin, deliveryZip: data.deliveryZip || "32832", deliveryRadiusMiles: data.deliveryRadiusMiles ?? 20, allowedZipCodes: (data.allowedZipCodes || []).join(", "),
-    sameDayEnabled: data.sameDayEnabled ?? true, deliveryCutoff: data.deliveryCutoff || "20:00", deliveryStart: data.deliveryStart || "11:00", deliveryEnd: data.deliveryEnd || "21:00", deliveryDays: data.deliveryDays || [0, 1, 2, 3, 4, 5, 6], homepageLayout: data.homepageLayout || "classic" });
+    sameDayEnabled: data.sameDayEnabled ?? true, deliveryCutoff: data.deliveryCutoff || "20:00", deliveryStart: data.deliveryStart || "11:00", deliveryEnd: data.deliveryEnd || "21:00", deliveryDays: data.deliveryDays || [0, 1, 2, 3, 4, 5, 6], homepageLayout: data.homepageLayout || "classic",
+    deliverySlotCapacity: data.deliverySlotCapacity ?? 8, deliveryDriverCount: data.deliveryDriverCount ?? 1, ordersPerDriverPerWindow: data.ordersPerDriverPerWindow ?? 8, defaultEtaMinutes: data.defaultEtaMinutes ?? 45 });
 
   useEffect(() => {
     api.get("/admin/settings").then(({ data }) => setF(toForm(data)));
@@ -32,7 +33,8 @@ const AdminSettings = () => {
     setBusy(true);
     try {
       const { data } = await api.put("/admin/settings", { taxRate: Number(f.taxPercent) / 100, deliveryFee: Number(f.deliveryFee), freeDeliveryMin: Number(f.freeDeliveryMin), deliveryZip: f.deliveryZip, deliveryRadiusMiles: Number(f.deliveryRadiusMiles), allowedZipCodes: f.allowedZipCodes.split(/[\s,]+/).map((z) => z.trim()).filter(Boolean),
-        sameDayEnabled: Boolean(f.sameDayEnabled), deliveryCutoff: f.deliveryCutoff, deliveryStart: f.deliveryStart, deliveryEnd: f.deliveryEnd, deliveryDays: f.deliveryDays, homepageLayout: f.homepageLayout });
+        sameDayEnabled: Boolean(f.sameDayEnabled), deliveryCutoff: f.deliveryCutoff, deliveryStart: f.deliveryStart, deliveryEnd: f.deliveryEnd, deliveryDays: f.deliveryDays, homepageLayout: f.homepageLayout,
+        deliverySlotCapacity: Number(f.deliverySlotCapacity), deliveryDriverCount: Number(f.deliveryDriverCount), ordersPerDriverPerWindow: Number(f.ordersPerDriverPerWindow), defaultEtaMinutes: Number(f.defaultEtaMinutes) });
       setF(toForm(data));
       toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
     } catch (err) {
@@ -132,6 +134,18 @@ const AdminSettings = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-delivery-capacity">
+        <div className="flex items-center gap-2 mb-1"><Gauge className="h-4 w-4 text-emerald-600" /><label className="text-sm font-bold text-neutral-900">Delivery capacity &amp; ETA</label></div>
+        <p className="text-xs text-neutral-500 mb-4">Checkout closes a delivery window when its calculated capacity is full. Capacity uses the lower of the fixed slot limit and drivers × orders per driver.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div><label className="block text-xs font-bold text-neutral-600 mb-1">Maximum orders per window</label><input required type="number" min="1" max="500" step="1" data-testid="settings-slot-capacity" className={inputCls} value={f.deliverySlotCapacity} onChange={(e) => setF({ ...f, deliverySlotCapacity: e.target.value })} /></div>
+          <div><label className="block text-xs font-bold text-neutral-600 mb-1">Active drivers</label><input required type="number" min="1" max="100" step="1" data-testid="settings-driver-count" className={inputCls} value={f.deliveryDriverCount} onChange={(e) => setF({ ...f, deliveryDriverCount: e.target.value })} /></div>
+          <div><label className="block text-xs font-bold text-neutral-600 mb-1">Orders per driver/window</label><input required type="number" min="1" max="100" step="1" data-testid="settings-orders-per-driver" className={inputCls} value={f.ordersPerDriverPerWindow} onChange={(e) => setF({ ...f, ordersPerDriverPerWindow: e.target.value })} /></div>
+          <div><label className="block text-xs font-bold text-neutral-600 mb-1">Default live ETA (minutes)</label><input required type="number" min="5" max="480" step="5" data-testid="settings-default-eta" className={inputCls} value={f.defaultEtaMinutes} onChange={(e) => setF({ ...f, defaultEtaMinutes: e.target.value })} /></div>
+        </div>
+        <p className="mt-3 text-xs font-semibold text-emerald-700">Effective capacity: {Math.min(Number(f.deliverySlotCapacity) || 1, (Number(f.deliveryDriverCount) || 1) * (Number(f.ordersPerDriverPerWindow) || 1))} orders per delivery window.</p>
       </div>
 
       <div className="border border-dashed border-neutral-300 rounded-2xl p-5 text-sm text-neutral-600" data-testid="settings-preview">

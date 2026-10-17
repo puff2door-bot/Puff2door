@@ -12,11 +12,12 @@ const STATUSES = [
 ];
 const CANCELLED = { key: "cancelled", label: "Cancelled" };
 const ALL_STATUSES = [...STATUSES, CANCELLED];
+const SPECIAL_LABELS = { returning_to_store: "Returning to Store", returned: "Returned to Store", id_check_failed: "ID Check Failed" };
 
 const PAY_LABEL = { square: "Card", cash_app: "Cash App", paypal: "PayPal", apple_pay: "Apple Pay", zelle: "Zelle", test_card: "Test card" };
 const payTone = { paid: "bg-emerald-100 text-emerald-700", awaiting_payment: "bg-amber-100 text-amber-800", refunded: "bg-neutral-200 text-neutral-600" };
 
-const tone = { placed: "bg-neutral-100 text-neutral-700", confirmed: "bg-blue-100 text-blue-700", out_for_delivery: "bg-amber-100 text-amber-700", delivered: "bg-emerald-100 text-emerald-700", cancelled: "bg-red-100 text-red-700" };
+const tone = { placed: "bg-neutral-100 text-neutral-700", confirmed: "bg-blue-100 text-blue-700", out_for_delivery: "bg-amber-100 text-amber-700", delivered: "bg-emerald-100 text-emerald-700", cancelled: "bg-red-100 text-red-700", returning_to_store: "bg-red-100 text-red-700", returned: "bg-neutral-200 text-neutral-700" };
 
 const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
@@ -136,10 +137,10 @@ const AdminOrders = () => {
                   {(o.pointsEarned > 0 || o.rewardPoints > 0) && (
                     <span data-testid={`order-points-${o.orderNumber}`} className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">{o.pointsEarned > 0 ? `+${o.pointsEarned - (o.pointsReversed || 0)} pts` : ""}{o.pointsEarned > 0 && o.rewardPoints > 0 ? " · " : ""}{o.rewardPoints > 0 ? `${o.rewardPoints} redeemed` : ""}</span>
                   )}
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${tone[o.status]}`}>{ALL_STATUSES.find((s) => s.key === o.status)?.label}</span>
-                  <select data-testid={`order-status-select-${o.orderNumber}`} disabled={o.paymentStatus === "awaiting_payment"} value={o.manualStatus || o.status} onChange={(e) => setStatus(o, e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold outline-none focus:border-emerald-600">
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${tone[o.status] || tone.placed}`}>{ALL_STATUSES.find((s) => s.key === o.status)?.label || SPECIAL_LABELS[o.status] || o.status}</span>
+                  {SPECIAL_LABELS[o.status] ? <Link to="/admin/operations" className="text-xs font-bold text-red-700 underline">Manage return</Link> : <select data-testid={`order-status-select-${o.orderNumber}`} disabled={o.paymentStatus === "awaiting_payment"} value={o.manualStatus || o.status} onChange={(e) => setStatus(o, e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold outline-none focus:border-emerald-600">
                     {ALL_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-                  </select>
+                  </select>}
                   <Link to={`/order/${o.id}`} target="_blank" className="text-neutral-400 hover:text-emerald-600" aria-label="Open"><ExternalLink className="h-4 w-4" /></Link>
                 </div>
               </div>

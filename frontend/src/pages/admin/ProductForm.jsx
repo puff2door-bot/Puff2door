@@ -59,10 +59,13 @@ export const ImageField = ({ label, value, onChange, testId }) => {
 export const emptyProduct = {
   name: "", category: "", categorySlug: "", price: "", salePrice: "", image: "", image2: "",
   brand: "", brandName: "", flavors: [], puffs: "", stock: 0, active: true, description: "",
+  complianceCategory: "regulated", minimumAge: 21, requiresIdAtDelivery: true, localDeliveryOnly: true,
+  allowedStates: [], blockedStates: [],
 };
 
 const ProductForm = ({ initial, onClose, onSaved }) => {
-  const [f, setF] = useState({ ...emptyProduct, ...initial, price: initial?.price ?? "", salePrice: initial?.salePrice ?? "", puffs: initial?.puffs ?? "" });
+  const [f, setF] = useState({ ...emptyProduct, ...initial, price: initial?.price ?? "", salePrice: initial?.salePrice ?? "", puffs: initial?.puffs ?? "",
+    allowedStates: (initial?.allowedStates || []).join(", "), blockedStates: (initial?.blockedStates || []).join(", ") });
   const [busy, setBusy] = useState(false);
   const { toast } = useToast();
   const set = (k, v) => setF((prev) => ({ ...prev, [k]: v }));
@@ -105,6 +108,9 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
       salePrice: f.salePrice === "" ? null : Number(f.salePrice),
       puffs: f.puffs === "" ? null : Number(f.puffs),
       stock: Number(f.stock),
+      minimumAge: Number(f.minimumAge),
+      allowedStates: String(f.allowedStates || "").split(/[\s,]+/).map((v) => v.trim().toUpperCase()).filter(Boolean),
+      blockedStates: String(f.blockedStates || "").split(/[\s,]+/).map((v) => v.trim().toUpperCase()).filter(Boolean),
       brandName: f.brandName || f.name.split(" ")[0],
     };
     delete payload.id; delete payload.slug; delete payload.inStock; delete payload.rating; delete payload.restockNotified;
@@ -197,6 +203,23 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
           <label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Description</label>
           <textarea rows={3} data-testid="pf-description" className={inputCls} value={f.description} onChange={(e) => set("description", e.target.value)} />
         </div>
+
+        <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-4" data-testid="pf-compliance">
+          <div>
+            <h3 className="text-sm font-bold text-neutral-900">Product restrictions</h3>
+            <p className="text-xs text-neutral-600 mt-1">These rules are captured with each order and enforced by checkout. Use two-letter state codes such as FL.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div><label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Compliance category</label><select className={inputCls} data-testid="pf-compliance-category" value={f.complianceCategory} onChange={(e) => set("complianceCategory", e.target.value)}><option value="regulated">Regulated product</option><option value="nicotine">Nicotine</option><option value="hemp">Hemp derived</option><option value="kratom">Kratom</option><option value="accessory">Accessory</option><option value="general">General merchandise</option></select></div>
+            <div><label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Minimum age</label><input required type="number" min="0" max="99" step="1" className={inputCls} data-testid="pf-minimum-age" value={f.minimumAge} onChange={(e) => set("minimumAge", e.target.value)} /></div>
+            <div><label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Allowed states</label><input className={inputCls} data-testid="pf-allowed-states" placeholder="FL (blank = any)" value={f.allowedStates} onChange={(e) => set("allowedStates", e.target.value.replace(/[^a-zA-Z,\s]/g, ""))} /></div>
+            <div><label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Blocked states</label><input className={inputCls} data-testid="pf-blocked-states" placeholder="State codes, comma separated" value={f.blockedStates} onChange={(e) => set("blockedStates", e.target.value.replace(/[^a-zA-Z,\s]/g, ""))} /></div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <label className="flex items-center gap-2 text-sm font-medium cursor-pointer"><input type="checkbox" className="accent-emerald-600 h-4 w-4" checked={f.requiresIdAtDelivery} onChange={(e) => set("requiresIdAtDelivery", e.target.checked)} /> ID check required at delivery</label>
+            <label className="flex items-center gap-2 text-sm font-medium cursor-pointer"><input type="checkbox" className="accent-emerald-600 h-4 w-4" checked={f.localDeliveryOnly} onChange={(e) => set("localDeliveryOnly", e.target.checked)} /> Local delivery only</label>
+          </div>
+        </section>
 
         <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
           <input type="checkbox" data-testid="pf-active" className="accent-emerald-600 h-4 w-4" checked={f.active} onChange={(e) => set("active", e.target.checked)} /> Visible in store

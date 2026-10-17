@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { NavLink, Link, Outlet } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle, Truck, ShieldCheck, BarChart3 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import api from "../../api";
 
@@ -8,6 +8,9 @@ const nav = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/admin/products", label: "Products", icon: Package },
   { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
+  { to: "/admin/operations", label: "Delivery Operations", icon: Truck },
+  { to: "/admin/compliance", label: "Compliance", icon: ShieldCheck },
+  { to: "/admin/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/admin/chat", label: "Live Chat", icon: MessageCircle, badge: "chat" },
   { to: "/admin/loyalty", label: "Loyalty Rewards", icon: Gift },
   { to: "/admin/alerts", label: "Restock Alerts", icon: Bell },

@@ -1,24 +1,28 @@
 import React from "react";
 import { CheckCircle2, Circle, Truck, Package, Home, Clock, PartyPopper, XCircle, MessageSquareText, Camera } from "lucide-react";
 
-const ICONS = { placed: Package, confirmed: CheckCircle2, out_for_delivery: Truck, delivered: Home, cancelled: XCircle };
+const ICONS = { placed: Package, confirmed: CheckCircle2, out_for_delivery: Truck, delivered: Home, cancelled: XCircle, returning_to_store: Truck, returned: Home };
 
 const OrderTracking = ({ order }) => {
   const timeline = order.timeline || [];
   const activeIndex = Math.max(0, timeline.filter((t) => t.done).length - 1);
   const cancelled = order.status === "cancelled";
+  const returning = ["returning_to_store", "returned"].includes(order.status);
   const complete = order.status === "delivered";
-  const activeTone = cancelled ? "bg-red-500" : "bg-emerald-500";
+  const activeTone = cancelled || returning ? "bg-red-500" : "bg-emerald-500";
 
   return (
     <div className="border border-neutral-200 rounded-xl p-6 sm:p-8" data-testid="order-tracker">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="font-heading text-xl uppercase tracking-wide">Delivery Tracker</h2>
-          {order.arrivalLabel && !cancelled && <p className="text-sm font-semibold text-emerald-700 mt-1" data-testid="order-arrival-window">Arriving {order.arrivalLabel}</p>}
+          {order.arrivalLabel && !cancelled && !returning && <p className="text-sm font-semibold text-emerald-700 mt-1" data-testid="order-arrival-window">Arriving {order.arrivalLabel}</p>}
+          {order.etaAt && order.status === "out_for_delivery" && <p className="text-xs text-neutral-600 mt-1" data-testid="order-live-eta">Live ETA: {new Date(order.etaAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p>}
         </div>
         {cancelled ? (
           <span className="flex items-center gap-1.5 text-xs font-bold text-red-700 bg-red-50 px-3 py-1.5 rounded-full"><XCircle className="h-3.5 w-3.5" /> Cancelled</span>
+        ) : returning ? (
+          <span className="flex items-center gap-1.5 text-xs font-bold text-red-700 bg-red-50 px-3 py-1.5 rounded-full"><XCircle className="h-3.5 w-3.5" /> {order.status === "returned" ? "Returned" : "Returning"}</span>
         ) : complete ? (
           <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full"><PartyPopper className="h-3.5 w-3.5" /> Delivered</span>
         ) : (
@@ -71,6 +75,13 @@ const OrderTracking = ({ order }) => {
         <div className="mt-6" data-testid="delivery-photo">
           <p className="font-bold text-sm flex items-center gap-2 mb-2"><Camera className="h-4 w-4 text-emerald-600" /> Photo at your door</p>
           <img src={order.deliveryPhotoUrl} alt="Delivery at the door" className="w-full max-h-96 object-cover rounded-xl border border-neutral-200" />
+        </div>
+      )}
+
+      {["returning_to_store", "returned"].includes(order.status) && (
+        <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" data-testid="failed-id-return-status">
+          <p className="font-bold flex items-center gap-2"><XCircle className="h-4 w-4" /> Delivery could not be completed after the required ID check.</p>
+          <p className="mt-1 text-xs">The order {order.status === "returned" ? "has been returned to the store" : "is being returned to the store"}. Contact support if you need help with payment or next steps.</p>
         </div>
       )}
     </div>

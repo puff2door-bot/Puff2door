@@ -35,6 +35,9 @@ import AdminBrands from "./pages/admin/AdminBrands";
 import AdminCategories from "./pages/admin/AdminCategories";
 import AdminLoyalty from "./pages/admin/AdminLoyalty";
 import AdminChat from "./pages/admin/AdminChat";
+import AdminOperations from "./pages/admin/AdminOperations";
+import AdminCompliance from "./pages/admin/AdminCompliance";
+import AdminAnalytics from "./pages/admin/AdminAnalytics";
 import ChatWidget from "./components/chat/ChatWidget";
 import Seo, { setJsonLd } from "./seo/Seo";
 import Analytics from "./seo/Analytics";
@@ -93,6 +96,9 @@ const AppRoutes = () => {
         <Route index element={<AdminDashboard />} />
         <Route path="products" element={<AdminProducts />} />
         <Route path="orders" element={<AdminOrders />} />
+        <Route path="operations" element={<AdminOperations />} />
+        <Route path="compliance" element={<AdminCompliance />} />
+        <Route path="analytics" element={<AdminAnalytics />} />
         <Route path="loyalty" element={<AdminLoyalty />} />
         <Route path="chat" element={<AdminChat />} />
         <Route path="alerts" element={<AdminAlerts />} />

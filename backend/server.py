@@ -19,6 +19,8 @@ import json
 import math
 import mimetypes
 import secrets
+import csv
+import io
 import zipcodes
 from datetime import datetime, timedelta, timezone, date, time as dtime
 from zoneinfo import ZoneInfo
@@ -159,16 +161,19 @@ class OrderInput(BaseModel):
     expectSameDay: Optional[bool] = None
     dateOfBirth: str = ""
     deliveryWindowId: str = ""
+    ageAttestationAccepted: bool = False
 
 
 class PayPalCreateInput(BaseModel):
     items: List[CartItem]
     promoCode: str = ""
     zip: str = ""
+    state: str = ""
     redeemPoints: int = 0
     tip: float = Field(default=0, ge=0, le=500)
     dateOfBirth: str = ""
     deliveryWindowId: str = ""
+    ageAttestationAccepted: bool = False
 
 
 class PaymentStatusInput(BaseModel):
@@ -223,7 +228,8 @@ TEST_CARD_ENABLED = (not REAL_CARD_PROVIDER) or os.environ.get("ALLOW_TEST_CARD"
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "apple_pay", "zelle"}
 DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32832", "deliveryRadiusMiles": 20.0, "allowedZipCodes": [],
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
-                    "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryStart": "11:00", "deliveryEnd": "21:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6], "homepageLayout": "classic"}
+                    "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryStart": "11:00", "deliveryEnd": "21:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6], "homepageLayout": "classic",
+                    "deliverySlotCapacity": 8, "deliveryDriverCount": 1, "ordersPerDriverPerWindow": 8, "defaultEtaMinutes": 45}
 STORE_TZ = ZoneInfo("America/New_York")
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 DELIVERY_SLOTS = [("12:00", "14:00"), ("16:00", "18:00"), ("18:00", "20:00")]
@@ -306,6 +312,100 @@ def validate_age_21(date_of_birth: str, today: Optional[date] = None) -> date:
     if age < 21:
         raise HTTPException(status_code=400, detail="You must be 21 or older to place an order.")
     return born
+
+
+STATE_ALIASES = {
+    "alabama": "al", "alaska": "ak", "arizona": "az", "arkansas": "ar", "california": "ca",
+    "colorado": "co", "connecticut": "ct", "delaware": "de", "florida": "fl", "georgia": "ga",
+    "hawaii": "hi", "idaho": "id", "illinois": "il", "indiana": "in", "iowa": "ia", "kansas": "ks",
+    "kentucky": "ky", "louisiana": "la", "maine": "me", "maryland": "md", "massachusetts": "ma",
+    "michigan": "mi", "minnesota": "mn", "mississippi": "ms", "missouri": "mo", "montana": "mt",
+    "nebraska": "ne", "nevada": "nv", "newhampshire": "nh", "newjersey": "nj", "newmexico": "nm",
+    "newyork": "ny", "northcarolina": "nc", "northdakota": "nd", "ohio": "oh", "oklahoma": "ok",
+    "oregon": "or", "pennsylvania": "pa", "rhodeisland": "ri", "southcarolina": "sc",
+    "southdakota": "sd", "tennessee": "tn", "texas": "tx", "utah": "ut", "vermont": "vt",
+    "virginia": "va", "washington": "wa", "westvirginia": "wv", "wisconsin": "wi", "wyoming": "wy",
+}
+
+
+def _state_key(value: str) -> str:
+    key = re.sub(r"[^a-z]", "", (value or "").lower())
+    return STATE_ALIASES.get(key, key)
+
+
+async def validate_product_restrictions(items: List[CartItem], state: str, age_attestation: bool) -> dict:
+    """Validate catalog restrictions and return the exact rule snapshot stored with the order."""
+    ids = list({int(item.productId) for item in items})
+    products = await db.products.find({"id": {"$in": ids}}).to_list(len(ids) or 1)
+    by_id = {int(p["id"]): p for p in products}
+    state_key = _state_key(state)
+    restricted_items = []
+    requires_id = False
+    minimum_age = 0
+    for item in items:
+        product = by_id.get(int(item.productId))
+        if not product:
+            continue
+        allowed = {_state_key(v) for v in product.get("allowedStates", []) if v}
+        blocked = {_state_key(v) for v in product.get("blockedStates", []) if v}
+        if state_key in blocked or (allowed and state_key not in allowed):
+            raise HTTPException(status_code=400, detail=f"{product.get('name', item.name)} cannot be delivered to {state or 'this state'}.")
+        item_age = int(product.get("minimumAge", 21))
+        item_requires_id = bool(product.get("requiresIdAtDelivery", True))
+        if item_age > 0 or item_requires_id:
+            restricted_items.append({
+                "productId": product["id"],
+                "name": product.get("name", item.name),
+                "category": product.get("complianceCategory", "regulated"),
+                "minimumAge": item_age,
+                "requiresIdAtDelivery": item_requires_id,
+                "localDeliveryOnly": bool(product.get("localDeliveryOnly", True)),
+            })
+        minimum_age = max(minimum_age, item_age)
+        requires_id = requires_id or item_requires_id
+    if restricted_items and not age_attestation:
+        raise HTTPException(status_code=400, detail="Confirm the 21+ age and ID-at-delivery notice before paying.")
+    return {
+        "restrictedItems": restricted_items,
+        "minimumAge": minimum_age or 21,
+        "requiresIdAtDelivery": requires_id,
+        "ageAttestationAccepted": bool(age_attestation),
+    }
+
+
+def configured_window_capacity(settings: dict) -> int:
+    slot_limit = max(1, int(settings.get("deliverySlotCapacity", 8)))
+    driver_limit = max(1, int(settings.get("deliveryDriverCount", 1))) * max(1, int(settings.get("ordersPerDriverPerWindow", 8)))
+    return min(slot_limit, driver_limit)
+
+
+async def window_capacity(window_id: str, settings: dict, exclude_order_id: Optional[str] = None) -> dict:
+    query = {
+        "deliveryWindow.id": window_id,
+        "manualStatus": {"$nin": ["cancelled", "returned"]},
+        "paymentStatus": {"$ne": "refunded"},
+    }
+    if exclude_order_id:
+        query["id"] = {"$ne": exclude_order_id}
+    booked = await db.orders.count_documents(query)
+    capacity = configured_window_capacity(settings)
+    return {"capacity": capacity, "booked": booked, "remaining": max(0, capacity - booked), "available": booked < capacity, "full": booked >= capacity}
+
+
+async def delivery_window_with_capacity(settings: dict, now: Optional[datetime] = None) -> dict:
+    result = delivery_window(settings, now)
+    windows = result.get("availableWindows", [])
+    capacities = await asyncio.gather(*(window_capacity(w["id"], settings) for w in windows)) if windows else []
+    result["availableWindows"] = [{**window, **capacity} for window, capacity in zip(windows, capacities)]
+    result["capacityPerWindow"] = configured_window_capacity(settings)
+    return result
+
+
+async def require_delivery_capacity(window_id: str, settings: dict):
+    capacity = await window_capacity(window_id, settings)
+    if not capacity["available"]:
+        raise HTTPException(status_code=409, detail="That delivery window just filled up. Choose another available time.")
+    return capacity
 
 
 def available_delivery_windows(settings: dict, now: Optional[datetime] = None) -> List[dict]:
@@ -410,6 +510,10 @@ class StoreSettingsInput(BaseModel):
     deliveryEnd: str = "21:00"
     deliveryDays: List[int] = Field(default=[0, 1, 2, 3, 4, 5, 6])
     homepageLayout: str = "classic"
+    deliverySlotCapacity: int = Field(default=8, ge=1, le=250)
+    deliveryDriverCount: int = Field(default=1, ge=1, le=50)
+    ordersPerDriverPerWindow: int = Field(default=8, ge=1, le=100)
+    defaultEtaMinutes: int = Field(default=45, ge=5, le=480)
 
     @field_validator("homepageLayout")
     @classmethod
@@ -843,6 +947,25 @@ class ProductInput(BaseModel):
     stock: int = Field(default=0, ge=0)
     active: bool = True
     description: str = ""
+    complianceCategory: str = "regulated"
+    minimumAge: int = Field(default=21, ge=0, le=99)
+    requiresIdAtDelivery: bool = True
+    localDeliveryOnly: bool = True
+    allowedStates: List[str] = []
+    blockedStates: List[str] = []
+
+    @field_validator("complianceCategory")
+    @classmethod
+    def _compliance_category(cls, value):
+        allowed = {"regulated", "nicotine", "hemp", "kratom", "accessory", "general"}
+        if value not in allowed:
+            raise ValueError("Choose a valid compliance category")
+        return value
+
+    @field_validator("allowedStates", "blockedStates")
+    @classmethod
+    def _state_lists(cls, values):
+        return list(dict.fromkeys(str(v).strip()[:40] for v in values if str(v).strip()))
 
 
 class OrderStatusInput(BaseModel):
@@ -860,6 +983,48 @@ class DeliveryDetailsInput(BaseModel):
         if v and not re.match(r"^https?://", v, re.I):
             raise ValueError("Delivery photo must use an http or https URL")
         return v
+
+
+class DispatchInput(BaseModel):
+    driverName: str = Field(default="", max_length=100)
+    driverPhoneLast4: str = ""
+    etaMinutes: Optional[int] = Field(default=None, ge=5, le=360)
+    dispatchNotes: str = Field(default="", max_length=1000)
+
+    @field_validator("driverPhoneLast4")
+    @classmethod
+    def _driver_phone_last4(cls, value):
+        return re.sub(r"\D", "", value or "")[-4:]
+
+
+class IdCheckInput(BaseModel):
+    result: str
+    idType: str = ""
+    photoIdValid: bool = False
+    age21Confirmed: bool = False
+    nameMatchesOrder: bool = False
+    expirationValid: bool = False
+    failureReason: str = Field(default="", max_length=500)
+    checkedBy: str = Field(default="", max_length=100)
+
+    @field_validator("result")
+    @classmethod
+    def _id_result(cls, value):
+        if value not in {"passed", "failed"}:
+            raise ValueError("ID result must be passed or failed")
+        return value
+
+
+class ReturnDispositionInput(BaseModel):
+    disposition: str
+    notes: str = Field(default="", max_length=1000)
+
+    @field_validator("disposition")
+    @classmethod
+    def _return_disposition(cls, value):
+        if value not in {"restocked", "discarded"}:
+            raise ValueError("Choose restocked or discarded")
+        return value
 
 
 class HeroSlide(BaseModel):
@@ -939,6 +1104,12 @@ def product_out(p: dict) -> dict:
         "inStock": stock > 0,
         "active": p.get("active", True),
         "description": p.get("description", ""),
+        "complianceCategory": p.get("complianceCategory", "regulated"),
+        "minimumAge": int(p.get("minimumAge", 21)),
+        "requiresIdAtDelivery": bool(p.get("requiresIdAtDelivery", True)),
+        "localDeliveryOnly": bool(p.get("localDeliveryOnly", True)),
+        "allowedStates": p.get("allowedStates", []),
+        "blockedStates": p.get("blockedStates", []),
     }
 
 
@@ -1095,7 +1266,13 @@ def order_response(o: dict) -> dict:
     else:
         created_dt = created
     awaiting = o.get("paymentStatus") == "awaiting_payment"
-    cancelled = o.get("manualStatus") == "cancelled"
+    manual_status = o.get("manualStatus")
+    exception_labels = {
+        "id_check_failed": "Delivery could not be completed",
+        "returning_to_store": "Returning to store",
+        "returned": "Returned to store",
+    }
+    cancelled = manual_status == "cancelled"
     if cancelled:
         cancelled_at = o.get("statusUpdatedAt")
         if isinstance(cancelled_at, datetime) and cancelled_at.tzinfo is None:
@@ -1104,6 +1281,15 @@ def order_response(o: dict) -> dict:
         timeline = [
             {"key": "placed", "label": "Order Placed", "at": created_dt.isoformat(), "done": True},
             {"key": "cancelled", "label": "Cancelled", "at": cancelled_at.isoformat() if isinstance(cancelled_at, datetime) else None, "done": True},
+        ]
+    elif manual_status in exception_labels:
+        changed_at = o.get("statusUpdatedAt")
+        if isinstance(changed_at, datetime) and changed_at.tzinfo is None:
+            changed_at = changed_at.replace(tzinfo=timezone.utc)
+        status = manual_status
+        timeline = [
+            {"key": "placed", "label": "Order Placed", "at": created_dt.isoformat(), "done": True},
+            {"key": manual_status, "label": exception_labels[manual_status], "at": changed_at.isoformat() if isinstance(changed_at, datetime) else changed_at, "done": True},
         ]
     elif awaiting:
         status, timeline = build_tracking(created_dt, "placed", o.get("statusHistory"), None)
@@ -1120,6 +1306,17 @@ def order_response(o: dict) -> dict:
         "deliveryWindow": o.get("deliveryWindow"),
         "arrivalLabel": (o.get("deliveryWindow") or {}).get("label", ""),
         "ageVerified": bool(o.get("ageVerifiedAt")),
+        "requiresIdAtDelivery": bool(o.get("requiresIdAtDelivery", True)),
+        "idCheck": o.get("idCheck", {"status": "pending"}),
+        "driverName": o.get("dispatch", {}).get("driverName", ""),
+        "etaAt": o.get("dispatch", {}).get("etaAt").isoformat() if isinstance(o.get("dispatch", {}).get("etaAt"), datetime) else o.get("dispatch", {}).get("etaAt"),
+        "dispatch": {
+            **o.get("dispatch", {}),
+            "assignedAt": o.get("dispatch", {}).get("assignedAt").isoformat() if isinstance(o.get("dispatch", {}).get("assignedAt"), datetime) else o.get("dispatch", {}).get("assignedAt"),
+            "etaAt": o.get("dispatch", {}).get("etaAt").isoformat() if isinstance(o.get("dispatch", {}).get("etaAt"), datetime) else o.get("dispatch", {}).get("etaAt"),
+        },
+        "returnProcedure": o.get("returnProcedure", {}),
+        "complianceSnapshot": o.get("complianceSnapshot", {}),
         "deliveryPhotoUrl": o.get("deliveryPhotoUrl", ""),
         "driverTextSent": bool(o.get("driverTextSentAt")),
         "issues": [{**i, "createdAt": i["createdAt"].isoformat() if isinstance(i.get("createdAt"), datetime) else i.get("createdAt"), "updatedAt": i["updatedAt"].isoformat() if isinstance(i.get("updatedAt"), datetime) else i.get("updatedAt")} for i in o.get("issues", [])],
@@ -1437,6 +1634,8 @@ async def paypal_create_order(inp: PayPalCreateInput, user: Optional[dict] = Dep
     require_delivery_zone(inp.zip, settings)
     validate_age_21(inp.dateOfBirth)
     require_delivery_window(inp.deliveryWindowId, settings)
+    await require_delivery_capacity(inp.deliveryWindowId, settings)
+    await validate_product_restrictions(inp.items, inp.state, inp.ageAttestationAccepted)
     _, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user, inp.tip)
     total = totals["total"]
     data = await paypal_request("POST", "/v2/checkout/orders", {
@@ -1474,7 +1673,9 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
     zone = require_delivery_zone(inp.shipping.zip, settings)
     validate_age_21(inp.dateOfBirth)
     chosen_window = require_delivery_window(inp.deliveryWindowId, settings)
-    window = delivery_window(settings)
+    await require_delivery_capacity(inp.deliveryWindowId, settings)
+    compliance_snapshot = await validate_product_restrictions(inp.items, inp.shipping.state, inp.ageAttestationAccepted)
+    window = await delivery_window_with_capacity(settings)
     if inp.expectSameDay and not chosen_window["sameDay"]:
         raise HTTPException(status_code=409, detail=window["message"] or "Same-day delivery is not available right now. Choose the next available delivery window.")
     pending = None
@@ -1547,6 +1748,16 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
         "sameDay": bool(chosen_window["sameDay"]),
         "deliveryWindow": chosen_window,
         "ageVerifiedAt": now_utc(),
+        "ageVerification": {
+            "result": "passed",
+            "method": "checkout_dob_and_attestation",
+            "minimumAge": max(21, int(compliance_snapshot.get("minimumAge", 21))),
+            "verifiedAt": now_utc(),
+            "fullDobStored": False,
+        },
+        "complianceSnapshot": compliance_snapshot,
+        "requiresIdAtDelivery": bool(compliance_snapshot.get("requiresIdAtDelivery")),
+        "idCheck": {"status": "pending" if compliance_snapshot.get("requiresIdAtDelivery") else "not_required"},
         "subtotal": subtotal,
         "shippingCost": shipping_cost,
         "tax": totals["tax"],
@@ -1562,6 +1773,14 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
         "statusHistory": {"placed": now_utc()},
     }
     await db.orders.insert_one(order)
+    await db.compliance_events.insert_one({
+        "id": str(uuid.uuid4()), "orderId": order_id, "orderNumber": order_number,
+        "event": "checkout_age_verified", "result": "passed", "minimumAge": compliance_snapshot.get("minimumAge", 21),
+        "method": "dob_and_attestation", "fullDobStored": False, "createdAt": now_utc(),
+        "actorId": user["id"] if user else None,
+    })
+    if user and compliance_snapshot.get("restrictedItems"):
+        await db.users.update_one({"id": user["id"]}, {"$set": {"ageVerifiedAt": now_utc(), "ageVerificationMethod": "checkout_dob_and_attestation"}})
     if totals["rewardPoints"] and user:
         await loyalty_add(user["id"], "redeem", -totals["rewardPoints"], f"redeem:{order_id}", f"${totals['rewardDiscount']:.2f} reward redeemed — Order #{order_number}", order, reward_value=totals["rewardDiscount"])
     await loyalty_award_for_order(order)
@@ -1886,7 +2105,7 @@ async def delivery_check(zip: str = ""):
 
 @api_router.get("/delivery/window")
 async def delivery_window_public():
-    return delivery_window(await get_settings())
+    return await delivery_window_with_capacity(await get_settings())
 
 
 _area_cache: dict = {}
@@ -2326,13 +2545,184 @@ async def admin_list_orders(admin: dict = Depends(get_admin_user)):
     return {"orders": [order_response(o) for o in orders]}
 
 
+def _as_datetime(value) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=value.tzinfo or timezone.utc)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value)
+            return parsed.replace(tzinfo=parsed.tzinfo or timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
+async def build_compliance_alerts() -> List[dict]:
+    alerts = []
+    orders = await db.orders.find({"paymentStatus": {"$ne": "refunded"}, "manualStatus": {"$nin": ["cancelled", "returned"]}}).sort("createdAt", -1).to_list(2000)
+    for order in orders:
+        status = order_response(order)["status"]
+        if not order.get("ageVerifiedAt"):
+            alerts.append({"id": f"age-{order['id']}", "severity": "critical", "kind": "missing_age_check", "orderId": order["id"], "orderNumber": order["orderNumber"], "message": "Checkout age verification record is missing."})
+        if status == "out_for_delivery" and not (order.get("dispatch") or {}).get("driverName"):
+            alerts.append({"id": f"driver-{order['id']}", "severity": "warning", "kind": "missing_driver", "orderId": order["id"], "orderNumber": order["orderNumber"], "message": "Order is out for delivery without a driver assignment."})
+        if status == "delivered" and order.get("requiresIdAtDelivery", True) and (order.get("idCheck") or {}).get("status") != "passed":
+            alerts.append({"id": f"id-{order['id']}", "severity": "critical", "kind": "missing_door_id_check", "orderId": order["id"], "orderNumber": order["orderNumber"], "message": "Delivered order is missing a successful door ID check."})
+        if status == "returned" and order.get("paymentStatus") == "paid":
+            alerts.append({"id": f"payment-{order['id']}", "severity": "warning", "kind": "failed_id_payment_review", "orderId": order["id"], "orderNumber": order["orderNumber"], "message": "Failed-ID return is complete; review the payment and refund decision in Orders."})
+    products = await db.products.find({"active": True}, {"id": 1, "name": 1, "complianceCategory": 1, "minimumAge": 1, "requiresIdAtDelivery": 1}).to_list(5000)
+    for product in products:
+        missing = [field for field in ("complianceCategory", "minimumAge", "requiresIdAtDelivery") if field not in product]
+        if missing:
+            alerts.append({"id": f"product-{product['id']}", "severity": "warning", "kind": "product_rules_missing", "productId": product["id"], "message": f"{product.get('name', 'Product')} uses legacy defaults; review its compliance settings."})
+    return alerts
+
+
+@api_router.get("/admin/operations")
+async def admin_operations(date: str = "", admin: dict = Depends(get_admin_user)):
+    settings = await get_settings()
+    try:
+        selected = datetime.strptime(date, "%Y-%m-%d").date() if date else datetime.now(STORE_TZ).date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD")
+    rows = await db.orders.find({"deliveryDate": selected.isoformat()}).sort("deliveryWindow.start", 1).to_list(1000)
+    window_data = await delivery_window_with_capacity(settings)
+    windows = [w for w in window_data.get("availableWindows", []) if w.get("date") == selected.isoformat()]
+    if not windows:
+        ids = sorted({(o.get("deliveryWindow") or {}).get("id") for o in rows if (o.get("deliveryWindow") or {}).get("id")})
+        for wid in ids:
+            base = next(((o.get("deliveryWindow") or {}) for o in rows if (o.get("deliveryWindow") or {}).get("id") == wid), {"id": wid})
+            windows.append({**base, **await window_capacity(wid, settings)})
+    active = [o for o in rows if o.get("manualStatus") not in {"cancelled", "returned"}]
+    return {
+        "date": selected.isoformat(),
+        "defaultEtaMinutes": int(settings.get("defaultEtaMinutes", 45)),
+        "orders": [order_response(o) for o in rows],
+        "windows": windows,
+        "summary": {
+            "total": len(rows),
+            "active": len(active),
+            "unassigned": sum(1 for o in active if not (o.get("dispatch") or {}).get("driverName")),
+            "outForDelivery": sum(1 for o in rows if o.get("manualStatus") == "out_for_delivery"),
+            "delivered": sum(1 for o in rows if o.get("manualStatus") == "delivered"),
+            "failedId": sum(1 for o in rows if (o.get("idCheck") or {}).get("status") == "failed"),
+        },
+    }
+
+
+@api_router.get("/admin/compliance")
+async def admin_compliance(admin: dict = Depends(get_admin_user)):
+    events = await db.compliance_events.find({}, {"_id": 0}).sort("createdAt", -1).to_list(500)
+    for event in events:
+        if isinstance(event.get("createdAt"), datetime):
+            event["createdAt"] = event["createdAt"].isoformat()
+    alerts = await build_compliance_alerts()
+    return {
+        "alerts": alerts,
+        "events": events,
+        "summary": {
+            "openAlerts": len(alerts),
+            "criticalAlerts": sum(1 for a in alerts if a["severity"] == "critical"),
+            "passedIdChecks": await db.compliance_events.count_documents({"event": "door_id_check", "result": "passed"}),
+            "failedIdChecks": await db.compliance_events.count_documents({"event": "door_id_check", "result": "failed"}),
+            "storedIdImages": 0,
+        },
+        "privacy": {"storesFullIdImages": False, "policy": "Only the check result, ID type, checklist, driver name, and timestamp are retained."},
+    }
+
+
+@api_router.get("/admin/compliance/export.csv")
+async def admin_compliance_export(admin: dict = Depends(get_admin_user)):
+    events = await db.compliance_events.find({}).sort("createdAt", -1).to_list(10000)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    def safe(value):
+        text = str(value or "")
+        return "'" + text if text[:1] in {"=", "+", "-", "@"} else text
+    writer.writerow(["timestamp", "order_number", "event", "result", "id_type", "checked_by", "failure_reason", "full_id_image_stored"])
+    for event in events:
+        created = event.get("createdAt")
+        writer.writerow([
+            created.isoformat() if isinstance(created, datetime) else created or "",
+            safe(event.get("orderNumber", "")), safe(event.get("event", "")), safe(event.get("result", "")),
+            safe(event.get("idType", "")), safe(event.get("checkedBy", "")), safe(event.get("failureReason", "")),
+            "yes" if event.get("fullIdImageStored") else "no",
+        ])
+    return Response(content=output.getvalue(), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="puff2door-compliance-{datetime.now(STORE_TZ).date().isoformat()}.csv"'})
+
+
+@api_router.get("/admin/analytics")
+async def admin_analytics(days: int = 30, admin: dict = Depends(get_admin_user)):
+    days = max(1, min(int(days), 365))
+    now = now_utc()
+    start = now - timedelta(days=days)
+    orders = await db.orders.find({"createdAt": {"$gte": start}}).sort("createdAt", 1).to_list(10000)
+    paid = [o for o in orders if o.get("paymentStatus", "paid") == "paid" and o.get("manualStatus") != "cancelled"]
+    net_revenue = round(sum(float(o.get("total", 0)) - float(o.get("refundedAmount", 0)) for o in paid), 2)
+    daily, payments, zips, statuses, products = {}, {}, {}, {}, {}
+    delivered_minutes, on_time, delivered_count = [], 0, 0
+    for order in orders:
+        created = _as_datetime(order.get("createdAt"))
+        day = created.astimezone(STORE_TZ).date().isoformat() if created else "unknown"
+        row = daily.setdefault(day, {"date": day, "orders": 0, "revenue": 0.0})
+        row["orders"] += 1
+        if order in paid:
+            row["revenue"] += float(order.get("total", 0)) - float(order.get("refundedAmount", 0))
+        payments[order.get("paymentMethod", "unknown")] = payments.get(order.get("paymentMethod", "unknown"), 0) + 1
+        zip_code = (order.get("shipping") or {}).get("zip", "Unknown")
+        zips[zip_code] = zips.get(zip_code, 0) + 1
+        status = order_response(order)["status"]
+        statuses[status] = statuses.get(status, 0) + 1
+        for item in order.get("items", []):
+            key = str(item.get("productId") or item.get("name"))
+            prod = products.setdefault(key, {"name": item.get("name", "Product"), "qty": 0, "revenue": 0.0})
+            qty = int(item.get("qty", 1)); prod["qty"] += qty; prod["revenue"] += float(item.get("price", 0)) * qty
+        delivered_at = _as_datetime((order.get("statusHistory") or {}).get("delivered"))
+        if delivered_at and created:
+            delivered_count += 1
+            delivered_minutes.append(max(0, (delivered_at - created).total_seconds() / 60))
+            win = order.get("deliveryWindow") or {}
+            try:
+                end_at = datetime.combine(date.fromisoformat(win["date"]), parse_cutoff(win["end"]), tzinfo=STORE_TZ)
+                if delivered_at.astimezone(STORE_TZ) <= end_at:
+                    on_time += 1
+            except (KeyError, ValueError):
+                pass
+    unique_customers = {o.get("userId") or (o.get("shipping") or {}).get("email", "").lower() for o in paid}
+    unique_customers.discard(""); unique_customers.discard(None)
+    counts = {}
+    for order in paid:
+        customer = order.get("userId") or (order.get("shipping") or {}).get("email", "").lower()
+        if customer: counts[customer] = counts.get(customer, 0) + 1
+    return {
+        "days": days,
+        "summary": {
+            "orders": len(orders), "paidOrders": len(paid), "netRevenue": net_revenue,
+            "averageOrderValue": round(net_revenue / len(paid), 2) if paid else 0,
+            "customers": len(unique_customers),
+            "repeatRate": round(sum(1 for n in counts.values() if n > 1) / len(counts) * 100, 1) if counts else 0,
+            "onTimeRate": round(on_time / delivered_count * 100, 1) if delivered_count else 0,
+            "averageFulfillmentMinutes": round(sum(delivered_minutes) / len(delivered_minutes)) if delivered_minutes else 0,
+            "failedIdChecks": sum(1 for o in orders if (o.get("idCheck") or {}).get("status") == "failed"),
+            "tips": round(sum(float(o.get("tip", 0)) for o in paid), 2),
+        },
+        "daily": [{**v, "revenue": round(v["revenue"], 2)} for _, v in sorted(daily.items())],
+        "paymentMethods": [{"name": k, "orders": v} for k, v in sorted(payments.items(), key=lambda item: item[1], reverse=True)],
+        "statuses": [{"name": k, "orders": v} for k, v in sorted(statuses.items(), key=lambda item: item[1], reverse=True)],
+        "topZips": [{"zip": k, "orders": v} for k, v in sorted(zips.items(), key=lambda item: item[1], reverse=True)[:10]],
+        "topProducts": sorted(products.values(), key=lambda p: p["qty"], reverse=True)[:10],
+    }
+
+
 @api_router.put("/admin/orders/{order_id}/status")
 async def admin_update_order_status(order_id: str, inp: OrderStatusInput, admin: dict = Depends(get_admin_user)):
-    if inp.status not in STAGE_KEYS and inp.status != "cancelled":
+    if inp.status not in STAGE_KEYS and inp.status not in {"cancelled", "id_check_failed", "returning_to_store", "returned"}:
         raise HTTPException(status_code=400, detail="Invalid status")
     o = await db.orders.find_one({"id": order_id})
     if not o:
         raise HTTPException(status_code=404, detail="Order not found")
+    if inp.status == "delivered" and o.get("requiresIdAtDelivery", True) and (o.get("idCheck") or {}).get("status") != "passed":
+        raise HTTPException(status_code=409, detail="Record a successful 21+ ID check before marking this order delivered.")
     changed_at = now_utc()
     updates = {"manualStatus": inp.status, "statusUpdatedAt": changed_at, "statusUpdatedBy": admin["id"]}
     if inp.status == "cancelled" and not o.get("stockReleased"):
@@ -2348,6 +2738,97 @@ async def admin_update_order_status(order_id: str, inp: OrderStatusInput, admin:
         await loyalty_award_for_order(updated)
     if inp.status in STAGE_KEYS:
         asyncio.create_task(emails.send_status_update(updated, inp.status))
+    return order_response(await db.orders.find_one({"id": order_id}))
+
+
+@api_router.put("/admin/orders/{order_id}/dispatch")
+async def admin_update_dispatch(order_id: str, inp: DispatchInput, admin: dict = Depends(get_admin_user)):
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    now = now_utc()
+    eta_minutes = inp.etaMinutes
+    dispatch = {
+        "driverName": inp.driverName.strip(),
+        "driverPhoneLast4": inp.driverPhoneLast4,
+        "dispatchNotes": inp.dispatchNotes.strip(),
+        "assignedAt": (order.get("dispatch") or {}).get("assignedAt") or now,
+        "updatedAt": now,
+        "updatedBy": admin["id"],
+    }
+    if eta_minutes is not None:
+        dispatch["etaMinutes"] = eta_minutes
+        dispatch["etaAt"] = now + timedelta(minutes=eta_minutes)
+    await db.orders.update_one({"id": order_id}, {"$set": {"dispatch": dispatch}})
+    return order_response(await db.orders.find_one({"id": order_id}))
+
+
+@api_router.put("/admin/orders/{order_id}/id-check")
+async def admin_record_id_check(order_id: str, inp: IdCheckInput, admin: dict = Depends(get_admin_user)):
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if inp.result == "passed":
+        if not inp.idType.strip() or not all([inp.photoIdValid, inp.age21Confirmed, inp.nameMatchesOrder, inp.expirationValid]):
+            raise HTTPException(status_code=400, detail="Confirm the photo, age, name, and expiration checks before passing the ID.")
+    elif not inp.failureReason.strip():
+        raise HTTPException(status_code=400, detail="Select or enter a failed-ID reason.")
+    checked_at = now_utc()
+    record = {
+        "status": inp.result,
+        "idType": inp.idType.strip(),
+        "photoIdValid": inp.photoIdValid,
+        "age21Confirmed": inp.age21Confirmed,
+        "nameMatchesOrder": inp.nameMatchesOrder,
+        "expirationValid": inp.expirationValid,
+        "failureReason": inp.failureReason.strip(),
+        "checkedBy": inp.checkedBy.strip() or (order.get("dispatch") or {}).get("driverName", "") or "Driver",
+        "checkedAt": checked_at,
+        "fullIdImageStored": False,
+        "updatedBy": admin["id"],
+    }
+    updates = {"idCheck": record, "statusUpdatedAt": checked_at, "statusUpdatedBy": admin["id"]}
+    if inp.result == "failed":
+        updates.update({
+            "manualStatus": "returning_to_store",
+            "returnProcedure": {"status": "returning", "startedAt": checked_at, "reason": inp.failureReason.strip(), "inventoryDisposition": "pending", "paymentDisposition": "pending_admin_review"},
+        })
+    await db.orders.update_one({"id": order_id}, {"$set": updates})
+    await db.compliance_events.insert_one({
+        "id": str(uuid.uuid4()), "orderId": order_id, "orderNumber": order["orderNumber"],
+        "event": "door_id_check", "result": inp.result, "idType": inp.idType.strip(),
+        "checks": {"photoIdValid": inp.photoIdValid, "age21Confirmed": inp.age21Confirmed, "nameMatchesOrder": inp.nameMatchesOrder, "expirationValid": inp.expirationValid},
+        "failureReason": inp.failureReason.strip(), "checkedBy": record["checkedBy"],
+        "fullIdImageStored": False, "createdAt": checked_at, "actorId": admin["id"],
+    })
+    return order_response(await db.orders.find_one({"id": order_id}))
+
+
+@api_router.put("/admin/orders/{order_id}/return")
+async def admin_complete_failed_id_return(order_id: str, inp: ReturnDispositionInput, admin: dict = Depends(get_admin_user)):
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if (order.get("idCheck") or {}).get("status") != "failed":
+        raise HTTPException(status_code=409, detail="A failed ID check must be recorded before completing this return.")
+    if (order.get("returnProcedure") or {}).get("completedAt"):
+        return order_response(order)
+    if inp.disposition == "restocked" and not order.get("stockReleased"):
+        await release_stock(order["items"])
+    now = now_utc()
+    procedure = {
+        **(order.get("returnProcedure") or {}), "status": "completed", "completedAt": now,
+        "inventoryDisposition": inp.disposition, "notes": inp.notes.strip(), "completedBy": admin["id"],
+    }
+    await db.orders.update_one({"id": order_id}, {"$set": {
+        "manualStatus": "returned", "statusUpdatedAt": now, "statusUpdatedBy": admin["id"],
+        "returnProcedure": procedure, "stockReleased": inp.disposition == "restocked" or bool(order.get("stockReleased")),
+    }})
+    await db.compliance_events.insert_one({
+        "id": str(uuid.uuid4()), "orderId": order_id, "orderNumber": order["orderNumber"],
+        "event": "failed_id_return_completed", "result": inp.disposition, "notes": inp.notes.strip(),
+        "createdAt": now, "actorId": admin["id"],
+    })
     return order_response(await db.orders.find_one({"id": order_id}))
 
 

@@ -37,6 +37,7 @@ const CheckoutPage = () => {
   redeemRef.current = redeemPoints;
   const { window: deliveryWin } = useDeliveryWindow();
   const [deliveryWindowId, setDeliveryWindowId] = useState("");
+  const [ageAttestationAccepted, setAgeAttestationAccepted] = useState(false);
   const sameDayRef = useRef(false);
   const chosenDeliveryWindow = deliveryWin?.availableWindows?.find((w) => w.id === deliveryWindowId);
   sameDayRef.current = Boolean(chosenDeliveryWindow?.sameDay);
@@ -96,7 +97,9 @@ const CheckoutPage = () => {
 
   useEffect(() => {
     const windows = deliveryWin?.availableWindows || [];
-    if (windows.length && !windows.some((w) => w.id === deliveryWindowId)) setDeliveryWindowId(windows[0].id);
+    const selectable = windows.filter((w) => !w.full);
+    if (selectable.length && !selectable.some((w) => w.id === deliveryWindowId)) setDeliveryWindowId(selectable[0].id);
+    if (!selectable.length) setDeliveryWindowId("");
   }, [deliveryWin, deliveryWindowId]);
 
   useEffect(() => {
@@ -113,7 +116,7 @@ const CheckoutPage = () => {
     setBusy(true);
     try {
       setPaymentError("");
-      const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: form, dateOfBirth: form.dateOfBirth, deliveryWindowId, paymentMethod: method, promoCode: promo?.code || "", redeemPoints: user ? redeemRef.current : 0, tip, expectSameDay: sameDayRef.current, ...extra });
+      const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: form, dateOfBirth: form.dateOfBirth, ageAttestationAccepted, deliveryWindowId, paymentMethod: method, promoCode: promo?.code || "", redeemPoints: user ? redeemRef.current : 0, tip, expectSameDay: sameDayRef.current, ...extra });
       ecommerce.purchase(data);
       setPlaced(true);
       clearCart();
@@ -132,7 +135,7 @@ const CheckoutPage = () => {
       throw err;
     } finally { setBusy(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, deliveryWindowId, method, promo, tip, toServerItem, clearCart, navigate, toast, user]);
+  }, [form, ageAttestationAccepted, deliveryWindowId, method, promo, tip, toServerItem, clearCart, navigate, toast, user]);
 
   const validateShipping = () => {
     if (!formRef.current?.reportValidity()) {
@@ -145,6 +148,10 @@ const CheckoutPage = () => {
     }
     if (!deliveryWindowId) {
       toast({ title: "Choose a delivery time", description: "Select one of the available delivery windows.", variant: "destructive" });
+      return false;
+    }
+    if (!ageAttestationAccepted) {
+      toast({ title: "Age confirmation required", description: "Confirm that you are 21+ and will show a matching government-issued photo ID at the door.", variant: "destructive" });
       return false;
     }
     return true;
@@ -182,7 +189,7 @@ const CheckoutPage = () => {
   const paypalCreate = async () => {
     if (stockIssues.length) throw new Error(stockIssues.map((s) => s.message).join(" "));
     try {
-      const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "", zip: form.zip, redeemPoints: user ? redeemRef.current : 0, tip, dateOfBirth: form.dateOfBirth, deliveryWindowId });
+      const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "", zip: form.zip, state: form.state, redeemPoints: user ? redeemRef.current : 0, tip, dateOfBirth: form.dateOfBirth, ageAttestationAccepted, deliveryWindowId });
       return data.id;
     } catch (err) {
       const detail = err?.response?.data?.detail;
@@ -247,7 +254,10 @@ const CheckoutPage = () => {
                 {(deliveryWin?.availableWindows || []).length ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {deliveryWin.availableWindows.map((w) => (
-                      <button key={w.id} type="button" data-testid={`delivery-window-${w.id}`} aria-pressed={deliveryWindowId === w.id} onClick={() => setDeliveryWindowId(w.id)} className={`rounded-lg border px-4 py-3 text-left text-sm font-semibold transition-colors ${deliveryWindowId === w.id ? "border-emerald-600 bg-emerald-50 text-emerald-900" : "border-neutral-300 hover:border-emerald-500"}`}>{w.label}</button>
+                      <button key={w.id} type="button" disabled={w.full} data-testid={`delivery-window-${w.id}`} aria-pressed={deliveryWindowId === w.id} onClick={() => setDeliveryWindowId(w.id)} className={`rounded-lg border px-4 py-3 text-left text-sm font-semibold transition-colors ${w.full ? "border-neutral-200 bg-neutral-100 text-neutral-400 cursor-not-allowed" : deliveryWindowId === w.id ? "border-emerald-600 bg-emerald-50 text-emerald-900" : "border-neutral-300 hover:border-emerald-500"}`}>
+                        <span className="block">{w.label}</span>
+                        <span className="block text-[11px] font-medium mt-1">{w.full ? "Full — choose another time" : `${w.remaining} of ${w.capacity} delivery spots left`}</span>
+                      </button>
                     ))}
                   </div>
                 ) : <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">No delivery windows are currently available. Please contact us.</p>}
@@ -256,6 +266,15 @@ const CheckoutPage = () => {
           </section>
 
           <RewardsPanel />
+
+          <section className="border border-emerald-200 bg-emerald-50/50 rounded-xl p-5" data-testid="checkout-age-attestation">
+            <h2 className="font-heading text-xl uppercase tracking-wide mb-2 flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-emerald-600" /> Age &amp; ID confirmation</h2>
+            <label className="flex items-start gap-3 cursor-pointer text-sm text-neutral-800">
+              <input type="checkbox" checked={ageAttestationAccepted} onChange={(e) => setAgeAttestationAccepted(e.target.checked)} className="mt-0.5 h-5 w-5 accent-emerald-600 shrink-0" data-testid="checkout-age-attestation-checkbox" />
+              <span>I confirm I am 21 or older, the date of birth above is accurate, and I will present a valid, unexpired government-issued photo ID matching this order when it is delivered.</span>
+            </label>
+            <p className="mt-3 text-xs text-neutral-600">The driver records only the verification result and basic audit details. Puff2door does not ask the driver to upload or retain a complete ID image.</p>
+          </section>
 
           {/* Driver tip */}
           <section className="border border-neutral-200 rounded-xl p-5" data-testid="checkout-tip-section">

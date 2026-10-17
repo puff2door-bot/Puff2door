@@ -51,6 +51,11 @@ const OrderPage = () => {
             <p className="text-sm text-red-700">Order <span className="font-bold">{order.orderNumber}</span> was cancelled{order.paymentStatus === "refunded" ? " and refunded" : ""}. Questions? Contact us.</p>
           </div>
         </div>
+      ) : ["returning_to_store", "returned"].includes(order.status) ? (
+        <div data-testid="failed-id-banner" className="bg-red-50 border border-red-200 rounded-xl p-6 mb-8 flex items-center gap-4">
+          <span className="grid place-items-center h-12 w-12 rounded-full bg-red-500 text-white shrink-0"><XCircle className="h-6 w-6" /></span>
+          <div><h1 className="font-heading text-2xl uppercase tracking-wide text-red-800">Delivery not completed</h1><p className="text-sm text-red-700">The required 21+ ID check could not be completed. Order <span className="font-bold">{order.orderNumber}</span> {order.status === "returned" ? "was returned" : "is being returned"} to the store.</p></div>
+        </div>
       ) : order.paymentStatus === "awaiting_payment" ? (
         <div data-testid="awaiting-payment-banner" className="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8 flex items-center gap-4">
           <span className="grid place-items-center h-12 w-12 rounded-full bg-amber-500 text-white shrink-0"><Clock className="h-6 w-6" /></span>
