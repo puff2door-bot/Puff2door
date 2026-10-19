@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import { CheckCircle2, MapPin, Clock, Gift, XCircle, ShieldCheck, LifeBuoy } from "lucide-react";
 import api, { imgUrl } from "../api";
 import { ecommerce } from "../seo/Analytics";
@@ -10,27 +10,38 @@ const PAY_LABEL = { square: "Card", cash_app: "Cash App Pay", paypal: "PayPal", 
 
 const OrderPage = () => {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const [order, setOrder] = useState(null);
+  const [orderAccessToken, setOrderAccessToken] = useState("");
   const [error, setError] = useState(false);
   const [issue, setIssue] = useState({ kind: "driver_late", message: "", email: "" });
   const [issueBusy, setIssueBusy] = useState(false);
 
   const reportIssue = async (e) => {
     e.preventDefault(); setIssueBusy(true);
-    try { const { data } = await api.post(`/orders/${id}/issues`, issue); setOrder(data); setIssue((v) => ({...v, message:""})); }
+    try { const { data } = await api.post(`/orders/${id}/issues`, issue, { headers: orderAccessToken ? { "X-Order-Access": orderAccessToken } : {} }); setOrder(data); setIssue((v) => ({...v, message:""})); }
     catch (err) { window.alert(err?.response?.data?.detail || "Could not send your request. Please try again."); }
     finally { setIssueBusy(false); }
   };
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get(`/orders/${id}`);
+      const queryToken = searchParams.get("access_token") || "";
+      const fragmentToken = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("access_token") || "";
+      const linkToken = queryToken || fragmentToken;
+      if (linkToken) {
+        sessionStorage.setItem(`p2d_order_access:${id}`, linkToken);
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+      const accessToken = linkToken || sessionStorage.getItem(`p2d_order_access:${id}`) || "";
+      setOrderAccessToken(accessToken);
+      const { data } = await api.get(`/orders/${id}`, { headers: accessToken ? { "X-Order-Access": accessToken } : {} });
       if (Date.now() - new Date(data.createdAt).getTime() < 15 * 60 * 1000) ecommerce.purchase(data);
       setOrder(data);
     } catch {
       setError(true);
     }
-  }, [id]);
+  }, [id, searchParams]);
 
   useEffect(() => {
     load();

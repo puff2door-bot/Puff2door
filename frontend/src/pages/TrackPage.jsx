@@ -7,6 +7,7 @@ import OrderTracking from "../components/OrderTracking";
 
 const TrackPage = () => {
   const [num, setNum] = useState("");
+  const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [order, setOrder] = useState(null);
   const { toast } = useToast();
@@ -16,7 +17,8 @@ const TrackPage = () => {
     if (!num.trim()) return;
     setBusy(true);
     try {
-      const { data } = await api.get(`/orders/track/${num.trim().toUpperCase()}`);
+      const { data } = await api.get(`/orders/track/${num.trim().toUpperCase()}`, { params: { email: email.trim() } });
+      if (data.orderAccessToken && data.id) sessionStorage.setItem(`p2d_order_access:${data.id}`, data.orderAccessToken);
       setOrder(data);
     } catch {
       toast({ title: "Not found", description: "No order matches that number.", variant: "destructive" });
@@ -28,12 +30,13 @@ const TrackPage = () => {
       <div className="max-w-lg mx-auto text-center mb-10">
         <span className="inline-grid place-items-center h-16 w-16 rounded-full bg-emerald-100 text-emerald-700 mb-5"><Package className="h-8 w-8" /></span>
         <h1 className="font-heading text-3xl sm:text-4xl font-700 uppercase tracking-tight mb-2">Track Your Order</h1>
-        <p className="text-neutral-500 mb-8">Enter your order number (e.g. P2D-12345678) to see live delivery status.</p>
-        <form onSubmit={submit} className="flex flex-col sm:flex-row gap-3">
+        <p className="text-neutral-500 mb-8">Enter your order number and the email used at checkout to see live delivery status.</p>
+        <form onSubmit={submit} className="flex flex-col gap-3">
           <div className="flex-1 flex items-center border border-neutral-300 rounded-full px-4 focus-within:border-emerald-600 transition-colors">
             <Search className="h-5 w-5 text-neutral-400" />
-            <input value={num} onChange={(e) => setNum(e.target.value)} placeholder="P2D-XXXXXXXX" className="flex-1 px-3 py-3 text-sm outline-none uppercase" />
+            <input required value={num} onChange={(e) => setNum(e.target.value)} placeholder="P2D-XXXXXXXX" autoComplete="off" className="flex-1 px-3 py-3 text-sm outline-none uppercase" />
           </div>
+          <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email used for this order" autoComplete="email" className="w-full border border-neutral-300 rounded-full px-4 py-3 text-sm outline-none focus:border-emerald-600" />
           <button disabled={busy} className="px-7 py-3 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-60">{busy ? "Searching..." : "Track"}</button>
         </form>
       </div>

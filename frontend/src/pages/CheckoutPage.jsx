@@ -122,6 +122,7 @@ const CheckoutPage = () => {
       clearCart();
       const earned = data.pointsEarned ? ` You earned ${data.pointsEarned} rewards points.` : "";
       toast({ title: data.paymentStatus === "awaiting_payment" ? "Order placed — awaiting payment" : "Order placed!", description: `Order ${data.orderNumber}${data.paymentStatus === "awaiting_payment" ? ". Send your Zelle payment to complete it." : " confirmed."}${earned}` });
+      if (data.orderAccessToken) sessionStorage.setItem(`p2d_order_access:${data.id}`, data.orderAccessToken);
       navigate(`/order/${data.id}`);
       return data;
     } catch (err) {

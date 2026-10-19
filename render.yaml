@@ -23,7 +23,11 @@ services:
         value: https://puff2door.com
       - key: PUBLIC_URL
         value: https://puff2door.com
+      - key: CORS_ORIGINS
+        value: https://puff2door.com,https://www.puff2door.com
       - key: ALLOW_TEST_CARD
+        value: "false"
+      - key: ALLOW_PASSWORD_RESET_TOKEN_RESPONSE
         value: "false"
       - key: PAYPAL_ENV
         value: live

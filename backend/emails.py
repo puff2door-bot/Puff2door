@@ -1,11 +1,13 @@
 import asyncio
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html import escape
 from typing import List, Optional
+from urllib.parse import quote
 
 import resend
+import jwt
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +147,16 @@ def rewards_box(rewards: Optional[dict]) -> str:
 
 
 def order_link(order: dict) -> str:
-    return f"{_public_url}/order/{order['id']}"
+    now = datetime.now(timezone.utc)
+    token = jwt.encode({
+        "sub": order["id"],
+        "scope": "order_access",
+        "iat": now,
+        "exp": now + timedelta(days=90),
+    }, os.environ["JWT_SECRET"], algorithm="HS256")
+    # Keep the signed order credential out of server/proxy query logs. The
+    # browser reads URL fragments locally and exchanges it in a request header.
+    return f"{_public_url}/order/{order['id']}#access_token={quote(token, safe='')}"
 
 
 async def send_order_confirmation(order: dict, zelle: Optional[dict] = None, rewards: Optional[dict] = None):

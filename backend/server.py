@@ -19,9 +19,13 @@ import json
 import math
 import mimetypes
 import secrets
+import hashlib
 import csv
 import io
+import ipaddress
+import socket
 import zipcodes
+from urllib.parse import urljoin, urlsplit
 from datetime import datetime, timedelta, timezone, date, time as dtime
 from zoneinfo import ZoneInfo
 import jwt
@@ -37,10 +41,13 @@ db = client[os.environ['DB_NAME']]
 file_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="uploads")
 
 JWT_SECRET = os.environ['JWT_SECRET']
+if len(JWT_SECRET.encode("utf-8")) < 32:
+    raise RuntimeError("JWT_SECRET must be at least 32 bytes")
 JWT_ALGO = 'HS256'
 JWT_EXP_DAYS = 1
 JWT_REMEMBER_DAYS = 30
 RESET_TOKEN_MINUTES = 60
+ALLOW_PASSWORD_RESET_TOKEN_RESPONSE = os.environ.get("ALLOW_PASSWORD_RESET_TOKEN_RESPONSE", "").strip().lower() == "true"
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
 
@@ -65,14 +72,14 @@ def validate_password_strength(pw: str) -> str:
 # ----------------------------- Models -----------------------------
 class RegisterInput(BaseModel):
     email: EmailStr
-    password: str
-    firstName: str = ""
-    lastName: str = ""
-    address: str = ""
-    state: str = ""
-    city: str = ""
-    zip: str = ""
-    phone: str = ""
+    password: str = Field(max_length=256)
+    firstName: str = Field(default="", max_length=80)
+    lastName: str = Field(default="", max_length=80)
+    address: str = Field(default="", max_length=200)
+    state: str = Field(default="", max_length=40)
+    city: str = Field(default="", max_length=100)
+    zip: str = Field(default="", max_length=10)
+    phone: str = Field(default="", max_length=30)
 
     @field_validator("password")
     @classmethod
@@ -82,7 +89,7 @@ class RegisterInput(BaseModel):
 
 class LoginInput(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(max_length=256)
     rememberMe: bool = False
 
 
@@ -102,8 +109,8 @@ class NewsletterInput(BaseModel):
 
 
 class ResetPasswordInput(BaseModel):
-    token: str
-    password: str
+    token: str = Field(min_length=20, max_length=256)
+    password: str = Field(max_length=256)
 
     @field_validator("password")
     @classmethod
@@ -112,40 +119,40 @@ class ResetPasswordInput(BaseModel):
 
 
 class CartItem(BaseModel):
-    productId: int
-    name: str
-    price: float
-    image: str = ""
-    category: str = ""
-    categorySlug: str = ""
-    slug: str = ""
-    qty: int = 1
+    productId: int = Field(ge=1)
+    name: str = Field(min_length=1, max_length=200)
+    price: float = Field(ge=0, le=1000000)
+    image: str = Field(default="", max_length=2048)
+    category: str = Field(default="", max_length=100)
+    categorySlug: str = Field(default="", max_length=120)
+    slug: str = Field(default="", max_length=200)
+    qty: int = Field(default=1, ge=1, le=99)
 
 
 class CartInput(BaseModel):
-    items: List[CartItem] = []
+    items: List[CartItem] = Field(default_factory=list, max_length=100)
 
 
 class ReviewInput(BaseModel):
-    productSlug: str
-    name: str
+    productSlug: str = Field(min_length=1, max_length=200)
+    name: str = Field(min_length=1, max_length=80)
     rating: int = Field(ge=1, le=5)
-    comment: str = ""
+    comment: str = Field(default="", max_length=2000)
 
 
 class ShippingInfo(BaseModel):
-    firstName: str = ""
-    lastName: str = ""
-    email: str = ""
-    phone: str = ""
-    address: str = ""
-    city: str = ""
-    state: str = ""
-    zip: str = ""
+    firstName: str = Field(min_length=1, max_length=80)
+    lastName: str = Field(min_length=1, max_length=80)
+    email: EmailStr
+    phone: str = Field(min_length=7, max_length=30)
+    address: str = Field(min_length=3, max_length=200)
+    city: str = Field(min_length=2, max_length=100)
+    state: str = Field(min_length=2, max_length=40)
+    zip: str = Field(pattern=r"^\d{5}(?:-\d{4})?$")
 
 
 class OrderInput(BaseModel):
-    items: List[CartItem]
+    items: List[CartItem] = Field(min_length=1, max_length=100)
     shipping: ShippingInfo
     subtotal: float = 0
     shippingCost: float = 0
@@ -165,7 +172,7 @@ class OrderInput(BaseModel):
 
 
 class PayPalCreateInput(BaseModel):
-    items: List[CartItem]
+    items: List[CartItem] = Field(min_length=1, max_length=100)
     promoCode: str = ""
     zip: str = ""
     state: str = ""
@@ -181,9 +188,9 @@ class PaymentStatusInput(BaseModel):
 
 
 class OrderIssueInput(BaseModel):
-    email: str
+    email: EmailStr
     kind: str
-    message: str = ""
+    message: str = Field(default="", max_length=1000)
 
     @field_validator("kind")
     @classmethod
@@ -224,7 +231,7 @@ ZELLE_NAME = os.environ.get("ZELLE_NAME", "").strip()
 ZELLE_ENABLED = bool(ZELLE_EMAIL)
 REAL_CARD_PROVIDER = SQUARE_ENABLED or PAYPAL_ENABLED
 # ALLOW_TEST_CARD=true keeps the simulated card usable for QA even when a real provider exists (hidden in UI). Leave unset in production.
-TEST_CARD_ENABLED = (not REAL_CARD_PROVIDER) or os.environ.get("ALLOW_TEST_CARD", "").lower() == "true"
+TEST_CARD_ENABLED = os.environ.get("ALLOW_TEST_CARD", "").strip().lower() == "true"
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "apple_pay", "zelle"}
 DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32832", "deliveryRadiusMiles": 20.0, "allowedZipCodes": [],
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
@@ -1120,8 +1127,52 @@ def create_token(user_id: str, remember: bool = False) -> str:
         "sub": user_id,
         "exp": now_utc() + timedelta(days=days),
         "iat": now_utc(),
+        "jti": secrets.token_urlsafe(18),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
+
+
+def secure_request(request: Request) -> bool:
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    return request.url.scheme == "https" or forwarded == "https"
+
+
+def set_session_cookie(response: Response, request: Request, token: str, max_age: Optional[int] = None) -> None:
+    if max_age is None:
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+            max_age = max(0, int(float(payload["exp"]) - now_utc().timestamp()))
+        except (jwt.PyJWTError, KeyError, TypeError, ValueError):
+            max_age = JWT_EXP_DAYS * 86400
+    response.set_cookie(
+        "session_token",
+        token,
+        max_age=max_age,
+        httponly=True,
+        secure=secure_request(request),
+        samesite="lax",
+        path="/",
+    )
+
+
+def create_order_access_token(order_id: str) -> str:
+    payload = {
+        "sub": order_id,
+        "scope": "order_access",
+        "exp": now_utc() + timedelta(days=90),
+        "iat": now_utc(),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
+
+
+def valid_order_access_token(token: str, order_id: str) -> bool:
+    if not token:
+        return False
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+        return payload.get("scope") == "order_access" and secrets.compare_digest(str(payload.get("sub", "")), order_id)
+    except jwt.PyJWTError:
+        return False
 
 
 async def check_lockout(identifier: str):
@@ -1136,6 +1187,34 @@ async def check_lockout(identifier: str):
         mins = max(1, int(remaining.total_seconds() // 60) + 1)
         raise HTTPException(status_code=429, detail=f"Too many failed attempts. Try again in {mins} minute{'s' if mins != 1 else ''}.")
     await db.login_attempts.delete_one({"identifier": identifier})
+
+
+def request_ip(request: Request) -> str:
+    candidates = [
+        request.headers.get("cf-connecting-ip", "").strip(),
+        (request.headers.get("x-forwarded-for") or "").split(",")[0].strip(),
+        request.client.host if request.client else "",
+    ]
+    for candidate in candidates:
+        try:
+            return str(ipaddress.ip_address(candidate))
+        except ValueError:
+            continue
+    return "unknown"
+
+
+async def enforce_rate_limit(request: Request, scope: str, limit: int, window_seconds: int):
+    bucket = int(now_utc().timestamp()) // window_seconds
+    raw_key = f"{scope}:{request_ip(request)}:{bucket}"
+    key = hashlib.sha256(raw_key.encode()).hexdigest()
+    await db.rate_limits.update_one(
+        {"key": key},
+        {"$inc": {"count": 1}, "$setOnInsert": {"expires_at": now_utc() + timedelta(seconds=window_seconds * 2)}},
+        upsert=True,
+    )
+    rec = await db.rate_limits.find_one({"key": key})
+    if rec and rec.get("count", 0) > limit:
+        raise HTTPException(status_code=429, detail="Too many requests. Please wait a few minutes and try again.")
 
 
 async def record_failed_login(identifier: str):
@@ -1164,19 +1243,26 @@ def public_user(u: dict) -> dict:
 
 
 def extract_token(request: Request) -> Optional[str]:
-    cookie_tok = request.cookies.get("session_token")
-    if cookie_tok:
-        return cookie_tok
     auth = request.headers.get("authorization") or ""
     if auth.startswith("Bearer "):
         return auth.split(" ", 1)[1]
-    return None
+    return request.cookies.get("session_token") or None
 
 
 async def user_from_token(token: str) -> Optional[dict]:
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
-        return await db.users.find_one({"id": payload.get("sub")})
+        if payload.get("jti") and await db.revoked_tokens.find_one({"jti": payload["jti"]}):
+            return None
+        user = await db.users.find_one({"id": payload.get("sub")})
+        changed = (user or {}).get("passwordChangedAt")
+        if isinstance(changed, str):
+            changed = datetime.fromisoformat(changed)
+        if isinstance(changed, datetime) and changed.tzinfo is None:
+            changed = changed.replace(tzinfo=timezone.utc)
+        if isinstance(changed, datetime) and int(payload.get("iat", 0)) < int(changed.timestamp()):
+            return None
+        return user
     except jwt.PyJWTError:
         pass
     sess = await db.user_sessions.find_one({"session_token": token})
@@ -1347,6 +1433,17 @@ def order_response(o: dict) -> dict:
     }
 
 
+def public_tracking_response(o: dict) -> dict:
+    """Return delivery progress without exposing address, phone, payment or compliance records."""
+    full = order_response(o)
+    allowed = {
+        "id", "orderNumber", "deliveryDate", "sameDay", "deliveryWindow", "arrivalLabel",
+        "requiresIdAtDelivery", "driverName", "etaAt", "deliveryPhotoUrl", "driverTextSent",
+        "createdAt", "status", "manualStatus", "timeline", "paymentStatus",
+    }
+    return {key: value for key, value in full.items() if key in allowed}
+
+
 # ----------------------------- Routes -----------------------------
 @api_router.get("/")
 async def root():
@@ -1354,7 +1451,8 @@ async def root():
 
 
 @api_router.post("/auth/register")
-async def register(inp: RegisterInput):
+async def register(inp: RegisterInput, request: Request, response: Response):
+    await enforce_rate_limit(request, "register", 10, 3600)
     existing = await db.users.find_one({"email": inp.email.lower()})
     if existing:
         raise HTTPException(status_code=400, detail="An account with this email already exists")
@@ -1374,11 +1472,13 @@ async def register(inp: RegisterInput):
     await db.users.insert_one(user)
     bonus = await loyalty_signup_bonus(user)
     token = create_token(user["id"])
+    set_session_cookie(response, request, token, JWT_EXP_DAYS * 86400)
     return {"token": token, "user": public_user(user), "signupBonusPoints": bonus}
 
 
 @api_router.post("/auth/login")
-async def login(inp: LoginInput):
+async def login(inp: LoginInput, request: Request, response: Response):
+    await enforce_rate_limit(request, "login", 30, 900)
     email = inp.email.lower()
     identifier = email
     await check_lockout(identifier)
@@ -1388,11 +1488,13 @@ async def login(inp: LoginInput):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     await db.login_attempts.delete_one({"identifier": identifier})
     token = create_token(user["id"], remember=inp.rememberMe)
+    set_session_cookie(response, request, token, (JWT_REMEMBER_DAYS if inp.rememberMe else JWT_EXP_DAYS) * 86400)
     return {"token": token, "user": public_user(user)}
 
 
 @api_router.post("/auth/forgot-password")
-async def forgot_password(inp: ForgotPasswordInput):
+async def forgot_password(inp: ForgotPasswordInput, request: Request):
+    await enforce_rate_limit(request, "forgot-password", 10, 900)
     email = inp.email.lower()
     user = await db.users.find_one({"email": email})
     generic = {"ok": True, "message": "If an account exists for that email, a reset link has been generated."}
@@ -1409,13 +1511,17 @@ async def forgot_password(inp: ForgotPasswordInput):
     sent = await emails.send_password_reset(email, user.get("firstName", ""), token, RESET_TOKEN_MINUTES)
     if sent == "sent":
         return {**generic, "emailSent": True, "expiresInMinutes": RESET_TOKEN_MINUTES}
-    logger.info("Password reset link for %s: /my-account?reset_token=%s", email, token)
-    # Email not delivered (provider disabled/failed): fall back to showing the link in-app.
-    return {**generic, "emailSent": False, "resetToken": token, "expiresInMinutes": RESET_TOKEN_MINUTES}
+    if ALLOW_PASSWORD_RESET_TOKEN_RESPONSE:
+        logger.info("Password reset link for %s: /my-account?reset_token=%s", email, token)
+        # Explicit local/QA escape hatch. Never enable this in production.
+        return {**generic, "emailSent": False, "resetToken": token, "expiresInMinutes": RESET_TOKEN_MINUTES}
+    logger.warning("Password reset email could not be delivered for %s", email)
+    return {**generic, "emailSent": False, "expiresInMinutes": RESET_TOKEN_MINUTES}
 
 
 @api_router.post("/auth/reset-password")
-async def reset_password(inp: ResetPasswordInput):
+async def reset_password(inp: ResetPasswordInput, request: Request, response: Response):
+    await enforce_rate_limit(request, "reset-password", 10, 900)
     rec = await db.password_reset_tokens.find_one({"token": inp.token})
     if not rec or rec.get("used"):
         raise HTTPException(status_code=400, detail="This reset link is invalid or has already been used")
@@ -1424,15 +1530,21 @@ async def reset_password(inp: ResetPasswordInput):
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at < now_utc():
         raise HTTPException(status_code=400, detail="This reset link has expired")
-    await db.users.update_one({"id": rec["userId"]}, {"$set": {"password": pwd_ctx.hash(inp.password)}})
+    await db.users.update_one({"id": rec["userId"]}, {"$set": {"password": pwd_ctx.hash(inp.password), "passwordChangedAt": now_utc()}})
     await db.password_reset_tokens.update_one({"token": inp.token}, {"$set": {"used": True, "usedAt": now_utc()}})
     user = await db.users.find_one({"id": rec["userId"]})
     await db.login_attempts.delete_one({"identifier": user["email"]})
-    return {"ok": True, "token": create_token(user["id"]), "user": public_user(user)}
+    token = create_token(user["id"])
+    set_session_cookie(response, request, token, JWT_EXP_DAYS * 86400)
+    return {"ok": True, "token": token, "user": public_user(user)}
 
 
 @api_router.get("/auth/me")
-async def me(user: dict = Depends(get_current_user)):
+async def me(request: Request, response: Response, user: dict = Depends(get_current_user)):
+    if not request.cookies.get("session_token"):
+        token = extract_token(request)
+        if token:
+            set_session_cookie(response, request, token)
     return {"user": public_user(user)}
 
 
@@ -1475,7 +1587,8 @@ async def auth_providers():
 
 
 @api_router.post("/auth/google/token")
-async def google_token(inp: GoogleTokenInput):
+async def google_token(inp: GoogleTokenInput, request: Request, response: Response):
+    await enforce_rate_limit(request, "google-login", 20, 900)
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=503, detail="Google sign-in is not configured")
     async with httpx.AsyncClient(timeout=15) as http:
@@ -1486,20 +1599,30 @@ async def google_token(inp: GoogleTokenInput):
     if profile.status_code != 200:
         raise HTTPException(status_code=401, detail="Could not read Google profile")
     user, bonus = await upsert_google_user(profile.json())
-    return {"token": create_token(user["id"], remember=True), "user": public_user(user), "signupBonusPoints": bonus}
+    token = create_token(user["id"], remember=True)
+    set_session_cookie(response, request, token, JWT_REMEMBER_DAYS * 86400)
+    return {"token": token, "user": public_user(user), "signupBonusPoints": bonus}
 
 
 @api_router.post("/auth/logout")
 async def logout(request: Request, response: Response):
     token = extract_token(request)
     if token:
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
+            if payload.get("jti"):
+                expires = datetime.fromtimestamp(float(payload["exp"]), timezone.utc)
+                await db.revoked_tokens.update_one({"jti": payload["jti"]}, {"$set": {"expires_at": expires}}, upsert=True)
+        except jwt.PyJWTError:
+            pass
         await db.user_sessions.delete_one({"session_token": token})
-    response.delete_cookie("session_token", path="/", secure=True, samesite="none")
+    response.delete_cookie("session_token", path="/", secure=secure_request(request), samesite="lax")
     return {"ok": True}
 
 
 @api_router.post("/contact")
-async def contact(inp: ContactInput):
+async def contact(inp: ContactInput, request: Request):
+    await enforce_rate_limit(request, "contact", 10, 3600)
     record = {
         "id": str(uuid.uuid4()),
         "name": inp.name.strip(),
@@ -1515,7 +1638,8 @@ async def contact(inp: ContactInput):
 
 
 @api_router.post("/newsletter")
-async def newsletter(inp: NewsletterInput):
+async def newsletter(inp: NewsletterInput, request: Request):
+    await enforce_rate_limit(request, "newsletter", 10, 3600)
     email = inp.email.lower()
     await db.newsletter_subscribers.update_one(
         {"email": email},
@@ -1544,7 +1668,8 @@ async def put_wishlist(inp: WishlistInput, user: dict = Depends(get_current_user
 
 
 @api_router.post("/stock-alerts")
-async def create_stock_alert(inp: StockAlertInput, user: Optional[dict] = Depends(get_optional_user)):
+async def create_stock_alert(inp: StockAlertInput, request: Request, user: Optional[dict] = Depends(get_optional_user)):
+    await enforce_rate_limit(request, "stock-alert", 20, 3600)
     email = inp.email.lower()
     await db.stock_alerts.update_one(
         {"productId": inp.productId, "email": email},
@@ -1599,7 +1724,10 @@ async def get_reviews(product_slug: str):
 
 
 @api_router.post("/reviews")
-async def create_review(inp: ReviewInput):
+async def create_review(inp: ReviewInput, request: Request):
+    await enforce_rate_limit(request, "review", 5, 3600)
+    if not await db.products.find_one({"slug": inp.productSlug, "active": True}):
+        raise HTTPException(status_code=404, detail="Product not found")
     review = {
         "id": str(uuid.uuid4()),
         "productSlug": inp.productSlug,
@@ -1662,7 +1790,8 @@ async def release_stock(items: List[dict]):
 
 
 @api_router.post("/orders")
-async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optional_user)):
+async def create_order(inp: OrderInput, request: Request, user: Optional[dict] = Depends(get_optional_user)):
+    await enforce_rate_limit(request, "checkout", 20, 3600)
     if not inp.items:
         raise HTTPException(status_code=400, detail="Your cart is empty")
     method = inp.paymentMethod
@@ -1788,7 +1917,7 @@ async def create_order(inp: OrderInput, user: Optional[dict] = Depends(get_optio
         await db.promo_codes.update_one({"code": totals["promoCode"]}, {"$inc": {"uses": 1}})
     if user:
         await db.carts.update_one({"userId": user["id"]}, {"$set": {"items": []}}, upsert=True)
-    resp = order_response(order)
+    resp = {**order_response(order), "orderAccessToken": create_order_access_token(order_id)}
     asyncio.create_task(emails.send_order_confirmation(order, resp.get("zelle"), await loyalty_email_info(order)))
     return resp
 
@@ -1800,29 +1929,37 @@ async def list_orders(user: dict = Depends(get_current_user)):
 
 
 @api_router.get("/orders/track/{order_number}")
-async def track_order(order_number: str):
+async def track_order(order_number: str, email: EmailStr, request: Request):
+    await enforce_rate_limit(request, "track-order", 30, 600)
     o = await db.orders.find_one({"orderNumber": order_number.strip().upper()})
-    if not o:
+    order_email = str((o or {}).get("shipping", {}).get("email", "")).strip().lower()
+    if not o or not order_email or not secrets.compare_digest(str(email).strip().lower(), order_email):
         raise HTTPException(status_code=404, detail="Order not found")
-    return order_response(o)
+    return {**public_tracking_response(o), "orderAccessToken": create_order_access_token(o["id"])}
 
 
 @api_router.get("/orders/{order_id}")
-async def get_order(order_id: str):
+async def get_order(order_id: str, request: Request, user: Optional[dict] = Depends(get_optional_user)):
     o = await db.orders.find_one({"id": order_id})
     if not o:
         raise HTTPException(status_code=404, detail="Order not found")
+    token = request.headers.get("x-order-access", "") or request.query_params.get("access_token", "")
+    owns_order = bool(user) and (is_admin(user) or user.get("id") == o.get("userId"))
+    if not owns_order and not valid_order_access_token(token, order_id):
+        raise HTTPException(status_code=403, detail="Order access is not authorized")
     return order_response(o)
 
 
 @api_router.post("/orders/{order_id}/issues")
-async def create_order_issue(order_id: str, inp: OrderIssueInput, user: Optional[dict] = Depends(get_optional_user)):
+async def create_order_issue(order_id: str, inp: OrderIssueInput, request: Request, user: Optional[dict] = Depends(get_optional_user)):
+    await enforce_rate_limit(request, "order-issue", 10, 3600)
     order = await db.orders.find_one({"id": order_id})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    customer_email = (order.get("shipping") or {}).get("email", "").strip().lower()
-    if (not user or user.get("id") != order.get("userId")) and inp.email.strip().lower() != customer_email:
-        raise HTTPException(status_code=403, detail="Enter the email address used for this order")
+    token = request.headers.get("x-order-access", "") or request.query_params.get("access_token", "")
+    owns_order = bool(user) and (is_admin(user) or user.get("id") == order.get("userId"))
+    if not owns_order and not valid_order_access_token(token, order_id):
+        raise HTTPException(status_code=403, detail="Order access is not authorized")
     issue = {"id": str(uuid.uuid4()), "kind": inp.kind, "message": inp.message.strip()[:1000], "status": "open", "resolution": "", "createdAt": now_utc(), "updatedAt": now_utc()}
     await db.orders.update_one({"id": order_id}, {"$push": {"issues": issue}})
     updated = await db.orders.find_one({"id": order_id})
@@ -2215,7 +2352,7 @@ async def admin_import_brand_logo(slug: str, inp: BrandLogoInput, admin: dict = 
     if not inp.image.startswith("http"):
         raise HTTPException(status_code=400, detail="Provide an http(s) image URL")
     try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
             url = await _fetch_and_store(client, inp.image, admin["id"])
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not import image: {str(e)[:120]}")
@@ -2461,7 +2598,19 @@ def _to_webp(data: bytes) -> bytes:
 
 
 async def _fetch_and_store(client: httpx.AsyncClient, url: str, admin_id: str) -> str:
-    r = await client.get(url, headers={"User-Agent": "Mozilla/5.0 (Puff2Door image importer)", "Referer": SITE_URL + "/"})
+    current_url = url
+    for _ in range(6):
+        await _assert_safe_external_url(current_url)
+        r = await client.get(current_url, headers={"User-Agent": "Mozilla/5.0 (Puff2Door image importer)", "Referer": SITE_URL + "/"})
+        if r.is_redirect:
+            location = r.headers.get("location")
+            if not location:
+                raise ValueError("image redirect is missing a destination")
+            current_url = urljoin(current_url, location)
+            continue
+        break
+    else:
+        raise ValueError("too many image redirects")
     r.raise_for_status()
     if not r.headers.get("content-type", "").startswith("image/"):
         raise ValueError(f"not an image ({r.headers.get('content-type')})")
@@ -2477,6 +2626,32 @@ async def _fetch_and_store(client: httpx.AsyncClient, url: str, admin_id: str) -
     return await store_image(data, ext, url.rsplit("/", 1)[-1], admin_id)
 
 
+async def _assert_safe_external_url(url: str) -> None:
+    """Prevent the admin image importer from reaching local/private services."""
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("only public http(s) image URLs are allowed")
+    if parsed.port not in {None, 80, 443}:
+        raise ValueError("image URL must use port 80 or 443")
+    try:
+        addresses = [ipaddress.ip_address(parsed.hostname)]
+    except ValueError:
+        try:
+            records = await asyncio.get_running_loop().run_in_executor(
+                None,
+                lambda: socket.getaddrinfo(
+                    parsed.hostname,
+                    parsed.port or (443 if parsed.scheme == "https" else 80),
+                    type=socket.SOCK_STREAM,
+                ),
+            )
+        except socket.gaierror as exc:
+            raise ValueError("image host could not be resolved") from exc
+        addresses = [ipaddress.ip_address(record[4][0]) for record in records]
+    if not addresses or any(not address.is_global for address in addresses):
+        raise ValueError("private or local image hosts are not allowed")
+
+
 def _is_external(u: str) -> bool:
     return bool(u) and u.startswith("http") and not u.startswith(SITE_URL) and "/api/files/" not in u
 
@@ -2487,7 +2662,7 @@ async def run_image_migration(admin_id: str):
     _migration.update({"running": True, "total": len(jobs), "done": 0, "migrated": 0, "skipped": 0, "failed": [], "startedAt": now_utc().isoformat(), "finishedAt": None})
     cache: dict = {}
     try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
             for p, field in jobs:
                 url = p[field]
                 try:
@@ -3175,6 +3350,7 @@ async def chat_status():
 
 @api_router.post("/chat/start")
 async def chat_start(inp: ChatStartInput, request: Request, user: Optional[dict] = Depends(get_optional_user)):
+    await enforce_rate_limit(request, "chat-start", 10, 3600)
     s = chat_settings(await get_settings())
     if not s["chatEnabled"]:
         raise HTTPException(status_code=403, detail="Live chat is currently unavailable")
@@ -3217,6 +3393,7 @@ async def chat_unread(request: Request):
 
 @api_router.post("/chat/message")
 async def chat_send(inp: ChatMessageInput, request: Request):
+    await enforce_rate_limit(request, "chat-message", 60, 3600)
     conv = await chat_conv_for_token(request)
     s = chat_settings(await get_settings())
     if not s["chatEnabled"]:
@@ -3312,12 +3489,38 @@ async def admin_chat_status(conv_id: str, inp: ChatStatusInput, admin: dict = De
 
 app.include_router(api_router)
 
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://www.paypal.com https://www.sandbox.paypal.com"
+    if request.url.path.startswith(("/api/auth", "/api/admin", "/api/orders")):
+        response.headers["Cache-Control"] = "no-store"
+    if request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").split(",")[0].strip() == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
+def configured_cors_origins() -> list[str]:
+    origins = {"https://puff2door.com", "https://www.puff2door.com"}
+    for raw in (os.environ.get("SITE_URL", ""), os.environ.get("PUBLIC_URL", ""), os.environ.get("CORS_ORIGINS", "")):
+        for value in raw.split(","):
+            value = value.strip().rstrip("/")
+            if re.match(r"^https?://[^/]+$", value, re.I):
+                origins.add(value)
+    return sorted(origins)
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=configured_cors_origins(),
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Chat-Token", "X-Order-Access"],
 )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -3340,6 +3543,11 @@ async def create_indexes():
     await db.chat_conversations.create_index("token", unique=True)
     await db.chat_conversations.create_index([("status", 1), ("lastMessageAt", -1)])
     await db.chat_messages.create_index([("conversationId", 1), ("createdAt", 1)])
+    await db.orders.create_index("orderNumber", unique=True)
+    await db.rate_limits.create_index("key", unique=True)
+    await db.rate_limits.create_index("expires_at", expireAfterSeconds=0)
+    await db.revoked_tokens.create_index("jti", unique=True)
+    await db.revoked_tokens.create_index("expires_at", expireAfterSeconds=0)
 
 
 @app.on_event("startup")
@@ -3369,6 +3577,10 @@ async def seed_data():
     await db.promo_codes.create_index("code", unique=True)
     admin_pw = os.environ.get("ADMIN_PASSWORD")
     if ADMIN_EMAILS and admin_pw:
+        try:
+            validate_password_strength(admin_pw)
+        except ValueError as exc:
+            raise RuntimeError(f"ADMIN_PASSWORD is not strong enough: {exc}") from exc
         for email in ADMIN_EMAILS:
             existing = await db.users.find_one({"email": email})
             if not existing:
@@ -3376,7 +3588,7 @@ async def seed_data():
                     "id": str(uuid.uuid4()), "email": email, "password": pwd_ctx.hash(admin_pw),
                     "firstName": "Admin", "lastName": "", "role": "admin", "provider": "password", "createdAt": now_utc(),
                 })
-            elif not existing.get("password") or not pwd_ctx.verify(admin_pw, existing["password"]):
+            elif not existing.get("password"):
                 await db.users.update_one({"email": email}, {"$set": {"password": pwd_ctx.hash(admin_pw), "role": "admin"}})
     if ADMIN_EMAILS:
         await db.users.update_many({"email": {"$in": ADMIN_EMAILS}}, {"$set": {"role": "admin"}})

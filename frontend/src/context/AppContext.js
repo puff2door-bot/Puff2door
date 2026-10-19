@@ -39,17 +39,17 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  // Load current user if token exists
+  // Load the current user from the HttpOnly session cookie. A legacy bearer
+  // token is accepted once and then removed from browser-readable storage.
   useEffect(() => {
     const loadUser = async () => {
-      if (getToken()) {
-        try {
-          const { data } = await api.get("/auth/me");
-          setUser(data.user);
-        } catch {
-          setToken(null);
-          setUser(null);
-        }
+      try {
+        const { data } = await api.get("/auth/me");
+        setUser(data.user);
+        if (getToken()) setToken();
+      } catch {
+        setToken();
+        setUser(null);
       }
       setAuthLoading(false);
     };
@@ -66,21 +66,21 @@ export const AppProvider = ({ children }) => {
 
   const login = async (email, password, rememberMe = false) => {
     const { data } = await api.post("/auth/login", { email, password, rememberMe });
-    setToken(data.token);
+    setToken();
     setUser(data.user);
     return data.user;
   };
 
   const resetPassword = async (token, password) => {
     const { data } = await api.post("/auth/reset-password", { token, password });
-    setToken(data.token);
+    setToken();
     setUser(data.user);
     return data.user;
   };
 
   const register = async (payload) => {
     const { data } = await api.post("/auth/register", payload);
-    setToken(data.token);
+    setToken();
     setUser(data.user);
     return { ...data.user, signupBonusPoints: data.signupBonusPoints || 0 };
   };
@@ -99,7 +99,7 @@ export const AppProvider = ({ children }) => {
           }
           try {
             const { data } = await api.post("/auth/google/token", { access_token: response.access_token });
-            setToken(data.token);
+            setToken();
             setUser(data.user);
             resolve(data.user);
           } catch (error) {
@@ -114,7 +114,7 @@ export const AppProvider = ({ children }) => {
 
   const logout = () => {
     api.post("/auth/logout").catch(() => {});
-    setToken(null);
+    setToken();
     setUser(null);
   };
 
