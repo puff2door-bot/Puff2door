@@ -11,6 +11,15 @@ const fmt = (secs) => {
   return `${s}s`;
 };
 
+const fillTokens = (template, values) => String(template || "").replace(/\{(countdown|cutoff|start|end|next)\}/g, (_, key) => values[key] || "");
+
+const renderOpenTemplate = (template, values, highlight = false) => {
+  const source = String(template || "");
+  if (!source.includes("{countdown}")) return fillTokens(source, values);
+  const [before, ...after] = source.split("{countdown}");
+  return <>{fillTokens(before, values)}<span className={highlight ? "text-emerald-400 tabular-nums" : "tabular-nums"}>{values.countdown}</span>{fillTokens(after.join("{countdown}"), values)}</>;
+};
+
 // Countdown is anchored to the server clock (Orlando time); the device clock only drives the ticking.
 export const useDeliveryWindow = () => {
   const [win, setWin] = useState(null);
@@ -43,32 +52,46 @@ export const useDeliveryWindow = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [win]);
 
-  const text = !win ? "" : win.sameDayOpen ? `Order within ${fmt(remaining)} for today's local delivery` : win.message;
-  return { window: win, remaining, text, sameDayOpen: Boolean(win?.sameDayOpen), enabled: Boolean(win?.enabled) };
+  const copy = win?.countdownCopy || {};
+  const copyValue = (key, fallback) => Object.prototype.hasOwnProperty.call(copy, key) ? copy[key] : fallback;
+  const values = win ? { countdown: fmt(remaining), cutoff: win.cutoffLabel, start: win.deliveryStartLabel, end: win.deliveryEndLabel, next: win.nextDeliveryLabel || "" } : {};
+  const template = !win ? "" : win.sameDayOpen ? copyValue("countdownOpenText", "Order within {countdown} for today's local delivery")
+    : !win.enabled ? copyValue("countdownPausedText", "")
+      : !win.nextDeliveryDate ? copyValue("countdownPausedText", win.message)
+        : win.todayOpen ? copyValue("countdownClosedText", win.message) : copyValue("countdownClosedDayText", win.message);
+  const text = fillTokens(template, values);
+  return { window: win, remaining, text, template, values, sameDayOpen: Boolean(win?.sameDayOpen), enabled: Boolean(win?.enabled), copy };
 };
 
 const DeliveryCountdown = ({ variant = "home" }) => {
-  const { window: win, text, sameDayOpen, enabled } = useDeliveryWindow();
-  if (!win || !enabled || !text) return null;
+  const { window: win, text, template, values, sameDayOpen, enabled, copy } = useDeliveryWindow();
+  if (!win || !enabled || copy.countdownVisible === false) return null;
+  const showHeadline = copy.countdownHeadlineVisible !== false && Boolean(text);
+  const hoursTemplate = Object.prototype.hasOwnProperty.call(copy, "countdownHoursText") ? copy.countdownHoursText : "Same-day cutoff is {cutoff} ET. No deliveries after {end} or before {start}.";
+  const hoursText = fillTokens(hoursTemplate, values);
+  const showHours = copy.countdownHoursVisible !== false && Boolean(hoursText);
+  const extraLines = (copy.countdownExtraLines || []).filter((line) => line.visible !== false && line.text).map((line) => fillTokens(line.text, values));
+  if (!showHeadline && !showHours && !extraLines.length) return null;
 
   if (variant === "inline") {
     return (
-      <p data-testid="checkout-delivery-countdown" className={`mt-2 flex items-start gap-2 rounded-lg px-4 py-2.5 text-xs sm:text-sm font-semibold ${sameDayOpen ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-700 border border-neutral-200"}`}>
+      <div data-testid="checkout-delivery-countdown" className={`mt-2 flex items-start gap-2 rounded-lg px-4 py-2.5 text-xs sm:text-sm ${sameDayOpen ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-700 border border-neutral-200"}`}>
         {sameDayOpen ? <Truck className="h-4 w-4 mt-0.5 shrink-0 text-emerald-400" /> : <Clock className="h-4 w-4 mt-0.5 shrink-0 text-neutral-500" />}
-        <span>{text}{sameDayOpen ? <span className="text-emerald-300 font-normal"> · cutoff {win.cutoffLabel} ET</span> : win.nextDeliveryLabel && win.todayOpen ? <span className="font-normal"> Next delivery: {win.nextDeliveryLabel}.</span> : null}<span className="block font-normal mt-0.5">Deliveries run {win.deliveryStartLabel}–{win.deliveryEndLabel} ET. No deliveries before or after those hours.</span></span>
-      </p>
+        <span>{showHeadline && <span className="block font-semibold">{sameDayOpen ? renderOpenTemplate(template, values) : text}</span>}{showHours && <span className="block font-normal mt-0.5">{hoursText}</span>}{extraLines.map((line, i) => <span className="block font-normal mt-0.5" key={`${line}-${i}`}>{line}</span>)}</span>
+      </div>
     );
   }
 
   return (
     <div data-testid="delivery-countdown" className="bg-neutral-950 text-white">
       <div className="max-w-[1280px] mx-auto px-4 py-2 text-center">
-        <p className="flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold tracking-wide">
+        {showHeadline && <p className="flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold tracking-wide">
           {sameDayOpen ? <Truck className="h-4 w-4 shrink-0 text-emerald-400" /> : <Clock className="h-4 w-4 shrink-0 text-neutral-400" />}
-          <span data-testid="delivery-countdown-text">{sameDayOpen ? (<>Order within <span className="text-emerald-400 tabular-nums">{text.replace("Order within ", "").replace(" for today's local delivery", "")}</span> for today's local delivery</>) : text}</span>
+          <span data-testid="delivery-countdown-text">{sameDayOpen ? renderOpenTemplate(template, values, true) : text}</span>
           {!sameDayOpen && win.todayOpen && win.nextDeliveryLabel && <span className="hidden sm:inline text-neutral-400 font-normal">· Next: {win.nextDeliveryLabel}</span>}
-        </p>
-        <p className="mt-0.5 text-[11px] text-neutral-400" data-testid="delivery-hours">Same-day cutoff is {win.cutoffLabel} ET. No deliveries after {win.deliveryEndLabel} or before {win.deliveryStartLabel}.</p>
+        </p>}
+        {showHours && <p className="mt-0.5 text-[11px] text-neutral-400" data-testid="delivery-hours">{hoursText}</p>}
+        {extraLines.map((line, i) => <p className="mt-0.5 text-[11px] text-neutral-400" data-testid={`delivery-extra-line-${i}`} key={`${line}-${i}`}>{line}</p>)}
       </div>
     </div>
   );

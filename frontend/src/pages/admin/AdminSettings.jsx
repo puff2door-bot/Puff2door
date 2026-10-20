@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Save, Percent, Truck, Gift, MapPin, Radius, Clock, LayoutTemplate, Gauge } from "lucide-react";
+import { Save, Percent, Truck, Gift, MapPin, Radius, Clock, LayoutTemplate, Gauge, Plus, Trash2, Eye, EyeOff } from "lucide-react";
 import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
 
@@ -22,6 +22,10 @@ const AdminSettings = () => {
 
   const toForm = (data) => ({ taxPercent: +(data.taxRate * 100).toFixed(3), deliveryFee: data.deliveryFee, freeDeliveryMin: data.freeDeliveryMin, deliveryZip: data.deliveryZip || "32832", deliveryRadiusMiles: data.deliveryRadiusMiles ?? 20, allowedZipCodes: (data.allowedZipCodes || []).join(", "),
     sameDayEnabled: data.sameDayEnabled ?? true, deliveryCutoff: data.deliveryCutoff || "20:00", deliveryStart: data.deliveryStart || "11:00", deliveryEnd: data.deliveryEnd || "21:00", deliveryDays: data.deliveryDays || [0, 1, 2, 3, 4, 5, 6], homepageLayout: data.homepageLayout || "classic",
+    countdownVisible: data.countdownVisible ?? true, countdownHeadlineVisible: data.countdownHeadlineVisible ?? true, countdownHoursVisible: data.countdownHoursVisible ?? true,
+    countdownOpenText: data.countdownOpenText ?? "Order within {countdown} for today's local delivery", countdownClosedText: data.countdownClosedText ?? "Today's delivery window has closed. Order now for the next available delivery day.",
+    countdownClosedDayText: data.countdownClosedDayText ?? "No local delivery today. Order now for the next available delivery day ({next}).", countdownPausedText: data.countdownPausedText ?? "Local delivery is currently paused. Please check back soon.",
+    countdownHoursText: data.countdownHoursText ?? "Same-day cutoff is {cutoff} ET. No deliveries after {end} or before {start}.", countdownExtraLines: data.countdownExtraLines || [],
     deliverySlotCapacity: data.deliverySlotCapacity ?? 8, deliveryDriverCount: data.deliveryDriverCount ?? 1, ordersPerDriverPerWindow: data.ordersPerDriverPerWindow ?? 8, defaultEtaMinutes: data.defaultEtaMinutes ?? 45 });
 
   useEffect(() => {
@@ -34,6 +38,7 @@ const AdminSettings = () => {
     try {
       const { data } = await api.put("/admin/settings", { taxRate: Number(f.taxPercent) / 100, deliveryFee: Number(f.deliveryFee), freeDeliveryMin: Number(f.freeDeliveryMin), deliveryZip: f.deliveryZip, deliveryRadiusMiles: Number(f.deliveryRadiusMiles), allowedZipCodes: f.allowedZipCodes.split(/[\s,]+/).map((z) => z.trim()).filter(Boolean),
         sameDayEnabled: Boolean(f.sameDayEnabled), deliveryCutoff: f.deliveryCutoff, deliveryStart: f.deliveryStart, deliveryEnd: f.deliveryEnd, deliveryDays: f.deliveryDays, homepageLayout: f.homepageLayout,
+        countdownVisible: Boolean(f.countdownVisible), countdownHeadlineVisible: Boolean(f.countdownHeadlineVisible), countdownHoursVisible: Boolean(f.countdownHoursVisible), countdownOpenText: f.countdownOpenText, countdownClosedText: f.countdownClosedText, countdownClosedDayText: f.countdownClosedDayText, countdownPausedText: f.countdownPausedText, countdownHoursText: f.countdownHoursText, countdownExtraLines: f.countdownExtraLines,
         deliverySlotCapacity: Number(f.deliverySlotCapacity), deliveryDriverCount: Number(f.deliveryDriverCount), ordersPerDriverPerWindow: Number(f.ordersPerDriverPerWindow), defaultEtaMinutes: Number(f.defaultEtaMinutes) });
       setF(toForm(data));
       toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
@@ -109,6 +114,25 @@ const AdminSettings = () => {
           <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer"><input type="checkbox" data-testid="settings-sameday-enabled" className="accent-emerald-600 h-4 w-4" checked={f.sameDayEnabled} onChange={(e) => setF({ ...f, sameDayEnabled: e.target.checked })} /> {f.sameDayEnabled ? "ON" : "OFF"}</label>
         </div>
         <p className="text-xs text-neutral-500 mb-4">Shows "Order within Xh Ym for today's local delivery" on the homepage and checkout. Times are Orlando (Eastern) time on the server — customers' device clocks are ignored, and checkout re-checks the cutoff.</p>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 mb-4" data-testid="settings-countdown-copy">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <div><p className="text-sm font-bold text-neutral-900">Countdown text &amp; visibility</p><p className="text-xs text-neutral-600 mt-0.5">Edit every message without changing delivery scheduling. Available placeholders: <code>{'{countdown}'}</code>, <code>{'{cutoff}'}</code>, <code>{'{start}'}</code>, <code>{'{end}'}</code>, <code>{'{next}'}</code>.</p></div>
+            <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="checkbox" data-testid="settings-countdown-visible" className="accent-emerald-600 h-4 w-4" checked={f.countdownVisible} onChange={(e) => setF({ ...f, countdownVisible: e.target.checked })} /> Show countdown section</label>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="lg:col-span-2"><label className="flex items-center justify-between text-xs font-bold text-neutral-700 mb-1"><span>Open for same-day delivery</span><input type="checkbox" aria-label="Show main countdown text" checked={f.countdownHeadlineVisible} onChange={(e) => setF({ ...f, countdownHeadlineVisible: e.target.checked })} /></label><textarea rows={2} maxLength={240} className={inputCls} value={f.countdownOpenText} onChange={(e) => setF({ ...f, countdownOpenText: e.target.value })} /></div>
+            <div><label className="block text-xs font-bold text-neutral-700 mb-1">After today's cutoff</label><textarea rows={3} maxLength={240} className={inputCls} value={f.countdownClosedText} onChange={(e) => setF({ ...f, countdownClosedText: e.target.value })} /></div>
+            <div><label className="block text-xs font-bold text-neutral-700 mb-1">Closed delivery day</label><textarea rows={3} maxLength={240} className={inputCls} value={f.countdownClosedDayText} onChange={(e) => setF({ ...f, countdownClosedDayText: e.target.value })} /></div>
+            <div><label className="block text-xs font-bold text-neutral-700 mb-1">Delivery paused</label><textarea rows={3} maxLength={240} className={inputCls} value={f.countdownPausedText} onChange={(e) => setF({ ...f, countdownPausedText: e.target.value })} /></div>
+            <div><label className="flex items-center justify-between text-xs font-bold text-neutral-700 mb-1"><span>Hours and cutoff line</span><input type="checkbox" aria-label="Show hours text" checked={f.countdownHoursVisible} onChange={(e) => setF({ ...f, countdownHoursVisible: e.target.checked })} /></label><textarea rows={3} maxLength={300} className={inputCls} value={f.countdownHoursText} onChange={(e) => setF({ ...f, countdownHoursText: e.target.value })} /></div>
+          </div>
+          <div className="mt-4">
+            <div className="flex items-center justify-between gap-3 mb-2"><p className="text-xs font-bold text-neutral-700">Additional text lines</p><button type="button" disabled={f.countdownExtraLines.length >= 8} onClick={() => setF({ ...f, countdownExtraLines: [...f.countdownExtraLines, { text: "", visible: true }] })} className="inline-flex items-center gap-1 rounded-full bg-neutral-900 text-white px-3 py-1.5 text-xs font-bold disabled:opacity-40"><Plus className="h-3.5 w-3.5" /> Add text</button></div>
+            {f.countdownExtraLines.length === 0 && <p className="text-xs text-neutral-500">No additional lines. Add one for a promotion, delivery notice, or custom message.</p>}
+            <div className="space-y-2">{f.countdownExtraLines.map((line, i) => <div className="flex items-center gap-2" key={i}><button type="button" aria-label={line.visible ? "Hide text line" : "Show text line"} onClick={() => setF({ ...f, countdownExtraLines: f.countdownExtraLines.map((x, n) => n === i ? { ...x, visible: !x.visible } : x) })} className="p-2 rounded-lg border border-neutral-300 text-neutral-600">{line.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}</button><input maxLength={240} className={inputCls} placeholder="Enter an additional line" value={line.text} onChange={(e) => setF({ ...f, countdownExtraLines: f.countdownExtraLines.map((x, n) => n === i ? { ...x, text: e.target.value } : x) })} /><button type="button" aria-label="Remove text line" onClick={() => setF({ ...f, countdownExtraLines: f.countdownExtraLines.filter((_, n) => n !== i) })} className="p-2 rounded-lg border border-red-200 text-red-600"><Trash2 className="h-4 w-4" /></button></div>)}</div>
+          </div>
+          <div className="mt-4 rounded-lg bg-neutral-950 text-white px-4 py-3 text-center" data-testid="settings-countdown-preview"><p className="text-[10px] uppercase tracking-[0.2em] text-neutral-500 mb-1">Preview</p>{f.countdownVisible ? <>{f.countdownHeadlineVisible && <p className="text-sm font-semibold">{f.countdownOpenText.replace("{countdown}", "2h 15m").replace("{cutoff}", "8:00 PM").replace("{start}", "11:00 AM").replace("{end}", "9:00 PM").replace("{next}", "Tomorrow")}</p>}{f.countdownHoursVisible && <p className="text-[11px] text-neutral-400 mt-1">{f.countdownHoursText.replace("{countdown}", "2h 15m").replace("{cutoff}", "8:00 PM").replace("{start}", "11:00 AM").replace("{end}", "9:00 PM").replace("{next}", "Tomorrow")}</p>}{f.countdownExtraLines.filter((x) => x.visible && x.text).map((x, i) => <p className="text-[11px] text-neutral-400 mt-1" key={i}>{x.text.replace("{countdown}", "2h 15m").replace("{cutoff}", "8:00 PM").replace("{start}", "11:00 AM").replace("{end}", "9:00 PM").replace("{next}", "Tomorrow")}</p>)}</> : <p className="text-xs text-neutral-400">Countdown section hidden</p>}</div>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-bold text-neutral-600 mb-1">Daily cutoff time (ET)</label>

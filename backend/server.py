@@ -236,6 +236,13 @@ PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "apple_pay", "ze
 DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32832", "deliveryRadiusMiles": 20.0, "allowedZipCodes": [],
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
                     "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryStart": "11:00", "deliveryEnd": "21:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6], "homepageLayout": "classic",
+                    "countdownVisible": True, "countdownHeadlineVisible": True, "countdownHoursVisible": True,
+                    "countdownOpenText": "Order within {countdown} for today's local delivery",
+                    "countdownClosedText": "Today's delivery window has closed. Order now for the next available delivery day.",
+                    "countdownClosedDayText": "No local delivery today. Order now for the next available delivery day ({next}).",
+                    "countdownPausedText": "Local delivery is currently paused. Please check back soon.",
+                    "countdownHoursText": "Same-day cutoff is {cutoff} ET. No deliveries after {end} or before {start}.",
+                    "countdownExtraLines": [],
                     "deliverySlotCapacity": 8, "deliveryDriverCount": 1, "ordersPerDriverPerWindow": 8, "defaultEtaMinutes": 45}
 STORE_TZ = ZoneInfo("America/New_York")
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -500,6 +507,10 @@ def delivery_window(settings: dict, now: Optional[datetime] = None) -> dict:
         "deliveryEnd": settings.get("deliveryEnd", DEFAULT_SETTINGS["deliveryEnd"]), "deliveryEndLabel": fmt_clock(parse_cutoff(settings.get("deliveryEnd", DEFAULT_SETTINGS["deliveryEnd"]))),
         "deliveryDays": days, "todayOpen": today_open, "sameDayOpen": same_day, "secondsRemaining": max(seconds, 0),
         "nextDeliveryDate": windows[0]["date"] if windows else (next_day.isoformat() if next_day else None), "nextDeliveryLabel": day_label(next_day, today) if next_day else None, "message": message,
+        "countdownCopy": {key: settings.get(key, DEFAULT_SETTINGS[key]) for key in (
+            "countdownVisible", "countdownHeadlineVisible", "countdownHoursVisible", "countdownOpenText", "countdownClosedText",
+            "countdownClosedDayText", "countdownPausedText", "countdownHoursText", "countdownExtraLines"
+        )},
         "availableWindows": windows,
     }
 
@@ -517,6 +528,15 @@ class StoreSettingsInput(BaseModel):
     deliveryEnd: str = "21:00"
     deliveryDays: List[int] = Field(default=[0, 1, 2, 3, 4, 5, 6])
     homepageLayout: str = "classic"
+    countdownVisible: bool = True
+    countdownHeadlineVisible: bool = True
+    countdownHoursVisible: bool = True
+    countdownOpenText: str = Field(default="Order within {countdown} for today's local delivery", max_length=240)
+    countdownClosedText: str = Field(default="Today's delivery window has closed. Order now for the next available delivery day.", max_length=240)
+    countdownClosedDayText: str = Field(default="No local delivery today. Order now for the next available delivery day ({next}).", max_length=240)
+    countdownPausedText: str = Field(default="Local delivery is currently paused. Please check back soon.", max_length=240)
+    countdownHoursText: str = Field(default="Same-day cutoff is {cutoff} ET. No deliveries after {end} or before {start}.", max_length=300)
+    countdownExtraLines: List[dict] = Field(default=[])
     deliverySlotCapacity: int = Field(default=8, ge=1, le=250)
     deliveryDriverCount: int = Field(default=1, ge=1, le=50)
     ordersPerDriverPerWindow: int = Field(default=8, ge=1, le=100)
@@ -543,6 +563,25 @@ class StoreSettingsInput(BaseModel):
     @classmethod
     def _days(cls, v):
         return sorted({int(d) for d in v if 0 <= int(d) <= 6})
+
+    @field_validator("countdownOpenText", "countdownClosedText", "countdownClosedDayText", "countdownPausedText", "countdownHoursText")
+    @classmethod
+    def _countdown_text(cls, v):
+        return str(v or "").strip()
+
+    @field_validator("countdownExtraLines")
+    @classmethod
+    def _countdown_extra_lines(cls, values):
+        if len(values) > 8:
+            raise ValueError("You can add up to 8 countdown text lines")
+        cleaned = []
+        for value in values:
+            text = str((value or {}).get("text", "")).strip()
+            if len(text) > 240:
+                raise ValueError("Each countdown text line must be 240 characters or fewer")
+            if text:
+                cleaned.append({"text": text, "visible": bool((value or {}).get("visible", True))})
+        return cleaned
 
     @field_validator("deliveryZip")
     @classmethod
