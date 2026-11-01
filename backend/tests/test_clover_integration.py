@@ -169,7 +169,7 @@ def test_enabled_sync_updates_stock_and_price_and_links_photo_barcodes():
         def handler(request):
             if request.url.path.endswith("/items"):
                 return httpx.Response(200, json={"elements": [
-                    {"id": "clover-a", "name": "Remote name", "sku": "001230", "code": "001230", "price": 2599, "hidden": False},
+                    {"id": "clover-a", "name": "Remote name", "sku": "001230", "code": "001230", "price": 2599, "modifiedTime": 4102444800000, "hidden": False},
                     {"id": "clover-b", "name": "Other", "sku": "999", "code": "1230", "price": 500},
                 ]})
             if request.url.path.endswith("/item_stocks"):
@@ -181,6 +181,7 @@ def test_enabled_sync_updates_stock_and_price_and_links_photo_barcodes():
 
         clover = integration(db, handler)
         clover.sync_enabled = True
+        clover.sync_prices = True
         await seed_connection(db, clover)
         await db.products.insert_one({
             "id": 3, "name": "Website name", "sku": "001230", "barcode": "001230",

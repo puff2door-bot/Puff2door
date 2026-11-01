@@ -28,9 +28,13 @@ export const CatalogProvider = ({ children }) => {
 
   useEffect(() => {
     refresh();
-    const retryAfterWake = () => { if (loadFailed.current) refresh(); };
-    window.addEventListener("p2d-backend-ready", retryAfterWake);
-    return () => window.removeEventListener("p2d-backend-ready", retryAfterWake);
+    const refreshOnFocus = () => refresh();
+    window.addEventListener("focus", refreshOnFocus);
+    window.addEventListener("p2d-backend-ready", refreshOnFocus);
+    return () => {
+      window.removeEventListener("focus", refreshOnFocus);
+      window.removeEventListener("p2d-backend-ready", refreshOnFocus);
+    };
   }, [refresh]);
 
   const value = useMemo(() => {

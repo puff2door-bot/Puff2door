@@ -576,9 +576,7 @@ class CloverIntegration:
                 if item.get("mappedBrandSlug") and not str(product.get("brand") or "").strip() and not str(product.get("brandName") or "").strip():
                     changes["brand"] = item["mappedBrandSlug"]
                     changes["brandName"] = item.get("mappedBrandName") or item["mappedBrandSlug"]
-                if include_prices and float(product.get("price") or 0) != float(item["price"]):
-                    changes["price"] = item["price"]
-                    price_changes += 1
+                changes["cloverPrice"] = item["price"]
                 await self.db.products.update_one({"id": product["id"]}, {"$set": changes, "$unset": {"cloverSyncError": ""}})
                 updated += int(old_stock != effective_stock)
                 if old_stock == 0 and effective_stock > 0:
@@ -784,7 +782,7 @@ class CloverIntegration:
                 await self.log("deletion_flag", "success", productId=product_id, cloverItemId=product.get("cloverItemId"), flag="website_hidden")
             return {"status": "flagged", "action": "none", "reason": "Hiding a website product does not delete the Clover item."}
         if not product.get("cloverItemId"):
-            if create_in_clover or source == "admin_product_create" and self.create_items:
+            if create_in_clover:
                 return await self.create_clover_item(product, confirm_price=confirm_price)
             return {"status": "skipped", "action": "none", "reason": "This product is not linked to Clover."}
         if not self.sync_prices and not self.sync_names:
@@ -930,7 +928,7 @@ class CloverIntegration:
                     tag = await self.request("POST", f"/v3/merchants/{merchant_id}/tags", json_body={"name": change["detail"]})
                 if tag and tag.get("id"):
                     await self.request("POST", f"/v3/merchants/{merchant_id}/tag_items", json_body={"tag": {"id": tag["id"]}, "item": {"id": change["cloverItemId"]}})
-            await self.log("category_writeback", "success", **{key: change[key] for key in ("productId", "cloverItemId", "action", "detail")})
+            await self.log("category_writeback", "success", productId=change.get("productId"), cloverItemId=change.get("cloverItemId"), change=change.get("action"), detail=change.get("detail"))
         await self._save_undo([{"target": "note", "previous": {"writeback": "last batch"}}], "category_writeback")
         return {"applied": True, "plan": plan}
 
@@ -1081,6 +1079,8 @@ class CloverIntegration:
         clover_stock_changes = await self.apply_pending_adjustments()
         summary = await self.sync_from_clover(source, include_prices=True)
         summary["cloverStockChanges"] = clover_stock_changes
+        for key in ("conflicts", "fieldChanges", "catalogReport", "deletionFlags", "previewItems", "previewTotal"):
+            summary[key] = plan.get(key)
         for link in plan["photoLinks"]:
             await self.db.inventory_captures.update_one({"id": link["captureId"]}, {"$set": {
                 "cloverItemId": link["cloverItemId"],
