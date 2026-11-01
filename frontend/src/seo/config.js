@@ -30,7 +30,7 @@ export const STORE = {
   mapEmbedUrl: "https://www.google.com/maps?q=HD+Smoke+Shop,+481+N+State+Rd+434+Suite+1050,+Altamonte+Springs,+FL+32714&output=embed",
   directionsUrl: "https://www.google.com/maps/place/?q=place_id:ChIJKZb4tvlx54gRjJxn6gAuEU4",
   googleReviewUrl: "https://g.page/r/CYycZ-oALhFOEBM/review",
-  instagram: "https://www.instagram.com/puff2doors",
+  instagram: "https://www.instagram.com/hdsmokeshop.altamonte/",
   facebook: "https://www.facebook.com/puff2doors",
 };
 
