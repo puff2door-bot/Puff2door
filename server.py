@@ -2842,6 +2842,15 @@ class CloverImportInput(BaseModel):
     cloverItemId: str = Field(min_length=1, max_length=120)
 
 
+class CloverCategoryMapRow(BaseModel):
+    cloverName: str = Field(min_length=1, max_length=120)
+    categorySlug: str = Field(min_length=1, max_length=80)
+
+
+class CloverCategoryMapInput(BaseModel):
+    mappings: List[CloverCategoryMapRow] = Field(default_factory=list, max_length=200)
+
+
 def clover_error_detail(exc: Exception) -> str:
     message = str(exc).strip()
     return message if message else "Clover could not complete that request."
@@ -2906,6 +2915,8 @@ async def admin_clover_status(admin: dict = Depends(get_admin_user)):
         "webhookAuthConfigured": bool(CLOVER_WEBHOOK_AUTH_CODE),
         "redirectUri": CLOVER_REDIRECT_URI,
         "missingSetup": missing,
+        "websiteCategories": await db.categories.find({}, {"_id": 0, "slug": 1, "name": 1}).sort("order", 1).to_list(200),
+        "categoryMappings": await integration.category_mappings(),
     }
 
 
@@ -2921,6 +2932,15 @@ async def admin_clover_connect_url(admin: dict = Depends(get_admin_user)):
         return {"url": await clover_integration().create_authorization_url(admin["id"])}
     except CloverError as exc:
         raise HTTPException(status_code=400, detail=clover_error_detail(exc))
+
+
+@api_router.put("/admin/clover/category-map")
+async def admin_clover_category_map(inp: CloverCategoryMapInput, admin: dict = Depends(get_admin_user)):
+    try:
+        saved = await clover_integration().save_category_mappings([row.model_dump() for row in inp.mappings])
+    except CloverError as exc:
+        raise HTTPException(status_code=400, detail=clover_error_detail(exc))
+    return {"mappings": saved}
 
 
 @api_router.post("/admin/clover/test-connection")
@@ -3036,12 +3056,14 @@ async def admin_clover_import(inp: CloverImportInput, admin: dict = Depends(get_
             "blockedStates": [],
         }
         product = await clover_integration().import_item(inp.cloverItemId, defaults)
+        product["minimumAge"] = defaults["minimumAge"]
+        product["active"] = False
         # The integration supplies the final name after the ID is assigned.
         final_slug = f"{slugify(product['name'])}-{pid}"
         await db.products.update_one({"id": pid}, {"$set": {"slug": final_slug}})
         product["slug"] = final_slug
         asyncio.create_task(refresh_static_sitemap())
-        return {"ok": True, "product": product_out(product), "reviewRequired": True}
+        return {"ok": True, "product": product_out(product), "reviewRequired": bool(product.get("cloverNeedsReview", True))}
     except CloverError as exc:
         raise HTTPException(status_code=400, detail=clover_error_detail(exc))
 
