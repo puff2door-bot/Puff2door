@@ -30,7 +30,7 @@ from datetime import datetime, timedelta, timezone, date, time as dtime
 from zoneinfo import ZoneInfo
 import jwt
 from passlib.context import CryptContext
-from clover import CloverError, CloverIntegration
+from clover import CloverError, CloverIntegration, order_should_sync_stock
 
 try:
     from pywebpush import WebPushException, webpush
@@ -2225,7 +2225,7 @@ async def list_brands():
 
 
 # ---- Categories: centralized source of truth (id, slug, name, order, active) ----
-DEFAULT_CATEGORIES = [("disposable", "DISPOSABLE VAPES"), ("delta", "DELTA DISPOSABLES"), ("delta-cartridges", "DELTA CARTRIDGES"), ("delta-edibles", "DELTA EDIBLES"), ("delta-smokeables", "DELTA SMOKEABLES"), ("vape-accessories", "VAPE ACCESSORIES"), ("hemp-wraps", "HEMP WRAPS"), ("paper-cones", "PAPER & CONES"), ("kratom", "KRATOM"), ("glass-pipes", "GLASS PIPES"), ("lighter", "LIGHTER"), ("air-freshner", "AIR FRESHNER"), ("hookah-accessories", "HOOKAH ACCESSORIES"), ("miscellaneous", "MISCELLANEOUS")]
+DEFAULT_CATEGORIES = [("disposable", "DISPOSABLE VAPES"), ("delta", "DELTA DISPOSABLES"), ("delta-cartridges", "DELTA CARTRIDGES"), ("delta-edibles", "DELTA EDIBLES"), ("delta-smokeables", "DELTA SMOKEABLES"), ("vape-accessories", "VAPE ACCESSORIES"), ("hemp-wraps", "HEMP WRAPS"), ("e-liquids", "PODS"), ("paper-cones", "PAPER & CONES"), ("kratom", "KRATOM"), ("glass-pipes", "GLASS PIPES"), ("lighter", "LIGHTER"), ("air-freshner", "AIR FRESHNER"), ("hookah-accessories", "HOOKAH ACCESSORIES"), ("miscellaneous", "MISCELLANEOUS"), ("munchies", "MUNCHIES"), ("cigars", "CIGARS")]
 
 
 class CategoryInput(BaseModel):
@@ -2281,6 +2281,10 @@ async def seed_categories():
     for i, (slug, name) in enumerate(wanted):
         if slug not in existing:
             await db.categories.insert_one({"id": str(uuid.uuid4()), "slug": slug, "name": name, "order": i, "active": True, "createdAt": now_utc(), "updatedAt": now_utc()})
+    pods = await db.categories.find_one({"slug": "e-liquids"}, {"_id": 0, "name": 1})
+    if pods and "liquid" in str(pods.get("name") or "").lower():
+        await db.categories.update_one({"slug": "e-liquids"}, {"$set": {"name": "PODS", "updatedAt": now_utc()}})
+        await db.products.update_many({"categorySlug": "e-liquids"}, {"$set": {"category": "PODS"}})
     await db.categories.create_index("slug", unique=True)
     invalidate_categories()
 
@@ -2416,10 +2420,19 @@ async def push_products_to_clover(product_ids, source: str):
 
 
 async def record_clover_order_stock(order: dict):
+    if not order_should_sync_stock(order):
+        return
     try:
         await clover_integration().apply_order_stock(order["id"], order.get("items") or [])
     except Exception:
         logger.error("Clover order stock update failed for order %s", order.get("id"))
+
+
+async def restore_clover_order_stock(order: dict):
+    try:
+        await clover_integration().restore_order_stock(order["id"], order.get("items") or [])
+    except Exception:
+        logger.error("Clover order stock restore failed for order %s", order.get("id"))
 
 
 async def notify_restocked_products(product_ids):
@@ -2726,6 +2739,9 @@ async def resolve_brand_name(inp: ProductInput) -> str:
         b = bm[slugify(inp.brand)]
         inp.brand = b["slug"]
         return b.get("displayName") or b.get("name") or inp.brand.upper()
+    if not (inp.brand or "").strip() and not (inp.brandName or "").strip():
+        inp.brand = ""
+        return ""
     name = (inp.brandName or inp.name.split(" ")[0]).strip()
     sl = slugify(name)
     inp.brand = sl
@@ -2917,6 +2933,7 @@ async def admin_clover_status(admin: dict = Depends(get_admin_user)):
         "missingSetup": missing,
         "websiteCategories": await db.categories.find({}, {"_id": 0, "slug": 1, "name": 1}).sort("order", 1).to_list(200),
         "categoryMappings": await integration.category_mappings(),
+        **(await integration.stock_status_rows()),
     }
 
 
@@ -3443,12 +3460,15 @@ async def admin_update_order_status(order_id: str, inp: OrderStatusInput, admin:
     if inp.status == "cancelled" and not o.get("stockReleased"):
         await release_stock(o["items"])
         updates["stockReleased"] = True
+        await restore_clover_order_stock(o)
     if inp.status in STAGE_KEYS:
         updates[f"statusHistory.{inp.status}"] = changed_at
     await db.orders.update_one({"id": order_id}, {"$set": updates})
     updated = await db.orders.find_one({"id": order_id})
     if inp.status == "cancelled":
         await loyalty_reverse_for_order(updated, None, admin)
+    elif inp.status == "confirmed":
+        await record_clover_order_stock(updated)
     elif inp.status == "delivered":
         await loyalty_award_for_order(updated)
     if inp.status in STAGE_KEYS:
@@ -3531,6 +3551,7 @@ async def admin_complete_failed_id_return(order_id: str, inp: ReturnDispositionI
         return order_response(order)
     if inp.disposition == "restocked" and not order.get("stockReleased"):
         await release_stock(order["items"])
+        await restore_clover_order_stock(order)
     now = now_utc()
     procedure = {
         **(order.get("returnProcedure") or {}), "status": "completed", "completedAt": now,
@@ -3579,11 +3600,13 @@ async def admin_update_order_payment(order_id: str, inp: PaymentStatusInput, adm
         if not o.get("stockReleased"):
             await release_stock(o["items"])
             updates["stockReleased"] = True
+            await restore_clover_order_stock(o)
         updates["refundedAmount"] = round(o.get("subtotal", 0) - o.get("discount", 0) - o.get("rewardDiscount", 0), 2)
     await db.orders.update_one({"id": order_id}, {"$set": updates})
     updated = await db.orders.find_one({"id": order_id})
     if "paidAt" in updates:
         await loyalty_award_for_order(updated)
+        await record_clover_order_stock(updated)
         asyncio.create_task(emails.send_payment_received(updated, await loyalty_email_info(updated)))
     if inp.paymentStatus == "refunded":
         await loyalty_reverse_for_order(updated, None, admin)
@@ -3612,6 +3635,7 @@ async def admin_partial_refund(order_id: str, inp: RefundInput, admin: dict = De
     if full and not o.get("stockReleased"):
         await release_stock(o["items"])
         sets["stockReleased"] = True
+        await restore_clover_order_stock(o)
     upd = {"$inc": {"refundedAmount": amount}, "$push": {"refunds": {"amount": amount, "reason": inp.reason, "adminId": admin["id"], "createdAt": now_utc()}}}
     if sets:
         upd["$set"] = sets

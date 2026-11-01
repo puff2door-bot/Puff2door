@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { X, Upload, Link2, Loader2, Trash2, Plus } from "lucide-react";
+import { X, Upload, Link2, Loader2, Trash2 } from "lucide-react";
 import api, { imgUrl } from "../../api";
 import { FLAVOR_KEYWORDS } from "../../mock";
 import { useToast } from "../../hooks/use-toast";
+import SearchableSelect from "../../components/admin/SearchableSelect";
 
 const inputCls = "w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-600 transition-colors";
 
@@ -70,33 +71,16 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
   const { toast } = useToast();
   const set = (k, v) => setF((prev) => ({ ...prev, [k]: v }));
   const [brandList, setBrandList] = useState([]);
-  const [newBrand, setNewBrand] = useState(null);
   const [categories, setCategories] = useState([]);
-  const loadBrands = () => api.get("/admin/brands").then(({ data }) => setBrandList(data.brands)).catch(() => {});
   useEffect(() => {
-    loadBrands();
+    api.get("/admin/brands").then(({ data }) => setBrandList(data.brands || [])).catch(() => {});
     api.get("/admin/categories").then(({ data }) => {
-      setCategories(data.categories);
-      if (!initial?.categorySlug && data.categories[0]) setF((prev) => ({ ...prev, categorySlug: prev.categorySlug || data.categories[0].slug, category: prev.category || data.categories[0].name }));
+      const rows = data.categories || [];
+      setCategories(rows);
+      if (!initial?.categorySlug && rows[0]) setF((prev) => ({ ...prev, categorySlug: prev.categorySlug || rows[0].slug, category: prev.category || rows[0].name }));
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const pickBrand = (slug) => {
-    const b = brandList.find((x) => x.slug === slug);
-    setF((prev) => ({ ...prev, brand: slug, brandName: b ? b.displayName : "" }));
-  };
-  const createBrand = async () => {
-    if (!newBrand?.name?.trim()) return;
-    try {
-      const { data } = await api.post("/admin/brands", { name: newBrand.name, displayName: newBrand.displayName || newBrand.name });
-      setBrandList((prev) => [...prev, data].sort((a, c) => a.displayName.localeCompare(c.displayName)));
-      setF((prev) => ({ ...prev, brand: data.slug, brandName: data.displayName }));
-      setNewBrand(null);
-      toast({ title: "Brand created", description: `${data.displayName} · /brand/${data.slug}` });
-    } catch (e) {
-      toast({ title: "Could not create brand", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
-    }
-  };
   const isEdit = Boolean(initial?.id);
 
   const submit = async (e) => {
@@ -111,7 +95,7 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
       minimumAge: Number(f.minimumAge),
       allowedStates: String(f.allowedStates || "").split(/[\s,]+/).map((v) => v.trim().toUpperCase()).filter(Boolean),
       blockedStates: String(f.blockedStates || "").split(/[\s,]+/).map((v) => v.trim().toUpperCase()).filter(Boolean),
-      brandName: f.brandName || f.name.split(" ")[0],
+      brandName: f.brand ? f.brandName : "",
     };
     delete payload.id; delete payload.slug; delete payload.inStock; delete payload.rating; delete payload.restockNotified;
     delete payload.cloverItemId; delete payload.cloverLastSyncedAt; delete payload.cloverLastPushedAt; delete payload.cloverSyncError; delete payload.cloverSync;
@@ -147,30 +131,30 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Category *</label>
-            <select data-testid="pf-category" className={inputCls} value={f.categorySlug} onChange={(e) => { const c = categories.find((x) => x.slug === e.target.value); set("categorySlug", c.slug); set("category", c.name); }}>
-              {categories.map((c) => <option key={c.slug} value={c.slug}>{c.name}{c.active ? "" : " (inactive)"}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Brand</label>
-            <div className="flex gap-2">
-              <select data-testid="pf-brand" className={inputCls} value={f.brand || ""} onChange={(e) => pickBrand(e.target.value)}>
-                <option value="">— Select brand —</option>
-                {brandList.map((b) => <option key={b.slug} value={b.slug}>{b.displayName}{b.active ? "" : " (inactive)"}</option>)}
-              </select>
-              <button type="button" data-testid="pf-add-brand" onClick={() => setNewBrand(newBrand ? null : { name: "", displayName: "" })} className="shrink-0 inline-flex items-center gap-1 px-3 py-2 border border-neutral-300 rounded-lg text-xs font-bold hover:bg-neutral-50 whitespace-nowrap"><Plus className="h-3.5 w-3.5" /> Add New Brand</button>
-            </div>
-            {newBrand && (
-              <div data-testid="pf-new-brand" className="mt-2 border border-emerald-200 bg-emerald-50/60 rounded-lg p-3 grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-end">
-                <div><label className="block text-[11px] font-bold uppercase text-neutral-500 mb-1">Brand name *</label><input data-testid="pf-new-brand-name" className={inputCls} placeholder="e.g. Exotic" value={newBrand.name} onChange={(e) => setNewBrand({ ...newBrand, name: e.target.value })} /></div>
-                <div><label className="block text-[11px] font-bold uppercase text-neutral-500 mb-1">Display name</label><input data-testid="pf-new-brand-display" className={inputCls} placeholder="Defaults to name" value={newBrand.displayName} onChange={(e) => setNewBrand({ ...newBrand, displayName: e.target.value })} /></div>
-                <button type="button" data-testid="pf-new-brand-save" onClick={createBrand} className="px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700">Create</button>
-              </div>
-            )}
-          </div>
+          <SearchableSelect
+            label="Category"
+            required
+            testId="pf-category"
+            placeholder="Search categories"
+            labelClassName="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5"
+            buttonClassName={inputCls}
+            options={categories.map((category) => ({ value: category.slug, label: `${category.name}${category.active ? "" : " (inactive)"}` }))}
+            value={f.categorySlug}
+            onChange={(slug) => { const category = categories.find((row) => row.slug === slug); set("categorySlug", slug); set("category", category?.name || ""); }}
+          />
+          <SearchableSelect
+            label="Brand"
+            testId="pf-brand"
+            placeholder="Search brands"
+            labelClassName="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5"
+            buttonClassName={inputCls}
+            emptyOption={{ value: "", label: "None" }}
+            options={brandList.map((brand) => ({ value: brand.slug, label: `${brand.displayName}${brand.active ? "" : " (inactive)"}` }))}
+            value={f.brand || ""}
+            onChange={(slug) => { const brand = brandList.find((row) => row.slug === slug); setF((prev) => ({ ...prev, brand: slug, brandName: brand ? brand.displayName : "" })); }}
+          />
         </div>
+        <p className="text-xs text-neutral-500 -mt-3">Categories and brands are the ones already saved. Add new ones from Categories or Brands, not from this form.</p>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div>

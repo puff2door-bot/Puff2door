@@ -1,12 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Camera, CheckCircle2, Upload } from "lucide-react";
 import api from "../../api";
+import SearchableSelect from "../../components/admin/SearchableSelect";
+import { resolveBrand, resolveCategory } from "../../components/admin/catalogChoices";
 
 const root = "/admin/inventory-captures";
 const button = "rounded-full px-5 py-3 font-bold text-sm disabled:opacity-50";
 const field = "block border rounded-xl p-3 w-full mt-2 font-normal text-base";
 const emptyForm = {
-  barcode: "", name: "", description: "", details: "", category: "",
+  barcode: "", name: "", description: "", details: "", categorySlug: "", categoryUnmatched: false, categoryLegacy: "",
+  brandSlug: "", brandUnmatched: false, brandLegacy: "",
   label: "", cost: "", retailPrice: "", quantity: "", notes: "",
 };
 
@@ -45,6 +48,8 @@ export default function InventoryCapture() {
   const [after, setAfter] = useState("");
   const [showOriginal, setShowOriginal] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [categories, setCategories] = useState([]);
+  const [brands, setBrands] = useState([]);
   const camera = useRef(null);
   const gallery = useRef(null);
   const sku = useRef(null);
@@ -53,8 +58,25 @@ export default function InventoryCapture() {
   const setField = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
 
   useEffect(() => {
-    api.get(root).then(({ data }) => setRows(data.captures)).catch(() => setError("Saved records could not load. Refresh to retry."));
+    api.get(root).then(({ data }) => setRows(data.captures || [])).catch(() => setError("Saved records could not load. Refresh to retry."));
+    api.get("/admin/categories").then(({ data }) => setCategories(data.categories || [])).catch(() => setCategories([]));
+    api.get("/admin/brands").then(({ data }) => setBrands(data.brands || [])).catch(() => setBrands([]));
   }, []);
+  useEffect(() => {
+    if (!editing) return;
+    setForm((current) => {
+      if (!current.categoryUnmatched && !current.brandUnmatched) return current;
+      const row = rows.find((item) => item.id === editing);
+      if (!row) return current;
+      const category = current.categoryUnmatched ? resolveCategory(row, categories) : null;
+      const brand = current.brandUnmatched ? resolveBrand(row, brands) : null;
+      return {
+        ...current,
+        ...(category ? { categorySlug: category.slug, categoryUnmatched: category.unmatched, categoryLegacy: category.legacy } : {}),
+        ...(brand ? { brandSlug: brand.slug, brandUnmatched: brand.unmatched, brandLegacy: brand.legacy } : {}),
+      };
+    });
+  }, [categories, brands, editing, rows]);
   useEffect(() => {
     if (!file) { setPreview(""); return undefined; }
     const url = URL.createObjectURL(file);
@@ -105,13 +127,20 @@ export default function InventoryCapture() {
   };
 
   const startEdit = (row) => {
+    const category = resolveCategory(row, categories);
+    const brand = resolveBrand(row, brands);
     setEditing(row.id);
     setForm({
       barcode: row.barcode || row.identifier || "",
       name: row.name || "",
       description: row.description || "",
       details: row.details || "",
-      category: row.category || "",
+      categorySlug: category.slug,
+      categoryUnmatched: category.unmatched,
+      categoryLegacy: category.legacy,
+      brandSlug: brand.slug,
+      brandUnmatched: brand.unmatched,
+      brandLegacy: brand.legacy,
       label: row.label || "",
       cost: row.cost || "",
       retailPrice: row.retailPrice || "",
@@ -142,6 +171,10 @@ export default function InventoryCapture() {
     const barcode = form.barcode.trim();
     if (!barcode || processing || submitting.current) return;
     if ((!editing && !processed) || (file && !processed)) return;
+    if (form.categoryUnmatched || form.brandUnmatched) {
+      setError("Pick a category and brand from the lists. Unmatched text is not saved.");
+      return;
+    }
     submitting.current = true;
     setBusy(true); setError(""); setSaved(""); setDuplicate(null);
     const payload = {
@@ -149,7 +182,8 @@ export default function InventoryCapture() {
       name: form.name.trim(),
       description: form.description.trim(),
       details: form.details.trim(),
-      category: form.category.trim(),
+      categorySlug: form.categorySlug,
+      brandSlug: form.brandSlug,
       label: form.label.trim(),
       cost: form.cost.trim(),
       retailPrice: form.retailPrice.trim(),
@@ -224,9 +258,32 @@ export default function InventoryCapture() {
         <textarea data-testid="inventory-details" maxLength={4000} disabled={busy} value={form.details} onChange={setField("details")} className={`${field} min-h-20`} />
       </label>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <label className="block text-sm font-bold">Category
-          <input maxLength={120} disabled={busy} value={form.category} onChange={setField("category")} className={field} />
-        </label>
+        <SearchableSelect
+          label="Category"
+          testId="inventory-category"
+          required
+          disabled={busy}
+          placeholder="Search categories"
+          options={categories.map((category) => ({ value: category.slug, label: category.name }))}
+          value={form.categorySlug}
+          unmatched={form.categoryUnmatched}
+          unmatchedLabel={form.categoryLegacy ? `Unmatched, pick one (${form.categoryLegacy})` : "Unmatched, pick one"}
+          onChange={(categorySlug) => setForm((current) => ({ ...current, categorySlug, categoryUnmatched: false, categoryLegacy: "" }))}
+          buttonClassName={field}
+        />
+        <SearchableSelect
+          label="Brand"
+          testId="inventory-brand"
+          disabled={busy}
+          placeholder="Search brands"
+          emptyOption={{ value: "", label: "None" }}
+          options={brands.map((brand) => ({ value: brand.slug, label: brand.displayName || brand.name }))}
+          value={form.brandSlug}
+          unmatched={form.brandUnmatched}
+          unmatchedLabel={form.brandLegacy ? `Unmatched, pick one (${form.brandLegacy})` : "Unmatched, pick one"}
+          onChange={(brandSlug) => setForm((current) => ({ ...current, brandSlug, brandUnmatched: false, brandLegacy: "" }))}
+          buttonClassName={field}
+        />
         <label className="block text-sm font-bold">Item label (optional)
           <input maxLength={200} disabled={busy} value={form.label} onChange={setField("label")} className={field} />
         </label>
@@ -240,7 +297,7 @@ export default function InventoryCapture() {
           <input data-testid="inventory-quantity" type="text" inputMode="numeric" disabled={busy} value={form.quantity} onChange={setField("quantity")} className={field} placeholder="0" />
         </label>
       </div>
-      <p className="text-xs text-neutral-500">Retail price and cost stay on this private record. Saving them does not publish a product, change the website price, or sync to Clover.</p>
+      <p className="text-xs text-neutral-500">Category and brand come from the website lists, including names such as PODS. This form cannot create a category or brand. Retail price and cost stay on this private record. Saving them does not publish a product, change the website price, or sync to Clover.</p>
       <label className="block text-sm font-bold">Notes
         <textarea maxLength={4000} disabled={busy} value={form.notes} onChange={setField("notes")} className={`${field} min-h-20`} />
       </label>
@@ -272,7 +329,7 @@ export default function InventoryCapture() {
       <div className="min-w-0 flex-1">
         <p className="font-bold break-words">{row.name || "Untitled item"}</p>
         <p className="font-mono text-sm break-all">{row.barcode || row.identifier}</p>
-        {row.category && <p className="text-sm break-words">{row.category}</p>}
+        {(row.category || row.brandName) && <p className="text-sm break-words">{[row.category, row.brandName].filter(Boolean).join(" · ")}{row.categoryMatch === "unmatched" ? " · unmatched, pick one" : ""}</p>}
         <p className="text-sm text-neutral-600">{row.retailPrice ? `Retail record $${row.retailPrice}` : "No retail price yet"}{row.quantity ? ` · Qty ${row.quantity}` : ""}</p>
         {row.description && <p className="text-sm break-words text-neutral-600">{row.description}</p>}
         <p className="text-xs text-neutral-500">{row.createdAt ? new Date(row.createdAt).toLocaleString() : ""}</p>

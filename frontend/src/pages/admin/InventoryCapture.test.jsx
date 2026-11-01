@@ -65,6 +65,31 @@ test('barcode stays text and a duplicate offers the existing record', async () =
   expect(api.put).toHaveBeenCalledWith('/admin/inventory-captures/existing-1', expect.objectContaining({ barcode: '0012', retailPrice: '11.00' }));
   expect(host.querySelector('[data-testid="inventory-success"]').textContent).toContain('Updated 0012');
 });
+test('category and brand are searchable lists and unmatched text is not saved', async () => {
+  api.get.mockImplementation(async (path) => {
+    if (path === '/admin/categories') return { data: { categories: [{ slug: 'e-liquids', name: 'PODS' }, { slug: 'disposable', name: 'DISPOSABLE VAPES' }] } };
+    if (path === '/admin/brands') return { data: { brands: [{ slug: 'raz', displayName: 'RAZ' }] } };
+    if (String(path).endsWith('/legacy-1')) return { data: { id: 'legacy-1', barcode: '0099', category: 'Shop mix', name: 'Legacy' } };
+    return { data: { captures: [] } };
+  });
+  await act(async () => root.render(<InventoryCapture />));
+  await act(async () => host.querySelector('[data-testid="inventory-category-button"]').click());
+  expect(host.querySelector('[data-testid="inventory-category-search"]')).not.toBeNull();
+  expect(host.textContent).toContain('PODS');
+  expect(host.textContent).not.toContain('Add category');
+  const search = host.querySelector('[data-testid="inventory-category-search"]');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(search, 'pod');
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  expect(host.textContent).toContain('PODS');
+  expect(host.textContent).not.toContain('DISPOSABLE VAPES');
+  await act(async () => host.querySelector('[data-testid="inventory-category-option-e-liquids"]').click());
+  expect(host.querySelector('[data-testid="inventory-category-button"]').textContent).toBe('PODS');
+  await act(async () => host.querySelector('[data-testid="inventory-brand-button"]').click());
+  expect(host.textContent).toContain('None');
+  expect(host.textContent).toContain('RAZ');
+});
 test('processing failure blocks saving and offers retry', async () => {
   api.post.mockRejectedValue(new Error('offline'));
   await act(async () => root.render(<InventoryCapture />)); await choose();
