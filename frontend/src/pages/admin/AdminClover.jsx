@@ -11,6 +11,7 @@ const AdminClover = () => {
   const [logs, setLogs] = useState([]);
   const [products, setProducts] = useState([]);
   const [choice, setChoice] = useState({});
+  const [mapRows, setMapRows] = useState(null);
   const [busy, setBusy] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
@@ -29,6 +30,10 @@ const AdminClover = () => {
   useEffect(() => {
     load().catch((error) => toast({ title: "Could not load Clover", description: error?.response?.data?.detail || "Try again.", variant: "destructive" }));
   }, [load, toast]);
+
+  useEffect(() => {
+    if (mapRows === null && status?.categoryMappings) setMapRows(status.categoryMappings);
+  }, [status, mapRows]);
 
   useEffect(() => {
     const result = searchParams.get("clover");
@@ -84,7 +89,22 @@ const AdminClover = () => {
     run(`link-${item.id}`, () => api.post("/admin/clover/link", { productId, cloverItemId: item.id }), "Product connected to Clover");
   };
 
-  const importItem = (item) => run(`import-${item.id}`, () => api.post("/admin/clover/import", { cloverItemId: item.id }), "Item imported as a hidden draft");
+  const importItem = (item) => run(`import-${item.id}`, () => api.post("/admin/clover/import", { cloverItemId: item.id }), "Hidden draft saved for review");
+
+  const saveMap = async () => {
+    setBusy("map");
+    try {
+      const mappings = (mapRows || []).filter((row) => row.cloverName.trim() && row.categorySlug);
+      const { data } = await api.put("/admin/clover/category-map", { mappings });
+      setMapRows(data.mappings || []);
+      await load();
+      toast({ title: "Category mapping saved" });
+    } catch (error) {
+      toast({ title: "Mapping was not saved", description: error?.response?.data?.detail || "Try again.", variant: "destructive" });
+    } finally {
+      setBusy("");
+    }
+  };
 
   const disconnect = () => {
     if (!window.confirm("Disconnect Clover inventory sync? Product links stay saved so they can be reused after reconnecting.")) return;
@@ -159,6 +179,38 @@ const AdminClover = () => {
         </div>
       </section>
 
+      <section className="rounded-2xl border p-5 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div><h2 className="font-bold">Clover category mapping</h2><p className="text-sm text-neutral-500 mt-1">Clover category name to an existing website category. Later syncs use this table. It does not create new categories.</p></div>
+          <button type="button" onClick={saveMap} disabled={Boolean(busy)} className="rounded-full bg-neutral-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Save mapping</button>
+        </div>
+        <div className="mt-4 space-y-2">
+          {(mapRows || []).map((row, index) => (
+            <div key={`${row.cloverName}-${index}`} className="grid gap-2 sm:grid-cols-[1fr_220px_auto]">
+              <input value={row.cloverName} onChange={(event) => setMapRows((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, cloverName: event.target.value } : item))} className="rounded-lg border px-3 py-2 text-sm" placeholder="Clover category name" />
+              <select value={row.categorySlug} onChange={(event) => setMapRows((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, categorySlug: event.target.value } : item))} className="rounded-lg border px-3 py-2 text-sm bg-white">
+                <option value="">Website category…</option>
+                {(status.websiteCategories || []).map((category) => <option key={category.slug} value={category.slug}>{category.name}</option>)}
+              </select>
+              <button type="button" className="text-xs font-bold text-red-600" onClick={() => setMapRows((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>
+            </div>
+          ))}
+          <button type="button" className="text-xs font-bold text-emerald-700" onClick={() => setMapRows((current) => [...(current || []), { cloverName: "", categorySlug: "" }])}>Add mapping</button>
+        </div>
+      </section>
+
+      {(status.lastCatalogPlan?.reviewItems || []).length > 0 && (
+        <section className="rounded-2xl border overflow-hidden mb-6">
+          <div className="p-5 border-b"><h2 className="font-bold">Preview: category and brand</h2><p className="text-sm text-neutral-500 mt-1">Low-confidence and unmatched items stay hidden drafts and are marked needs review. Nothing here is published.</p></div>
+          <div className="divide-y">{status.lastCatalogPlan.reviewItems.map((item) => (
+            <div key={item.id} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div><p className="font-semibold">{item.name}</p><p className="text-xs text-neutral-500">Clover: {(item.cloverCategories || []).join(", ") || "No category"} · Website: {item.mappedCategoryName || "Unmatched"} · Brand: {item.mappedBrandName || "Unmatched"}</p></div>
+              <span className="self-start rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">{item.needsReview ? "Needs review" : item.confidence}</span>
+            </div>
+          ))}</div>
+        </section>
+      )}
+
       {(status.lastCatalogPlan?.unmatchedPhotoBarcodes || []).length > 0 && (
         <section className="rounded-2xl border overflow-hidden mb-6">
           <div className="p-5 border-b"><h2 className="font-bold">Photo barcodes that need review</h2><p className="text-sm text-neutral-500 mt-1">Private photos stay private. A barcode links a photo to a Clover item only when that text matches exactly, including leading zeros.</p></div>
@@ -179,7 +231,7 @@ const AdminClover = () => {
           <div className="divide-y">
             {status.unmatchedItems.map((item) => (
               <div key={item.id} className="p-4 grid gap-3 lg:grid-cols-[1fr_220px_auto_auto] lg:items-center">
-                <div><p className="font-semibold">{item.name}</p><p className="text-xs text-neutral-500">SKU {item.sku || "—"} · Barcode {item.barcode || "—"} · ${Number(item.price || 0).toFixed(2)} · {item.stock} in stock</p></div>
+                <div><p className="font-semibold">{item.name}</p><p className="text-xs text-neutral-500">SKU {item.sku || "—"} · Barcode {item.barcode || "—"} · ${Number(item.price || 0).toFixed(2)} · {item.stock} in stock</p><p className="text-xs text-neutral-600">Category {item.mappedCategoryName || "Unmatched"} · Brand {item.mappedBrandName || "Unmatched"} · {item.needsReview ? "Needs review" : item.confidence || "mapped"}</p></div>
                 <select value={choice[item.id] || ""} onChange={(event) => setChoice((old) => ({ ...old, [item.id]: event.target.value }))} className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"><option value="">Choose existing product…</option>{unlinkedProducts.map((product) => <option key={product.id} value={product.id}>{product.name} (#{product.id})</option>)}</select>
                 <button onClick={() => link(item)} disabled={Boolean(busy)} className="inline-flex items-center justify-center gap-1 rounded-full border px-4 py-2 text-xs font-bold disabled:opacity-50"><Link2 className="h-3.5 w-3.5" /> Connect</button>
                 <button onClick={() => importItem(item)} disabled={Boolean(busy)} className="inline-flex items-center justify-center gap-1 rounded-full bg-neutral-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-50"><PackagePlus className="h-3.5 w-3.5" /> Import draft</button>
