@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, Pencil, EyeOff, Search } from "lucide-react";
+import { Plus, Pencil, EyeOff, Search, RefreshCw } from "lucide-react";
 import api, { imgUrl } from "../../api";
 import { useToast } from "../../hooks/use-toast";
 import { useCatalog } from "../../context/CatalogContext";
@@ -41,10 +41,20 @@ const AdminProducts = () => {
 
   const hide = async (p) => {
     if (!window.confirm(`Hide "${p.name}" from the store?`)) return;
-    await api.delete(`/admin/products/${p.id}`);
+    const { data } = await api.delete(`/admin/products/${p.id}`);
     setProducts((prev) => prev.map((x) => (x.id === p.id ? { ...x, active: false } : x)));
     refresh();
-    toast({ title: "Product hidden", description: p.name });
+    toast({ title: data?.cloverSync?.status === "failed" ? "Product hidden — Clover needs a retry" : "Product hidden", description: data?.cloverSync?.error || p.name, variant: data?.cloverSync?.status === "failed" ? "destructive" : "default" });
+  };
+
+  const retryClover = async (p) => {
+    try {
+      await api.post(`/admin/clover/products/${p.id}/retry`);
+      await load();
+      toast({ title: "Clover updated", description: p.name });
+    } catch (error) {
+      toast({ title: "Clover retry failed", description: error?.response?.data?.detail || "Try again from Clover Inventory.", variant: "destructive" });
+    }
   };
 
   return (
@@ -85,7 +95,9 @@ const AdminProducts = () => {
                       <div className="h-12 w-12 rounded-lg bg-neutral-50 border grid place-items-center p-1 shrink-0">{p.image ? <img src={imgUrl(p.image)} alt="" className="max-h-full max-w-full object-contain" /> : null}</div>
                       <div className="min-w-0">
                         <p className="font-medium text-neutral-900 line-clamp-1">{p.name}</p>
-                        <p className="text-xs text-neutral-500">{p.brandName} · #{p.id}</p>
+                        <p className="text-xs text-neutral-500">{p.brandName} · #{p.id}{p.sku ? ` · SKU ${p.sku}` : ""}</p>
+                        {p.cloverItemId && <span className="mt-1 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Clover connected</span>}
+                        {p.cloverSyncError && <span className="mt-1 ml-1 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">Clover retry needed</span>}
                       </div>
                     </div>
                   </td>
@@ -101,6 +113,7 @@ const AdminProducts = () => {
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-1">
                       <button onClick={() => setEditing(p)} data-testid={`admin-edit-${p.id}`} className="h-8 w-8 grid place-items-center rounded-full hover:bg-emerald-50 text-neutral-600 hover:text-emerald-700" aria-label="Edit"><Pencil className="h-4 w-4" /></button>
+                      {p.cloverSyncError && <button onClick={() => retryClover(p)} className="h-8 w-8 grid place-items-center rounded-full hover:bg-amber-50 text-amber-600" aria-label="Retry Clover sync"><RefreshCw className="h-4 w-4" /></button>}
                       {p.active && <button onClick={() => hide(p)} data-testid={`admin-hide-${p.id}`} className="h-8 w-8 grid place-items-center rounded-full hover:bg-red-50 text-neutral-600 hover:text-red-600" aria-label="Hide"><EyeOff className="h-4 w-4" /></button>}
                     </div>
                   </td>

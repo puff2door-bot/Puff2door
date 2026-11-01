@@ -77,14 +77,14 @@ const ShopPage = () => {
     : "Shop All";
 
   const seo = searchQuery
-    ? { title: `Search results for "${searchQuery}" | Puff2door`, description: `Search results for ${searchQuery} at Puff2door.`, noindex: true, path: "/shop" }
+    ? { title: `Search results for "${searchQuery}" | HD Smoke Shop`, description: `Search results for ${searchQuery} at HD Smoke Shop.`, noindex: true, path: "/shop" }
     : isBrand && currentBrand
     ? { ...brandSeo(currentBrand), path: `/brand/${currentBrand.slug}` }
     : currentCat
     ? { ...categorySeo(currentCat), path: `/product-category/${currentCat.slug}` }
     : slug
-    ? { title: "Page not found | Puff2door", description: "This category does not exist.", noindex: true }
-    : { title: "Shop Vape Products Online | Puff2door", description: "Shop all vape products, delta disposables, cartridges, edibles, glass pipes and smoke shop essentials online at Puff2door with local delivery in the Orlando area. 21+ only.", intro: "Every product we carry, from disposable vapes to glass and kratom — ordered online, delivered locally in the Orlando area.", path: "/shop" };
+    ? { title: "Page not found | HD Smoke Shop", description: "This category does not exist.", noindex: true }
+    : { title: "Shop Vape Products Online | HD Smoke Shop", description: "Shop all vape products, delta disposables, cartridges, edibles, glass pipes and smoke shop essentials online at HD Smoke Shop with local delivery in the Orlando area. 21+ only.", intro: "Every product we carry, from disposable vapes to glass and kratom — ordered online, delivered locally in the Orlando area.", path: "/shop" };
   const crumbs = [{ name: "Home", path: "/" }, { name: "Shop", path: "/shop" }];
   if (currentCat) crumbs.push({ name: titleCase(currentCat.name), path: `/product-category/${currentCat.slug}` });
   if (isBrand && currentBrand) crumbs.push({ name: currentBrand.name, path: `/brand/${currentBrand.slug}` });

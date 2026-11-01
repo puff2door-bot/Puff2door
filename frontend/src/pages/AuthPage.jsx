@@ -8,6 +8,7 @@ import { usStates } from "../mock";
 import api from "../api";
 import MyRewards from "../components/account/MyRewards";
 import { useCart } from "../context/CartContext";
+import NotificationOptIn from "../components/NotificationOptIn";
 
 const STATUS_LABEL = {
   placed: "Order Placed",
@@ -48,6 +49,7 @@ const AccountView = () => {
           <button data-testid="logout-btn" onClick={() => { logout(); toast({ title: "Logged out" }); }} className="inline-flex items-center gap-2 px-6 py-2.5 bg-neutral-900 text-white font-bold rounded-full hover:bg-emerald-600 transition-colors text-sm">
             <LogOut className="h-4 w-4" /> Log Out
           </button>
+          <NotificationOptIn />
         </div>
 
         <div>
@@ -134,7 +136,7 @@ const AuthPage = () => {
     setBusy(true);
     try {
       const loggedInUser = await loginWithGoogle();
-      toast({ title: "Welcome to Puff2Door!" });
+      toast({ title: "Welcome to HD Smoke Shop!" });
       navigate(loggedInUser?.role === "admin" ? "/admin" : "/my-account");
     } catch (err) {
       fail("Google sign-in failed", err);
@@ -161,7 +163,7 @@ const AuthPage = () => {
     setBusy(true);
     try {
       const created = await register(reg);
-      toast({ title: "Account created", description: created.signupBonusPoints ? `Welcome to Puff2Door! ${created.signupBonusPoints} bonus rewards points were added to your account.` : "Welcome to Puff2Door!" });
+      toast({ title: "Account created", description: created.signupBonusPoints ? `Welcome to HD Smoke Shop! ${created.signupBonusPoints} bonus rewards points were added to your account.` : "Welcome to HD Smoke Shop!" });
       navigate("/my-account");
     } catch (err) {
       fail("Registration failed", err);
@@ -293,7 +295,7 @@ const AuthPage = () => {
             <div><label className="block text-sm font-medium mb-1.5">Town / City <span className="text-red-500">*</span></label><input required data-testid="register-city" className={inputCls} value={reg.city} onChange={(e) => setReg({ ...reg, city: e.target.value })} /></div>
             <div><label className="block text-sm font-medium mb-1.5">ZIP Code <span className="text-red-500">*</span></label><input required data-testid="register-zip" className={inputCls} value={reg.zip} onChange={(e) => setReg({ ...reg, zip: e.target.value })} /></div>
             <div><label className="block text-sm font-medium mb-1.5">USA Phone <span className="text-red-500">*</span></label><input required data-testid="register-phone" className={inputCls} value={reg.phone} onChange={(e) => setReg({ ...reg, phone: e.target.value })} /></div>
-            <p className="sm:col-span-2 text-xs text-neutral-500">Your personal data will be used to support your experience throughout this website and for purposes described in our privacy policy.</p>
+            <p className="sm:col-span-2 text-xs text-neutral-500">Your personal data will be used to support your experience throughout this website as described in our <Link to="/privacy-policy" className="font-semibold text-emerald-700 hover:underline">Privacy Policy</Link>. By registering, you agree to the <Link to="/terms" className="font-semibold text-emerald-700 hover:underline">Terms &amp; Conditions</Link>.</p>
             <button disabled={busy} data-testid="register-submit" className="sm:col-span-2 py-3 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors disabled:opacity-60">{busy ? "Creating..." : "Register"}</button>
           </form>
         )}

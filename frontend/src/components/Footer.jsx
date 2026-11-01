@@ -27,13 +27,11 @@ const Footer = () => {
         </div>
       </div>
 
-      <div className="max-w-[1280px] mx-auto px-4 py-14 grid grid-cols-1 md:grid-cols-4 gap-10">
+      <div className="max-w-[1280px] mx-auto px-4 py-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-10">
         <div>
           <div className="flex items-center gap-2 mb-4">
             <AnimatedLogo testId="footer-logo" className="h-10 w-10" />
-            <span className="font-heading font-700 text-xl text-white">
-              Puff<span className="p2d-logo-accent text-emerald-500">2</span>Door
-            </span>
+            <span className="font-heading font-700 text-xl text-white">H<span className="p2d-logo-accent text-emerald-500">D</span> Smoke Shop</span>
           </div>
           <p className="text-sm leading-relaxed text-neutral-400">
             Your one-stop shop for disposable vapes, delta, kratom, glass, papers and
@@ -46,7 +44,7 @@ const Footer = () => {
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label={`Puff2Door on ${name}`}
+                aria-label={`HD Smoke Shop on ${name}`}
                 data-testid={`social-${name.toLowerCase()}`}
                 className="grid place-items-center h-9 w-9 rounded-full bg-neutral-800 hover:bg-emerald-600 transition-colors"
               >
@@ -88,11 +86,22 @@ const Footer = () => {
             <li className="flex items-start gap-3"><MapPin className="h-4 w-4 text-emerald-500 mt-0.5" /> {BRAND.address}</li>
           </ul>
         </div>
+
+        <div>
+          <p className="font-heading text-white text-base tracking-wide mb-4 uppercase">Policies</p>
+          <ul className="space-y-2.5 text-sm">
+            <li><Link to="/privacy-policy" className="hover:text-emerald-400 transition-colors">Privacy Policy</Link></li>
+            <li><Link to="/terms" className="hover:text-emerald-400 transition-colors">Terms &amp; Conditions</Link></li>
+            <li><Link to="/delivery-policy" className="hover:text-emerald-400 transition-colors">Delivery Policy</Link></li>
+            <li><Link to="/refund-policy" className="hover:text-emerald-400 transition-colors">Refund &amp; Return Policy</Link></li>
+            <li><Link to="/age-and-id-policy" className="hover:text-emerald-400 transition-colors">Age &amp; ID Policy</Link></li>
+          </ul>
+        </div>
       </div>
 
       <div className="border-t border-neutral-800">
         <div className="max-w-[1280px] mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-neutral-500">
-          <p>© {new Date().getFullYear()} Puff2Door. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} HD Smoke Shop. All rights reserved.</p>
           <p className="text-center">These products are not intended to diagnose, treat, cure or prevent any disease. Keep out of reach of children.</p>
           {user?.role === "admin" && <Link to="/admin" data-testid="footer-admin-link" className="font-bold text-amber-300 hover:text-amber-200">Admin Panel</Link>}
         </div>

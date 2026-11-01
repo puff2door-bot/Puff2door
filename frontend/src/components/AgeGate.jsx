@@ -1,7 +1,7 @@
 import React from "react";
-import { Leaf } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { BRAND } from "../mock";
+import AnimatedLogo from "./AnimatedLogo";
 
 const AgeGate = () => {
   const { ageVerified, verifyAge } = useApp();
@@ -11,11 +11,9 @@ const AgeGate = () => {
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-neutral-900/95 backdrop-blur-sm px-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-fade-up">
         <div className="bg-neutral-900 py-8 flex flex-col items-center">
-          <span className="grid place-items-center h-14 w-14 rounded-full bg-emerald-600 mb-3">
-            <Leaf className="h-8 w-8 text-white" />
-          </span>
+          <AnimatedLogo className="h-14 w-14 mb-3" />
           <span className="font-heading font-700 text-3xl text-white">
-            Puff<span className="text-emerald-500">2</span>Door
+            H<span className="p2d-logo-accent text-emerald-500">D</span> Smoke Shop
           </span>
           <span className="text-[10px] tracking-[0.28em] text-neutral-400 uppercase mt-1">{BRAND.tagline}</span>
         </div>

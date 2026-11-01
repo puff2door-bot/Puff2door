@@ -28,7 +28,7 @@ const SquarePayment = ({ config, mode, total, onReady, onCashAppToken, onError }
             return result.token;
           });
         } else {
-          const request = payments.paymentRequest({ countryCode: "US", currencyCode: "USD", total: { amount: totalRef.current.toFixed(2), label: "Puff2Door order" } });
+          const request = payments.paymentRequest({ countryCode: "US", currencyCode: "USD", total: { amount: totalRef.current.toFixed(2), label: "HD Smoke Shop order" } });
           const cash = await payments.cashAppPay(request, { redirectURL: window.location.href, referenceId: `p2d-${Date.now()}` });
           await cash.attach("#cash-app-pay-container", { shape: "semiround", width: "full" });
           cash.addEventListener("ontokenization", ({ detail }) => {

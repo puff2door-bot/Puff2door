@@ -37,7 +37,7 @@ const ProductDetail = () => {
   if (!product) {
     return (
       <div className="max-w-[1280px] mx-auto px-4 py-24 text-center">
-        <Seo noindex title="Product not found | Puff2door" description="This product is no longer available." />
+        <Seo noindex title="Product not found | HD Smoke Shop" description="This product is no longer available." />
         <h1 className="font-heading text-3xl mb-3">Product not found</h1>
         <Link to="/shop" className="text-emerald-600 font-bold">Back to Shop</Link>
       </div>
@@ -84,7 +84,7 @@ const ProductDetail = () => {
 
   return (
     <div className="max-w-[1280px] mx-auto px-4 py-8">
-      <Seo title={`${titleCase(product.name)} | Puff2door`} description={productSeoDescription(product)} path={`/shop/${product.slug}`} image={imgAbs(product.image)} type="product" jsonLd={jsonLd} />
+      <Seo title={`${titleCase(product.name)} | HD Smoke Shop`} description={productSeoDescription(product)} path={`/shop/${product.slug}`} image={imgAbs(product.image)} type="product" jsonLd={jsonLd} />
       <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-neutral-500 mb-6 flex-wrap">
         <Link to="/" className="hover:text-emerald-600">Home</Link>
         <ChevronRight className="h-3.5 w-3.5" />
@@ -97,7 +97,7 @@ const ProductDetail = () => {
         {/* Gallery */}
         <div>
           <div className="aspect-square bg-neutral-50 border border-neutral-200 rounded-xl overflow-hidden grid place-items-center p-6">
-            <img src={imgUrl(gallery[activeImg])} alt={`${titleCase(product.name)} – ${titleCase(product.category)} from Puff2door`} width="600" height="600" fetchPriority="high" className="max-h-full max-w-full object-contain" />
+            <img src={imgUrl(gallery[activeImg])} alt={`${titleCase(product.name)} – ${titleCase(product.category)} from HD Smoke Shop`} width="600" height="600" fetchPriority="high" className="max-h-full max-w-full object-contain" />
           </div>
           {gallery.length > 1 && (
             <div className="flex gap-3 mt-4">

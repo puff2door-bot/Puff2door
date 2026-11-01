@@ -73,7 +73,7 @@ const Thread = ({ data, onSent }) => {
           <div key={m.id} data-testid={`chat-msg-${m.sender}`} className={`flex ${m.sender === "customer" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${m.sender === "customer" ? "bg-emerald-600 text-white rounded-br-sm" : "bg-white border border-neutral-200 text-neutral-800 rounded-bl-sm"}`}>
               <p className="whitespace-pre-wrap break-words">{m.text}</p>
-              <p className={`text-[10px] mt-1 ${m.sender === "customer" ? "text-emerald-100" : "text-neutral-400"}`}>{m.sender === "customer" ? "You" : "Puff2door"} · {fmtTime(m.createdAt)}</p>
+              <p className={`text-[10px] mt-1 ${m.sender === "customer" ? "text-emerald-100" : "text-neutral-400"}`}>{m.sender === "customer" ? "You" : "HD Smoke Shop"} · {fmtTime(m.createdAt)}</p>
             </div>
           </div>
         ))}
@@ -143,7 +143,7 @@ const ChatWidget = () => {
         <div data-testid="chat-window" className="fixed z-[60] inset-x-0 bottom-0 sm:inset-auto sm:bottom-6 sm:right-6 sm:w-[380px] h-[85vh] sm:h-[560px] sm:max-h-[calc(100vh-48px)] bg-white sm:rounded-2xl shadow-2xl border border-neutral-200 flex flex-col overflow-hidden">
           <div className="bg-neutral-900 text-white px-4 py-3 flex items-center justify-between gap-3">
             <div>
-              <p className="font-heading text-lg uppercase tracking-wide leading-none">Puff<span className="text-emerald-500">2</span>Door Support</p>
+              <p className="font-heading text-lg uppercase tracking-wide leading-none">H<span className="p2d-logo-accent text-emerald-500">D</span> Smoke Shop Support</p>
               <p className="text-[11px] text-neutral-400 mt-0.5">{status.online ? "We usually reply in a few minutes" : "We'll reply by email or phone"}</p>
             </div>
             <div className="flex items-center gap-2">

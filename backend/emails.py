@@ -43,7 +43,7 @@ def layout(title: str, body: str, preheader: str = "") -> str:
 <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;">
 <tr><td style="background:#0a0a0a;padding:22px 32px;">
   <img src="{_public_url}/img/logo.png" alt="" width="40" height="40" style="vertical-align:middle;border-radius:50%;margin-right:10px;">
-  <span style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;vertical-align:middle;">Puff<span style="color:#10b981;">2</span>Door</span>
+  <span style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;vertical-align:middle;">H<span style="color:#059669;">D</span> Smoke Shop</span>
   <span style="display:block;font-size:10px;letter-spacing:3px;color:#a3a3a3;text-transform:uppercase;margin-top:2px;">Puffs delivered to your door</span>
 </td></tr>
 <tr><td style="padding:32px;">
@@ -52,7 +52,7 @@ def layout(title: str, body: str, preheader: str = "") -> str:
 </td></tr>
 <tr><td style="padding:20px 32px;background:#fafafa;border-top:1px solid #e5e5e5;font-size:12px;color:#737373;line-height:1.6;">
   Questions? Reply to this email or reach us at puff2door@gmail.com · (407) 625-6826.<br>
-  You must be 21+ to purchase. Puff2Door · 481 N State Rd 434, Altamonte Springs, FL 32714.
+  You must be 21+ to purchase. HD Smoke Shop · 481 N State Rd 434, Altamonte Springs, FL 32714.
 </td></tr>
 </table></td></tr></table></body></html>"""
 
@@ -70,7 +70,7 @@ def items_table(order: dict) -> str:
     ship = "FREE" if not order.get("shippingCost") else _money(order["shippingCost"])
     tax_row = f'<tr><td style="padding:4px 0;font-size:14px;color:#737373;">Sales tax ({order.get("taxRate", 0) * 100:g}%)</td><td align="right" style="padding:4px 0;font-size:14px;">{_money(order["tax"])}</td></tr>' if order.get("tax") else ""
     disc_row = f'<tr><td style="padding:4px 0;font-size:14px;color:#059669;">Discount {escape(order.get("promoCode") or "")}</td><td align="right" style="padding:4px 0;font-size:14px;color:#059669;">-{_money(order["discount"])}</td></tr>' if order.get("discount") else ""
-    reward_row = f'<tr><td style="padding:4px 0;font-size:14px;color:#059669;">Puff2door Rewards ({order.get("rewardPoints", 0)} pts)</td><td align="right" style="padding:4px 0;font-size:14px;color:#059669;">-{_money(order["rewardDiscount"])}</td></tr>' if order.get("rewardDiscount") else ""
+    reward_row = f'<tr><td style="padding:4px 0;font-size:14px;color:#059669;">HD Smoke Shop Rewards ({order.get("rewardPoints", 0)} pts)</td><td align="right" style="padding:4px 0;font-size:14px;color:#059669;">-{_money(order["rewardDiscount"])}</td></tr>' if order.get("rewardDiscount") else ""
     tip_row = f'<tr><td style="padding:4px 0;font-size:14px;color:#737373;">Driver tip</td><td align="right" style="padding:4px 0;font-size:14px;">{_money(order["tip"])}</td></tr>' if order.get("tip") else ""
     return f"""<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0;">{rows}
 <tr><td style="padding:8px 0;font-size:14px;color:#737373;">Subtotal</td><td align="right" style="padding:8px 0;font-size:14px;">{_money(order["subtotal"])}</td></tr>
@@ -99,7 +99,7 @@ def address_block(s: dict) -> str:
 PAY_LABEL = {"square": "card", "cash_app": "Cash App Pay", "paypal": "PayPal", "apple_pay": "Apple Pay", "zelle": "Zelle", "test_card": "test card"}
 STATUS_COPY = {
     "confirmed": ("Your order is confirmed", "We've received your payment and are getting your order ready."),
-    "out_for_delivery": ("Your order is out for delivery", "Your Puff2Door order is on its way. Keep your ID handy — deliveries are 21+ only."),
+    "out_for_delivery": ("Your order is out for delivery", "Your HD Smoke Shop order is on its way. Keep your ID handy — deliveries are 21+ only."),
     "delivered": ("Your order has been delivered", "Enjoy! If anything isn't right, just reply to this email."),
 }
 
@@ -141,7 +141,7 @@ def rewards_box(rewards: Optional[dict]) -> str:
     if not rewards or not rewards.get("earned"):
         return ""
     return f"""<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px 18px;margin:16px 0;">
-<p style="margin:0 0 4px;font-weight:800;color:#065f46;">You earned {rewards["earned"]:,} Puff2door Rewards points!</p>
+<p style="margin:0 0 4px;font-weight:800;color:#065f46;">You earned {rewards["earned"]:,} HD Smoke Shop Rewards points!</p>
 <p style="margin:0;font-size:13px;color:#374151;">Your balance is now <strong>{rewards["balance"]:,} points</strong> (worth {_money(rewards["value"])}). Every {rewards.get("pointsPerReward", 100)} points = {_money(rewards.get("rewardValue", 5))} off at checkout.</p>
 </div>"""
 
@@ -239,7 +239,7 @@ async def send_status_update(order: dict, status: str):
 
 async def send_password_reset(email: str, first_name: str, token: str, minutes: int):
     link = f"{_public_url}/my-account?reset_token={token}"
-    title = "Reset your Puff2Door password"
+    title = "Reset your HD Smoke Shop password"
     body = f'<p style="font-size:15px;line-height:1.6;color:#374151;">Hi {escape(first_name or "there")}, click below to choose a new password. This link expires in {minutes} minutes. If you didn\'t request this, you can ignore this email.</p>'
     body += f'<p style="margin:24px 0;">{button("Reset password", link)}</p>'
     body += f'<p style="font-size:12px;color:#9ca3af;word-break:break-all;">{escape(link)}</p>'

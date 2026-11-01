@@ -1,9 +1,9 @@
-// Mock data for Puff2Door - Online Smoke & Vape Shop
+// Mock data for HD Smoke Shop - Online Smoke & Vape Shop
 // Product images reused from public reference for realism.
 
 export const BRAND = {
-  name: "Puff2Door",
-  tagline: "Puffs Delivered To Your Door",
+  name: "HD Smoke Shop",
+  tagline: "Puffs Delivered To You",
   phone: "(407) 625-6826",
   email: "puff2door@gmail.com",
   address: "481 N State Rd 434, Altamonte Springs, FL 32714",
@@ -115,7 +115,7 @@ const p = (name, category, categorySlug, price, image, image2 = null, brand = ""
     rating: 4 + Math.round(Math.random() * 10) / 10,
     inStock: !OUT_OF_STOCK.has(name),
     description:
-      "Premium quality " + category.toLowerCase() + " available for fast, discreet delivery from Puff2Door. Lab-tested, sealed, and ready to enjoy. Must be 21 or older to purchase.",
+      "Premium quality " + category.toLowerCase() + " available for fast, discreet delivery from HD Smoke Shop. Lab-tested, sealed, and ready to enjoy. Must be 21 or older to purchase.",
   };
 };
 

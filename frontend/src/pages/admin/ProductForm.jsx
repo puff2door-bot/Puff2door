@@ -58,7 +58,7 @@ export const ImageField = ({ label, value, onChange, testId }) => {
 
 export const emptyProduct = {
   name: "", category: "", categorySlug: "", price: "", salePrice: "", image: "", image2: "",
-  brand: "", brandName: "", flavors: [], puffs: "", stock: 0, active: true, description: "",
+  brand: "", brandName: "", flavors: [], puffs: "", stock: 0, sku: "", barcode: "", active: true, description: "",
   complianceCategory: "regulated", minimumAge: 21, requiresIdAtDelivery: true, localDeliveryOnly: true,
   allowedStates: [], blockedStates: [],
 };
@@ -114,9 +114,16 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
       brandName: f.brandName || f.name.split(" ")[0],
     };
     delete payload.id; delete payload.slug; delete payload.inStock; delete payload.rating; delete payload.restockNotified;
+    delete payload.cloverItemId; delete payload.cloverLastSyncedAt; delete payload.cloverLastPushedAt; delete payload.cloverSyncError; delete payload.cloverSync;
     try {
       const { data } = isEdit ? await api.put(`/admin/products/${initial.id}`, payload) : await api.post("/admin/products", payload);
-      toast({ title: isEdit ? "Product updated" : "Product created", description: data.restockNotified ? `${data.restockNotified} customer(s) notified of restock` : data.name });
+      const clover = data.cloverSync || {};
+      if (["failed", "partial"].includes(clover.status)) {
+        toast({ title: "Product saved — Clover needs a retry", description: clover.error || "Open Clover Inventory to retry the sync.", variant: "destructive" });
+      } else {
+        const cloverText = clover.status === "success" ? (clover.action === "create" ? " Created in Clover." : " Clover updated.") : "";
+        toast({ title: isEdit ? "Product updated" : "Product created", description: (data.restockNotified ? `${data.restockNotified} customer(s) notified of restock.` : data.name) + cloverText });
+      }
       onSaved(data);
     } catch (err) {
       const d = err?.response?.data?.detail;
@@ -182,6 +189,18 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
             <label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Puff count</label>
             <input type="number" min="0" step="1" data-testid="pf-puffs" className={inputCls} placeholder="e.g. 25000" value={f.puffs} onChange={(e) => set("puffs", e.target.value)} />
           </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">SKU</label>
+            <input data-testid="pf-sku" className={inputCls} placeholder="Exact Clover SKU" value={f.sku || ""} onChange={(e) => set("sku", e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Barcode / UPC</label>
+            <input data-testid="pf-barcode" className={inputCls} placeholder="Exact Clover barcode" value={f.barcode || ""} onChange={(e) => set("barcode", e.target.value)} />
+          </div>
+          <p className="sm:col-span-2 text-xs text-neutral-600">Clover can safely match this product when the SKU or barcode is exact and unique.{f.cloverItemId ? ` Connected to Clover item ${f.cloverItemId}.` : ""}</p>
         </div>
 
         <ImageField label="Main photo" value={f.image} onChange={(v) => set("image", v)} testId="pf-image" />

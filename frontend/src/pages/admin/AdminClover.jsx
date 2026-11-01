@@ -1,0 +1,166 @@
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { CheckCircle2, CircleAlert, ExternalLink, Link2, PackagePlus, RefreshCw, Store, Unplug } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import api from "../../api";
+import { useToast } from "../../hooks/use-toast";
+
+const when = (value) => value ? new Date(value).toLocaleString() : "Never";
+
+const AdminClover = () => {
+  const [status, setStatus] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [choice, setChoice] = useState({});
+  const [busy, setBusy] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { toast } = useToast();
+
+  const load = useCallback(async () => {
+    const [statusResult, logsResult, productResult] = await Promise.all([
+      api.get("/admin/clover/status"),
+      api.get("/admin/clover/logs"),
+      api.get("/admin/products"),
+    ]);
+    setStatus(statusResult.data);
+    setLogs(logsResult.data.logs || []);
+    setProducts(productResult.data.products || []);
+  }, []);
+
+  useEffect(() => {
+    load().catch((error) => toast({ title: "Could not load Clover", description: error?.response?.data?.detail || "Try again.", variant: "destructive" }));
+  }, [load, toast]);
+
+  useEffect(() => {
+    const result = searchParams.get("clover");
+    if (!result) return;
+    toast({
+      title: result === "connected" ? "Clover connected" : "Clover connection did not finish",
+      description: result === "connected" ? "The first inventory sync is starting." : "Return here and try Connect Clover again.",
+      variant: result === "connected" ? "default" : "destructive",
+    });
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams, toast]);
+
+  const unlinkedProducts = useMemo(() => products.filter((product) => !product.cloverItemId), [products]);
+
+  const run = async (key, action, success) => {
+    setBusy(key);
+    try {
+      await action();
+      await load();
+      toast({ title: success });
+    } catch (error) {
+      toast({ title: "Clover action failed", description: error?.response?.data?.detail || "Try again.", variant: "destructive" });
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const connect = () => run("connect", async () => {
+    const { data } = await api.post("/admin/clover/connect-url");
+    window.location.assign(data.url);
+  }, "Opening Clover");
+
+  const sync = () => run("sync", () => api.post("/admin/clover/sync"), "Inventory synced from Clover");
+
+  const link = (item) => {
+    const productId = Number(choice[item.id]);
+    if (!productId) {
+      toast({ title: "Choose a HD Smoke Shop product first", variant: "destructive" });
+      return;
+    }
+    run(`link-${item.id}`, () => api.post("/admin/clover/link", { productId, cloverItemId: item.id }), "Product connected to Clover");
+  };
+
+  const importItem = (item) => run(`import-${item.id}`, () => api.post("/admin/clover/import", { cloverItemId: item.id }), "Item imported as a hidden draft");
+
+  const disconnect = () => {
+    if (!window.confirm("Disconnect Clover inventory sync? Product links stay saved so they can be reused after reconnecting.")) return;
+    run("disconnect", () => api.post("/admin/clover/disconnect"), "Clover disconnected");
+  };
+
+  if (!status) return <div className="py-16 text-center text-neutral-500">Loading Clover inventory…</div>;
+
+  const summary = status.lastSyncSummary || {};
+  return (
+    <div data-testid="admin-clover">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-7">
+        <div>
+          <h1 className="font-heading text-3xl uppercase tracking-tight">Clover Inventory</h1>
+          <p className="text-sm text-neutral-500 mt-1">Keep HD Smoke Shop stock aligned with your Clover store without a third-party monthly subscription.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {status.connected && <button onClick={sync} disabled={Boolean(busy)} className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${busy === "sync" ? "animate-spin" : ""}`} /> Sync now</button>}
+          {!status.connected && <button onClick={connect} disabled={Boolean(busy) || !status.configured} className="inline-flex items-center gap-2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"><ExternalLink className="h-4 w-4" /> Connect Clover</button>}
+        </div>
+      </div>
+
+      {!status.configured && (
+        <section className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-neutral-900">
+          <div className="flex gap-3"><CircleAlert className="h-5 w-5 shrink-0 text-amber-600" /><div><h2 className="font-bold">One secure setup step remains</h2><p className="mt-1 text-sm text-neutral-700">Create a private Clover app, then add the App ID and App Secret to Render's secure environment settings. Secrets are never shown or saved in this browser.</p><p className="mt-2 text-xs font-semibold">Missing: {status.missingSetup.join(", ") || "Clover credentials"}</p></div></div>
+        </section>
+      )}
+
+      {status.productsNeedingRetry > 0 && (
+        <section className="mb-6 rounded-2xl border border-red-300 bg-red-50 p-5 text-red-800">
+          <div className="flex gap-3"><CircleAlert className="h-5 w-5 shrink-0" /><div><h2 className="font-bold">{status.productsNeedingRetry} product{status.productsNeedingRetry === 1 ? "" : "s"} need a Clover retry</h2><p className="mt-1 text-sm">Open Products and use the retry icon, or correct the item and save it again. The website copy remains safely saved.</p></div></div>
+        </section>
+      )}
+
+      <section className={`mb-6 rounded-2xl border p-5 ${status.connected ? "border-emerald-300 bg-emerald-50/60" : "border-neutral-200"}`}>
+        <div className="flex flex-col md:flex-row md:items-center gap-4">
+          <div className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${status.connected ? "bg-emerald-600 text-white" : "bg-neutral-100 text-neutral-500"}`}><Store className="h-6 w-6" /></div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2"><h2 className="font-bold text-lg">{status.connected ? status.merchantName || "Clover store connected" : "Clover is not connected"}</h2>{status.connected && <CheckCircle2 className="h-5 w-5 text-emerald-600" />}</div>
+            <p className="text-sm text-neutral-600">{status.connected ? `Merchant ${status.merchantId} · ${status.environment}` : "Connect once to authorize secure inventory access."}</p>
+          </div>
+          {status.connected && <button onClick={disconnect} disabled={Boolean(busy)} className="inline-flex items-center gap-2 text-xs font-bold text-red-600 hover:underline disabled:opacity-50"><Unplug className="h-4 w-4" /> Disconnect</button>}
+        </div>
+      </section>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <div className="rounded-xl border p-4"><p className="text-xs uppercase tracking-wide text-neutral-500">Website products</p><p className="font-heading text-3xl mt-1">{status.totalProducts}</p></div>
+        <div className="rounded-xl border p-4"><p className="text-xs uppercase tracking-wide text-neutral-500">Connected</p><p className="font-heading text-3xl mt-1 text-emerald-600">{status.linkedProducts}</p></div>
+        <div className="rounded-xl border p-4"><p className="text-xs uppercase tracking-wide text-neutral-500">Needs review</p><p className="font-heading text-3xl mt-1">{status.unmatchedItems.length}</p></div>
+        <div className="rounded-xl border p-4"><p className="text-xs uppercase tracking-wide text-neutral-500">Stock changes</p><p className="font-heading text-3xl mt-1">{summary.stockChanges || 0}</p></div>
+      </div>
+
+      <section className="rounded-2xl border p-5 mb-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+          <div><h2 className="font-bold">Sync health</h2><p className="text-sm text-neutral-500">Last sync: {when(status.lastSyncAt)}</p></div>
+          <span className={`self-start rounded-full px-3 py-1 text-xs font-bold ${status.lastSyncStatus === "success" ? "bg-emerald-100 text-emerald-700" : status.lastSyncStatus === "failed" ? "bg-red-100 text-red-700" : "bg-neutral-100 text-neutral-600"}`}>{status.lastSyncStatus}</span>
+        </div>
+        {status.lastSyncError && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{status.lastSyncError}</p>}
+        <div className="mt-4 grid gap-2 text-xs text-neutral-600">
+          <p><span className="font-bold text-neutral-900">Webhook URL:</span> <code className="break-all">{status.webhookUrl}</code></p>
+          <p><span className="font-bold text-neutral-900">Redirect URL:</span> <code className="break-all">{status.redirectUri}</code></p>
+          {status.webhookVerificationCode && <p><span className="font-bold text-neutral-900">Clover verification code:</span> <code>{status.webhookVerificationCode}</code></p>}
+          <p className={status.webhookAuthConfigured ? "text-emerald-700" : "text-amber-700"}>{status.webhookAuthConfigured ? "Webhook authentication is configured." : "Add the Clover webhook auth code before enabling live webhooks."}</p>
+        </div>
+      </section>
+
+      {status.unmatchedItems.length > 0 && (
+        <section className="rounded-2xl border overflow-hidden mb-6">
+          <div className="p-5 border-b"><h2 className="font-bold">Clover items that need review</h2><p className="text-sm text-neutral-500 mt-1">Connect an item to an existing product, or import it as a hidden draft to review before publishing.</p></div>
+          <div className="divide-y">
+            {status.unmatchedItems.map((item) => (
+              <div key={item.id} className="p-4 grid gap-3 lg:grid-cols-[1fr_220px_auto_auto] lg:items-center">
+                <div><p className="font-semibold">{item.name}</p><p className="text-xs text-neutral-500">SKU {item.sku || "—"} · Barcode {item.barcode || "—"} · ${Number(item.price || 0).toFixed(2)} · {item.stock} in stock</p></div>
+                <select value={choice[item.id] || ""} onChange={(event) => setChoice((old) => ({ ...old, [item.id]: event.target.value }))} className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"><option value="">Choose existing product…</option>{unlinkedProducts.map((product) => <option key={product.id} value={product.id}>{product.name} (#{product.id})</option>)}</select>
+                <button onClick={() => link(item)} disabled={Boolean(busy)} className="inline-flex items-center justify-center gap-1 rounded-full border px-4 py-2 text-xs font-bold disabled:opacity-50"><Link2 className="h-3.5 w-3.5" /> Connect</button>
+                <button onClick={() => importItem(item)} disabled={Boolean(busy)} className="inline-flex items-center justify-center gap-1 rounded-full bg-neutral-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-50"><PackagePlus className="h-3.5 w-3.5" /> Import draft</button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="rounded-2xl border overflow-hidden">
+        <div className="p-5 border-b"><h2 className="font-bold">Recent sync activity</h2></div>
+        {!logs.length ? <p className="p-5 text-sm text-neutral-500">No Clover activity yet.</p> : <div className="divide-y">{logs.slice(0, 20).map((log) => <div key={log.id} className="p-4 flex items-start justify-between gap-4"><div><p className="text-sm font-semibold capitalize">{String(log.action || "sync").replaceAll("_", " ")}</p><p className="text-xs text-neutral-500">{log.error || (log.productId ? `Product #${log.productId}` : "Completed")}</p></div><div className="text-right"><span className={`text-xs font-bold ${log.status === "success" ? "text-emerald-600" : "text-red-600"}`}>{log.status}</span><p className="text-[11px] text-neutral-400">{when(log.createdAt)}</p></div></div>)}</div>}
+      </section>
+    </div>
+  );
+};
+
+export default AdminClover;

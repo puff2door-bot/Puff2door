@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import api, { getToken } from "../api";
 import { ecommerce } from "../seo/Analytics";
 
@@ -42,14 +42,30 @@ export const CartProvider = ({ children }) => {
   const [delivery, setDelivery] = useState(DEFAULT_DELIVERY);
   const [loyalty, setLoyalty] = useState(DEFAULT_LOYALTY);
   const [presentation, setPresentation] = useState({ homepageLayout: "classic" });
+  const [trust, setTrust] = useState({ googleReviewUrl: "" });
   const [redeemPoints, setRedeemPoints] = useState(0);
   const [promo, setPromo] = useState(() => {
     try { return JSON.parse(localStorage.getItem("p2d_promo")) || null; } catch { return null; }
   });
+  const settingsLoadFailed = useRef(false);
+
+  const loadSettings = useCallback(() => {
+    api.get("/settings").then(({ data }) => {
+      setPricing(data.pricing);
+      if (data.delivery) setDelivery(data.delivery);
+      if (data.loyalty) setLoyalty(data.loyalty);
+      if (data.presentation) setPresentation(data.presentation);
+      if (data.trust) setTrust(data.trust);
+      settingsLoadFailed.current = false;
+    }).catch(() => { settingsLoadFailed.current = true; });
+  }, []);
 
   useEffect(() => {
-    api.get("/settings").then(({ data }) => { setPricing(data.pricing); if (data.delivery) setDelivery(data.delivery); if (data.loyalty) setLoyalty(data.loyalty); if (data.presentation) setPresentation(data.presentation); }).catch(() => {});
-  }, []);
+    loadSettings();
+    const retryAfterWake = () => { if (settingsLoadFailed.current) loadSettings(); };
+    window.addEventListener("p2d-backend-ready", retryAfterWake);
+    return () => window.removeEventListener("p2d-backend-ready", retryAfterWake);
+  }, [loadSettings]);
 
   useEffect(() => {
     const reset = () => setRedeemPoints(0);
@@ -137,7 +153,7 @@ export const CartProvider = ({ children }) => {
 
   return (
     <CartContext.Provider
-      value={{ items, addItem, removeItem, updateQty, clearCart, count, subtotal, toServerItem, pricing, delivery, presentation, promo, applyPromo, removePromo, totals, loyalty, redeemPoints, setRedeemPoints }}
+      value={{ items, addItem, removeItem, updateQty, clearCart, count, subtotal, toServerItem, pricing, delivery, presentation, trust, promo, applyPromo, removePromo, totals, loyalty, redeemPoints, setRedeemPoints }}
     >
       {children}
     </CartContext.Provider>
@@ -145,7 +161,7 @@ export const CartProvider = ({ children }) => {
 };
 
 export const DEFAULT_PRICING = { taxRate: 0.065, taxLabel: "Sales tax (6.5%)", deliveryFee: 15, freeDeliveryMin: 99 };
-export const DEFAULT_DELIVERY = { zip: "32832", radiusMiles: 20, allowedZipCodes: [], mode: "radius" };
+export const DEFAULT_DELIVERY = { zip: "32832", radiusMiles: 20, allowedZipCodes: [], mode: "radius", sameDayEnabled: null };
 export const DEFAULT_LOYALTY = { enabled: true, pointsPerDollar: 1, pointsPerReward: 100, rewardValue: 5, minRedeemPoints: 100, maxRedeemPerOrder: 0, minPurchaseForRedeem: 0 };
 
 export const promoDiscount = (promo, subtotal) => {

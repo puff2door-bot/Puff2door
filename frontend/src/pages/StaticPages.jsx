@@ -12,8 +12,8 @@ export const BrandsPage = () => {
   return (
     <div className="max-w-[1280px] mx-auto px-4 py-10">
       <Seo
-        title="Vape & Smoke Shop Brands | Puff2door"
-        description="Browse every vape and smoke shop brand carried by Puff2door, including Geek Bar, Lost Mary, Fume, Hidden Hills and more. Order online for local delivery in the Orlando area."
+        title="Vape & Smoke Shop Brands | HD Smoke Shop"
+        description="Browse every vape and smoke shop brand carried by HD Smoke Shop, including Geek Bar, Lost Mary, Fume, Hidden Hills and more. Order online for local delivery in the Orlando area."
         path="/brands"
         jsonLd={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Brands", path: "/brands" }])}
       />
@@ -45,14 +45,14 @@ export const AboutPage = () => {
   return (
     <div className="max-w-[1280px] mx-auto px-4 py-10">
       <Seo
-        title="About Puff2door | Online Smoke Shop in Orlando, FL"
-        description="Puff2door is an online smoke shop offering vapes, delta products, glass and smoke shop essentials with local delivery in the Orlando, Florida area. Learn how we work."
+        title="About HD Smoke Shop | Online Smoke Shop in Orlando, FL"
+        description="HD Smoke Shop is an online smoke shop offering vapes, delta products, glass and smoke shop essentials with local delivery in the Orlando, Florida area. Learn how we work."
         path="/about"
         jsonLd={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "About", path: "/about" }])}
       />
       <div className="relative overflow-hidden rounded-2xl bg-neutral-900 px-8 py-16 mb-12 text-center">
         <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-emerald-600/20 blur-2xl" />
-        <h1 className="font-heading text-4xl sm:text-5xl font-700 text-white uppercase tracking-tight relative">About Puff2Door</h1>
+        <h1 className="font-heading text-4xl sm:text-5xl font-700 text-white uppercase tracking-tight relative">About HD Smoke Shop</h1>
         <p className="text-neutral-300 max-w-2xl mx-auto mt-4 relative">Puffs delivered to your door. We're an online smoke &amp; vape shop serving the Orlando area with disposables, delta products, kratom, glass and everything in between.</p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-14">
@@ -65,12 +65,12 @@ export const AboutPage = () => {
         ))}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
-        <img src="/img/hero-raz.webp" alt="Disposable vapes available from Puff2door" loading="lazy" width="1264" height="848" className="rounded-xl w-full h-full object-cover" />
+        <img src="/img/hero-raz.webp" alt="Disposable vapes available from HD Smoke Shop" loading="lazy" width="1264" height="848" className="rounded-xl w-full h-full object-cover" />
         <div>
           <span className="block h-1 w-12 bg-emerald-600 mb-4 rounded-full" />
           <h2 className="font-heading text-3xl font-700 uppercase mb-4">Your Online Smoke Shop in Orlando</h2>
           <p className="text-neutral-600 leading-relaxed mb-4">Founded with a simple mission — make popular smoke and vape products easy to order online and deliver them fast. We stock products across {activeCategories.length} categories from well-known brands, and everything is ordered through this website for local delivery rather than a walk-in storefront.</p>
-          <p className="text-neutral-600 leading-relaxed mb-6">Whether you're after the latest 25K disposable, THCA flower, gummies or a classic glass piece, Puff2Door has you covered — with age-verified checkout and discreet delivery.</p>
+          <p className="text-neutral-600 leading-relaxed mb-6">Whether you're after the latest 25K disposable, THCA flower, gummies or a classic glass piece, HD Smoke Shop has you covered — with age-verified checkout and discreet delivery.</p>
           <Link to="/shop" className="inline-block px-7 py-3 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors">Shop All Products</Link>
         </div>
       </div>

@@ -39,10 +39,12 @@ const ProductCard = ({ product }) => {
       <Link to={`/shop/${product.slug}`} className="block relative aspect-square bg-neutral-50 overflow-hidden">
         <img
           src={imgUrl(product.image)}
-          alt={`${product.name} – ${product.category} from Puff2door`}
+          alt={`${product.name} – ${product.category} from HD Smoke Shop`}
           loading="lazy"
+          decoding="async"
           width="300"
           height="300"
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px"
           className={`product-card-img absolute inset-0 h-full w-full object-contain p-4 group-hover:opacity-0 ${product.inStock ? "" : "grayscale opacity-70"}`}
         />
         <img
@@ -50,6 +52,10 @@ const ProductCard = ({ product }) => {
           alt=""
           aria-hidden="true"
           loading="lazy"
+          decoding="async"
+          width="300"
+          height="300"
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px"
           className="product-card-img absolute inset-0 h-full w-full object-contain p-4 opacity-0 group-hover:opacity-100 group-hover:scale-105"
         />
         <span className="absolute top-3 left-3 bg-neutral-900/90 text-white text-[10px] font-semibold tracking-wide px-2.5 py-1 rounded-full uppercase">

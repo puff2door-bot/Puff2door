@@ -38,13 +38,16 @@ import AdminChat from "./pages/admin/AdminChat";
 import AdminOperations from "./pages/admin/AdminOperations";
 import AdminCompliance from "./pages/admin/AdminCompliance";
 import AdminAnalytics from "./pages/admin/AdminAnalytics";
+import AdminClover from "./pages/admin/AdminClover";
 import ChatWidget from "./components/chat/ChatWidget";
 import Seo, { setJsonLd } from "./seo/Seo";
 import Analytics from "./seo/Analytics";
 import MobileBottomNav from "./components/MobileBottomNav";
 import CompareTray from "./components/CompareTray";
 import PwaExperience from "./components/PwaExperience";
+import ServiceWakeBanner from "./components/ServiceWakeBanner";
 import { organizationJsonLd, websiteJsonLd } from "./seo/config";
+import { PrivacyPolicy, TermsPage, DeliveryPolicy, RefundPolicy, AgeIdPolicy } from "./pages/LegalPages";
 
 const GSC_TOKEN = (process.env.REACT_APP_GOOGLE_SITE_VERIFICATION || "").trim();
 
@@ -63,7 +66,7 @@ const SiteSeo = () => {
 
 const Private = ({ title, children }) => (
   <>
-    <Seo noindex title={`${title} | Puff2door`} description={`${title} at Puff2door.`} />
+    <Seo noindex title={`${title} | HD Smoke Shop`} description={`${title} at HD Smoke Shop.`} />
     {children}
   </>
 );
@@ -86,6 +89,11 @@ const AppRoutes = () => {
       <Route path="/delivery-area" element={<DeliveryAreaPage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/contact" element={<ContactPage />} />
+      <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/delivery-policy" element={<DeliveryPolicy />} />
+      <Route path="/refund-policy" element={<RefundPolicy />} />
+      <Route path="/age-and-id-policy" element={<AgeIdPolicy />} />
       <Route path="/cart" element={<Private title="Your Cart"><CartPage /></Private>} />
       <Route path="/wishlist" element={<Private title="Your Wishlist"><WishlistPage /></Private>} />
       <Route path="/checkout" element={<Private title="Checkout"><CheckoutPage /></Private>} />
@@ -99,6 +107,7 @@ const AppRoutes = () => {
         <Route path="operations" element={<AdminOperations />} />
         <Route path="compliance" element={<AdminCompliance />} />
         <Route path="analytics" element={<AdminAnalytics />} />
+        <Route path="clover" element={<AdminClover />} />
         <Route path="loyalty" element={<AdminLoyalty />} />
         <Route path="chat" element={<AdminChat />} />
         <Route path="alerts" element={<AdminAlerts />} />
@@ -127,6 +136,7 @@ function App() {
               <ScrollToTop />
               <AgeGate />
               <Header />
+              <ServiceWakeBanner />
               <main>
                 <AppRoutes />
               </main>

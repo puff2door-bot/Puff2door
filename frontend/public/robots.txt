@@ -1,4 +1,4 @@
-# Puff2door – https://puff2door.com
+# HD Smoke Shop – https://puff2door.com
 User-agent: *
 Allow: /
 Allow: /api/files/

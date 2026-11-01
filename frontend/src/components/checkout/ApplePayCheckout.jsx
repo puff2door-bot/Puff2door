@@ -12,7 +12,7 @@ export const buildApplePayPaymentRequest = (applePayConfig, total) => ({
   // Without requesting it, Safari can authorize the sheet but PayPal rejects
   // confirmOrder with a generic internal-server error.
   requiredBillingContactFields: ["postalAddress"],
-  total: { label: "Puff2Door", type: "final", amount: Number(total).toFixed(2) },
+  total: { label: "HD Smoke Shop", type: "final", amount: Number(total).toFixed(2) },
 });
 
 const paymentErrorMessage = (error) => {
@@ -61,7 +61,7 @@ const ApplePayCheckout = ({ config, total, createOrder, onApprove, onError, onCa
       const session = new window.ApplePaySession(4, paymentRequest);
       session.onvalidatemerchant = async (event) => {
         try {
-          const result = await applepay.validateMerchant({ validationUrl: event.validationURL, displayName: "Puff2Door" });
+          const result = await applepay.validateMerchant({ validationUrl: event.validationURL, displayName: "HD Smoke Shop" });
           session.completeMerchantValidation(result.merchantSession);
         } catch (err) {
           session.abort();

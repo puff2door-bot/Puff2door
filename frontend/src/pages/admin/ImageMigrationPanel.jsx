@@ -24,7 +24,7 @@ export const ImageMigrationPanel = ({ onChanged }) => {
     setBusy(true);
     try {
       await api.post("/admin/products/migrate-images");
-      toast({ title: "Image import started", description: "Copying product photos into Puff2door storage…" });
+      toast({ title: "Image import started", description: "Copying product photos into HD Smoke Shop storage…" });
       setTimeout(load, 500);
     } catch (e) {
       toast({ title: "Could not start", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
@@ -55,7 +55,7 @@ export const ImageMigrationPanel = ({ onChanged }) => {
             <div className="h-1.5 bg-white rounded-full mt-2 overflow-hidden"><div className="h-full bg-emerald-600 transition-all" style={{ width: `${pct}%` }} /></div>
           </>
         ) : allLocal ? (
-          <p className="font-semibold text-emerald-800" data-testid="migration-done">All product photos are hosted on Puff2door storage ({status.migratedProducts} of {status.products} products imported).{status.finishedAt && status.total > 0 ? ` Last import: ${status.migrated} image(s) copied${status.failed.length ? `, ${status.failed.length} failed` : ""}.` : ""}</p>
+          <p className="font-semibold text-emerald-800" data-testid="migration-done">All product photos are hosted on HD Smoke Shop storage ({status.migratedProducts} of {status.products} products imported).{status.finishedAt && status.total > 0 ? ` Last import: ${status.migrated} image(s) copied${status.failed.length ? `, ${status.failed.length} failed` : ""}.` : ""}</p>
         ) : (
           <p className="font-semibold text-amber-900" data-testid="migration-pending">{status.externalRemaining} product image(s) are still loaded from a third-party website. Import them so they load faster and can't disappear.</p>
         )}
@@ -69,7 +69,7 @@ export const ImageMigrationPanel = ({ onChanged }) => {
       <div className="flex gap-2 shrink-0">
         {!allLocal && !status.running && (
           <button onClick={start} disabled={busy} data-testid="migration-start" className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-full hover:bg-emerald-700 disabled:opacity-50">
-            <CloudDownload className="h-3.5 w-3.5" /> Import images to Puff2door
+            <CloudDownload className="h-3.5 w-3.5" /> Import images to HD Smoke Shop
           </button>
         )}
         {allLocal && !status.running && status.migratedProducts > 0 && (

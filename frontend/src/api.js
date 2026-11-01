@@ -1,6 +1,9 @@
 import axios from "axios";
 
-const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
+const rawBackendUrl = (process.env.REACT_APP_BACKEND_URL || "").trim().replace(/\/$/, "");
+const BACKEND_URL = rawBackendUrl && !/^https?:\/\//i.test(rawBackendUrl)
+  ? `https://${rawBackendUrl}`
+  : rawBackendUrl;
 export const API = `${BACKEND_URL}/api`;
 
 const api = axios.create({ baseURL: API, withCredentials: true });
@@ -13,7 +16,7 @@ api.interceptors.request.use((config) => {
 
 export const setToken = () => {
   // Authentication is stored by the API in an HttpOnly cookie. Remove any
-  // legacy browser-readable token left by older Puff2door releases.
+  // legacy browser-readable token left by older HD Smoke Shop releases.
   localStorage.removeItem("p2d_token");
   window.dispatchEvent(new Event("p2d-auth-change"));
 };

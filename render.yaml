@@ -19,12 +19,28 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:puff2door@gmail.com
+      - key: CLOVER_CLIENT_ID
+        sync: false
+      - key: CLOVER_CLIENT_SECRET
+        sync: false
+      - key: CLOVER_ENV
+        value: production
+      - key: CLOVER_REDIRECT_URI
+        value: https://api.puff2door.com/api/clover/oauth/callback
+      - key: CLOVER_WEBHOOK_AUTH_CODE
+        sync: false
       - key: SITE_URL
         value: https://puff2door.com
       - key: PUBLIC_URL
         value: https://puff2door.com
       - key: CORS_ORIGINS
-        value: https://puff2door.com,https://www.puff2door.com
+        value: https://puff2door.com,https://www.puff2door.com,https://puff2door-storefront.onrender.com
       - key: ALLOW_TEST_CARD
         value: "false"
       - key: ALLOW_PASSWORD_RESET_TOKEN_RESPONSE
@@ -35,3 +51,44 @@ services:
         value: "false"
       - key: SQUARE_ENV
         value: production
+
+  # The storefront is served from Render's free static CDN so visitors never
+  # see the free web service's cold-start loading page. The API remains on the
+  # existing web service and can wake in the background.
+  - type: web
+    name: puff2door-storefront
+    runtime: static
+    rootDir: frontend
+    buildCommand: corepack enable && yarn install --frozen-lockfile && yarn build
+    staticPublishPath: ./build
+    autoDeploy: true
+    envVars:
+      - key: REACT_APP_SITE_URL
+        value: https://puff2door.com
+      - key: REACT_APP_BACKEND_URL
+        value: https://api.puff2door.com
+      - key: REACT_APP_GA4_MEASUREMENT_ID
+        value: G-9QTQEC7EPH
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), microphone=(), geolocation=()
+      - path: /static/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      - path: /service-worker.js
+        name: Cache-Control
+        value: no-cache

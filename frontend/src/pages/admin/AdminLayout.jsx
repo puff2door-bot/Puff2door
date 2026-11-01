@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { NavLink, Link, Outlet } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle, Truck, ShieldCheck, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle, Truck, ShieldCheck, BarChart3, Store } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import api from "../../api";
 
 const nav = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/admin/products", label: "Products", icon: Package },
+  { to: "/admin/clover", label: "Clover Inventory", icon: Store },
   { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
   { to: "/admin/operations", label: "Delivery Operations", icon: Truck },
   { to: "/admin/compliance", label: "Compliance", icon: ShieldCheck },
@@ -52,7 +53,7 @@ const AdminLayout = () => {
       <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-8">
         <aside>
           <div className="lg:sticky lg:top-[180px]">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-3">Puff2Door Admin</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-3">HD Smoke Shop Admin</p>
             <nav className="flex lg:flex-col gap-1 overflow-x-auto no-scrollbar">
               {nav.map((n) => (
                 <NavLink

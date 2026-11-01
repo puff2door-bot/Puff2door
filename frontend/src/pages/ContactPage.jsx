@@ -33,8 +33,8 @@ const ContactPage = () => {
   return (
     <div className="max-w-[1280px] mx-auto px-4 py-10">
       <Seo
-        title="Contact Puff2door | Orlando Vape Delivery Support"
-        description={`Questions about an order or product? Contact Puff2door by phone at ${BRAND.phone} or email ${BRAND.email}. Online smoke shop with local delivery in the Orlando, FL area.`}
+        title="Contact HD Smoke Shop | Orlando Vape Delivery Support"
+        description={`Questions about an order or product? Contact HD Smoke Shop by phone at ${BRAND.phone} or email ${BRAND.email}. Online smoke shop with local delivery in the Orlando, FL area.`}
         path="/contact"
         jsonLd={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Contact", path: "/contact" }])}
       />

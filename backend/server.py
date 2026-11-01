@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from dotenv import load_dotenv
 import httpx
 import asyncio
@@ -30,6 +30,13 @@ from datetime import datetime, timedelta, timezone, date, time as dtime
 from zoneinfo import ZoneInfo
 import jwt
 from passlib.context import CryptContext
+from clover import CloverError, CloverIntegration
+
+try:
+    from pywebpush import WebPushException, webpush
+except ImportError:  # The site stays usable until the optional push dependency is installed.
+    WebPushException = Exception
+    webpush = None
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -232,6 +239,10 @@ ZELLE_ENABLED = bool(ZELLE_EMAIL)
 REAL_CARD_PROVIDER = SQUARE_ENABLED or PAYPAL_ENABLED
 # ALLOW_TEST_CARD=true keeps the simulated card usable for QA even when a real provider exists (hidden in UI). Leave unset in production.
 TEST_CARD_ENABLED = os.environ.get("ALLOW_TEST_CARD", "").strip().lower() == "true"
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "").strip()
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
+VAPID_SUBJECT = os.environ.get("VAPID_SUBJECT", "mailto:puff2door@gmail.com").strip()
+WEB_PUSH_ENABLED = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY and VAPID_SUBJECT and webpush)
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "apple_pay", "zelle"}
 DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32832", "deliveryRadiusMiles": 20.0, "allowedZipCodes": [],
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
@@ -243,7 +254,8 @@ DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99
                     "countdownPausedText": "Local delivery is currently paused. Please check back soon.",
                     "countdownHoursText": "Same-day cutoff is {cutoff} ET. No deliveries after {end} or before {start}.",
                     "countdownExtraLines": [],
-                    "deliverySlotCapacity": 8, "deliveryDriverCount": 1, "ordersPerDriverPerWindow": 8, "defaultEtaMinutes": 45}
+                    "deliverySlotCapacity": 8, "deliveryDriverCount": 1, "ordersPerDriverPerWindow": 8, "defaultEtaMinutes": 45,
+                    "googleReviewUrl": ""}
 STORE_TZ = ZoneInfo("America/New_York")
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 DELIVERY_SLOTS = [("12:00", "14:00"), ("16:00", "18:00"), ("18:00", "20:00")]
@@ -541,6 +553,7 @@ class StoreSettingsInput(BaseModel):
     deliveryDriverCount: int = Field(default=1, ge=1, le=50)
     ordersPerDriverPerWindow: int = Field(default=8, ge=1, le=100)
     defaultEtaMinutes: int = Field(default=45, ge=5, le=480)
+    googleReviewUrl: str = Field(default="", max_length=500)
 
     @field_validator("homepageLayout")
     @classmethod
@@ -603,6 +616,42 @@ class StoreSettingsInput(BaseModel):
         if len(cleaned) > 250:
             raise ValueError("You can select up to 250 delivery ZIP codes")
         return cleaned
+
+    @field_validator("googleReviewUrl")
+    @classmethod
+    def _google_review_url(cls, value):
+        value = str(value or "").strip()
+        if not value:
+            return ""
+        parsed = urlsplit(value)
+        host = (parsed.hostname or "").lower()
+        allowed = host in {"google.com", "goo.gl", "g.page"} or host.endswith(".google.com") or host.endswith(".goo.gl")
+        if parsed.scheme != "https" or not host or not allowed:
+            raise ValueError("Google review link must be a secure Google URL")
+        return value
+
+
+class PushSubscriptionInput(BaseModel):
+    endpoint: str = Field(min_length=20, max_length=4096)
+    expirationTime: Optional[float] = None
+    keys: dict
+
+    @field_validator("endpoint")
+    @classmethod
+    def _push_endpoint(cls, value):
+        parsed = urlsplit(value)
+        if parsed.scheme != "https" or not parsed.hostname:
+            raise ValueError("Push endpoint must be a secure URL")
+        return value
+
+    @field_validator("keys")
+    @classmethod
+    def _push_keys(cls, value):
+        p256dh = str((value or {}).get("p256dh", "")).strip()
+        auth = str((value or {}).get("auth", "")).strip()
+        if not p256dh or not auth or len(p256dh) > 512 or len(auth) > 512:
+            raise ValueError("Push subscription keys are invalid")
+        return {"p256dh": p256dh, "auth": auth}
 
 
 class LoyaltySettingsInput(BaseModel):
@@ -673,7 +722,8 @@ def pricing_rules(settings: dict) -> dict:
 
 def delivery_rules(settings: dict) -> dict:
     allowed = settings.get("allowedZipCodes") or []
-    return {"zip": settings["deliveryZip"], "radiusMiles": float(settings["deliveryRadiusMiles"]), "allowedZipCodes": allowed, "mode": "selected_zips" if allowed else "radius"}
+    return {"zip": settings["deliveryZip"], "radiusMiles": float(settings["deliveryRadiusMiles"]), "allowedZipCodes": allowed,
+            "mode": "selected_zips" if allowed else "radius", "sameDayEnabled": bool(settings.get("sameDayEnabled", True))}
 
 
 def promo_public(p: dict) -> dict:
@@ -778,7 +828,7 @@ async def loyalty_signup_bonus(user: dict) -> int:
     pts = int(rules["signupBonusPoints"])
     if not rules["loyaltyEnabled"] or pts <= 0:
         return 0
-    row = await loyalty_add(user["id"], "bonus", pts, f"signup:{user['id']}", "Welcome bonus — thanks for joining Puff2door Rewards")
+    row = await loyalty_add(user["id"], "bonus", pts, f"signup:{user['id']}", "Welcome bonus — thanks for joining HD Smoke Shop Rewards")
     return pts if row else 0
 
 
@@ -838,9 +888,9 @@ async def loyalty_validate_redeem(user: Optional[dict], redeem_points: int, merc
         return 0.0
     rules = loyalty_rules(settings)
     if not rules["loyaltyEnabled"]:
-        raise HTTPException(status_code=400, detail="Puff2door Rewards is not available right now")
+        raise HTTPException(status_code=400, detail="HD Smoke Shop Rewards is not available right now")
     if not user:
-        raise HTTPException(status_code=401, detail="Sign in to your Puff2door account to redeem rewards")
+        raise HTTPException(status_code=401, detail="Sign in to your HD Smoke Shop account to redeem rewards")
     if redeem_points < 0 or redeem_points % rules["pointsPerReward"] != 0:
         raise HTTPException(status_code=400, detail=f"Rewards are redeemed in blocks of {rules['pointsPerReward']} points")
     if redeem_points < rules["minRedeemPoints"]:
@@ -991,6 +1041,8 @@ class ProductInput(BaseModel):
     flavors: List[str] = []
     puffs: Optional[int] = None
     stock: int = Field(default=0, ge=0)
+    sku: str = Field(default="", max_length=120)
+    barcode: str = Field(default="", max_length=120)
     active: bool = True
     description: str = ""
     complianceCategory: str = "regulated"
@@ -999,6 +1051,11 @@ class ProductInput(BaseModel):
     localDeliveryOnly: bool = True
     allowedStates: List[str] = []
     blockedStates: List[str] = []
+
+    @field_validator("sku", "barcode")
+    @classmethod
+    def _inventory_identifiers(cls, value):
+        return str(value or "").strip()
 
     @field_validator("complianceCategory")
     @classmethod
@@ -1145,6 +1202,12 @@ def product_out(p: dict) -> dict:
         "brandName": p.get("brandName", ""),
         "flavors": p.get("flavors", []),
         "puffs": p.get("puffs"),
+        "sku": p.get("sku", ""),
+        "barcode": p.get("barcode", ""),
+        "cloverItemId": p.get("cloverItemId", ""),
+        "cloverLastSyncedAt": p.get("cloverLastSyncedAt").isoformat() if isinstance(p.get("cloverLastSyncedAt"), datetime) else p.get("cloverLastSyncedAt"),
+        "cloverLastPushedAt": p.get("cloverLastPushedAt").isoformat() if isinstance(p.get("cloverLastPushedAt"), datetime) else p.get("cloverLastPushedAt"),
+        "cloverSyncError": p.get("cloverSyncError", ""),
         "rating": p.get("rating", 4.5),
         "stock": stock,
         "inStock": stock > 0,
@@ -1337,6 +1400,59 @@ async def get_optional_user(request: Request):
         return None
 
 
+def push_public_config() -> dict:
+    return {"enabled": WEB_PUSH_ENABLED, "publicKey": VAPID_PUBLIC_KEY if WEB_PUSH_ENABLED else ""}
+
+
+async def send_push_to_user(user_id: Optional[str], payload: dict) -> None:
+    """Send an order update to every subscribed device for a signed-in customer."""
+    if not WEB_PUSH_ENABLED or not user_id:
+        return
+    subscriptions = await db.push_subscriptions.find({"userId": user_id}).to_list(50)
+    for subscription in subscriptions:
+        info = {"endpoint": subscription.get("endpoint", ""), "keys": subscription.get("keys", {})}
+        try:
+            await asyncio.to_thread(
+                webpush,
+                subscription_info=info,
+                data=json.dumps(payload),
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": VAPID_SUBJECT},
+                ttl=86400,
+            )
+            await db.push_subscriptions.update_one({"endpointHash": subscription["endpointHash"]}, {"$set": {"lastSentAt": now_utc()}})
+        except WebPushException as exc:
+            status_code = getattr(exc, "status_code", None)
+            if status_code in {404, 410}:
+                await db.push_subscriptions.delete_one({"endpointHash": subscription["endpointHash"]})
+            else:
+                logger.warning("Web push failed for user %s: %s", user_id, exc)
+        except Exception as exc:
+            logger.warning("Web push failed for user %s: %s", user_id, exc)
+
+
+async def send_order_push(order: dict, status: str) -> None:
+    labels = {
+        "placed": "Order placed",
+        "confirmed": "Your order is being prepared",
+        "out_for_delivery": "Your driver is on the way",
+        "delivered": "Your order was delivered",
+        "cancelled": "Your order was cancelled",
+        "id_check_failed": "Delivery could not be completed",
+        "returning_to_store": "Order is returning to the store",
+        "returned": "Order returned to the store",
+    }
+    title = labels.get(status, "Order status updated")
+    number = order.get("orderNumber", "your order")
+    await send_push_to_user(order.get("userId"), {
+        "title": title,
+        "body": f"{number}: open HD Smoke Shop for the latest delivery details.",
+        "url": f"/order/{order.get('id', '')}",
+        "tag": f"p2d-order-{order.get('id', '')}",
+        "renotify": True,
+    })
+
+
 # ----------------------------- Tracking logic -----------------------------
 TRACK_STAGES = [
     ("placed", "Order Placed", 0),
@@ -1486,7 +1602,7 @@ def public_tracking_response(o: dict) -> dict:
 # ----------------------------- Routes -----------------------------
 @api_router.get("/")
 async def root():
-    return {"message": "Puff2Door API"}
+    return {"message": "HD Smoke Shop API"}
 
 
 @api_router.post("/auth/register")
@@ -1685,7 +1801,7 @@ async def newsletter(inp: NewsletterInput, request: Request):
         {"$set": {"email": email, "active": True, "updatedAt": now_utc()}, "$setOnInsert": {"id": str(uuid.uuid4()), "createdAt": now_utc()}},
         upsert=True,
     )
-    return {"ok": True, "message": "You're subscribed for Puff2Door updates."}
+    return {"ok": True, "message": "You're subscribed for HD Smoke Shop updates."}
 
 
 # ---- Wishlist ----
@@ -1807,7 +1923,7 @@ async def paypal_create_order(inp: PayPalCreateInput, user: Optional[dict] = Dep
     total = totals["total"]
     data = await paypal_request("POST", "/v2/checkout/orders", {
         "intent": "CAPTURE",
-        "purchase_units": [{"amount": {"currency_code": "USD", "value": f"{total:.2f}"}, "description": "Puff2Door order"}],
+        "purchase_units": [{"amount": {"currency_code": "USD", "value": f"{total:.2f}"}, "description": "HD Smoke Shop order"}],
     })
     await db.paypal_orders.update_one({"paypalOrderId": data["id"]}, {"$set": {"total": total, "createdAt": now_utc(), "captured": False}}, upsert=True)
     return {"id": data["id"], "total": total}
@@ -1821,11 +1937,15 @@ async def reserve_stock(priced_items: List[dict]):
             await release_stock(reserved)
             raise HTTPException(status_code=409, detail=f"{it['name']} just sold out")
         reserved.append(it)
+    if reserved:
+        asyncio.create_task(push_products_to_clover([item["productId"] for item in reserved], "website_order"))
 
 
 async def release_stock(items: List[dict]):
     for r in items:
         await db.products.update_one({"id": r["productId"]}, {"$inc": {"stock": r["qty"]}})
+    if items:
+        asyncio.create_task(push_products_to_clover([item["productId"] for item in items], "website_restock"))
 
 
 @api_router.post("/orders")
@@ -2197,7 +2317,43 @@ async def serve_file(path: str):
 @api_router.get("/settings")
 async def public_settings():
     settings = await get_settings()
-    return {"pricing": pricing_rules(settings), "delivery": delivery_rules(settings), "loyalty": loyalty_public_rules(settings), "presentation": {"homepageLayout": settings.get("homepageLayout", "classic")}}
+    return {"pricing": pricing_rules(settings), "delivery": delivery_rules(settings), "loyalty": loyalty_public_rules(settings),
+            "presentation": {"homepageLayout": settings.get("homepageLayout", "classic")},
+            "trust": {"googleReviewUrl": settings.get("googleReviewUrl", "")}}
+
+
+@api_router.get("/push/config")
+async def push_config():
+    return push_public_config()
+
+
+@api_router.get("/push/subscription")
+async def get_push_subscription(user: dict = Depends(get_current_user)):
+    row = await db.push_subscriptions.find_one({"userId": user["id"]}, {"_id": 0, "endpoint": 1})
+    return {"enabled": WEB_PUSH_ENABLED, "subscribed": bool(row)}
+
+
+@api_router.post("/push/subscribe")
+async def subscribe_push(inp: PushSubscriptionInput, request: Request, user: dict = Depends(get_current_user)):
+    if not WEB_PUSH_ENABLED:
+        raise HTTPException(status_code=503, detail="Order alerts are not configured yet")
+    endpoint_hash = hashlib.sha256(inp.endpoint.encode("utf-8")).hexdigest()
+    now = now_utc()
+    await db.push_subscriptions.update_one(
+        {"endpointHash": endpoint_hash},
+        {"$set": {"endpointHash": endpoint_hash, "endpoint": inp.endpoint, "keys": inp.keys, "expirationTime": inp.expirationTime,
+                  "userId": user["id"], "userAgent": request.headers.get("user-agent", "")[:500], "updatedAt": now},
+         "$setOnInsert": {"createdAt": now}},
+        upsert=True,
+    )
+    return {"subscribed": True}
+
+
+@api_router.delete("/push/subscription")
+async def unsubscribe_push(inp: PushSubscriptionInput, user: dict = Depends(get_current_user)):
+    endpoint_hash = hashlib.sha256(inp.endpoint.encode("utf-8")).hexdigest()
+    await db.push_subscriptions.delete_one({"endpointHash": endpoint_hash, "userId": user["id"]})
+    return {"subscribed": False}
 
 
 # ---- Loyalty rewards (customer) ----
@@ -2224,7 +2380,48 @@ async def loyalty_me(user: dict = Depends(get_current_user)):
 
 # ---- SEO: sitemap ----
 SITE_URL = os.environ.get("SITE_URL", "").strip().rstrip("/") or "https://puff2door.com"
-SITEMAP_STATIC = ["/", "/shop", "/brands", "/delivery-area", "/about", "/contact"]
+CLOVER_CLIENT_ID = os.environ.get("CLOVER_CLIENT_ID", "").strip()
+CLOVER_CLIENT_SECRET = os.environ.get("CLOVER_CLIENT_SECRET", "").strip()
+CLOVER_ENV = os.environ.get("CLOVER_ENV", "production").strip().lower()
+CLOVER_REDIRECT_URI = os.environ.get("CLOVER_REDIRECT_URI", "https://api.puff2door.com/api/clover/oauth/callback").strip()
+CLOVER_WEBHOOK_AUTH_CODE = os.environ.get("CLOVER_WEBHOOK_AUTH_CODE", "").strip()
+
+
+def clover_integration() -> CloverIntegration:
+    return CloverIntegration(
+        db,
+        client_id=CLOVER_CLIENT_ID,
+        client_secret=CLOVER_CLIENT_SECRET,
+        jwt_secret=JWT_SECRET,
+        environment=CLOVER_ENV,
+        redirect_uri=CLOVER_REDIRECT_URI,
+        site_url=SITE_URL,
+        webhook_auth_code=CLOVER_WEBHOOK_AUTH_CODE,
+    )
+
+
+async def push_products_to_clover(product_ids, source: str):
+    integration = clover_integration()
+    if not integration.configured:
+        return
+    for product_id in sorted({int(value) for value in product_ids if value}):
+        await integration.push_product_stock(product_id, source=source)
+
+
+async def notify_restocked_products(product_ids):
+    for product_id in sorted({int(value) for value in product_ids if value}):
+        product = await db.products.find_one({"id": product_id})
+        if not product:
+            continue
+        pending = await db.stock_alerts.find({"productId": product_id, "notified": False}).to_list(1000)
+        for alert in pending:
+            asyncio.create_task(emails.send_restock_alert(alert["email"], product))
+        await db.stock_alerts.update_many(
+            {"productId": product_id, "notified": False},
+            {"$set": {"notified": True, "notifiedAt": now_utc()}},
+        )
+
+SITEMAP_STATIC = ["/", "/shop", "/brands", "/delivery-area", "/about", "/contact", "/privacy-policy", "/terms", "/delivery-policy", "/refund-policy", "/age-and-id-policy"]
 SITEMAP_FILE = ROOT_DIR.parent / "frontend" / "public" / "sitemap.xml"
 
 
@@ -2387,7 +2584,7 @@ async def admin_update_brand(slug: str, inp: BrandInput, admin: dict = Depends(g
 
 @api_router.post("/admin/brands/{slug}/import")
 async def admin_import_brand_logo(slug: str, inp: BrandLogoInput, admin: dict = Depends(get_admin_user)):
-    """Copy an external logo URL into Puff2door storage; returns the stored URL (does not save unless brand exists)."""
+    """Copy an external logo URL into HD Smoke Shop storage; returns the stored URL (does not save unless brand exists)."""
     if not inp.image.startswith("http"):
         raise HTTPException(status_code=400, detail="Provide an http(s) image URL")
     try:
@@ -2530,8 +2727,25 @@ async def resolve_category_name(inp: ProductInput) -> str:
     return cat["name"] if cat else inp.category
 
 
+async def ensure_unique_inventory_identifiers(inp: ProductInput, exclude_product_id: Optional[int] = None):
+    checks = []
+    if inp.sku:
+        checks.append({"sku": {"$regex": f"^{re.escape(inp.sku)}$", "$options": "i"}})
+    if inp.barcode:
+        checks.append({"barcode": inp.barcode})
+    if not checks:
+        return
+    query = {"$or": checks}
+    if exclude_product_id is not None:
+        query["id"] = {"$ne": exclude_product_id}
+    duplicate = await db.products.find_one(query)
+    if duplicate:
+        raise HTTPException(status_code=409, detail=f"SKU or barcode is already used by {duplicate.get('name', 'another product')}.")
+
+
 @api_router.post("/admin/products")
 async def admin_create_product(inp: ProductInput, admin: dict = Depends(get_admin_user)):
+    await ensure_unique_inventory_identifiers(inp)
     pid = await next_product_id()
     doc = inp.dict()
     doc.update({
@@ -2545,8 +2759,14 @@ async def admin_create_product(inp: ProductInput, admin: dict = Depends(get_admi
         "updatedAt": now_utc(),
     })
     await db.products.insert_one(doc)
+    clover_sync = {"status": "not_connected", "action": "none"}
+    try:
+        clover_sync = await clover_integration().sync_product_details(pid, source="admin_product_create")
+    except CloverError as exc:
+        clover_sync = {"status": "failed", "action": "create", "error": clover_error_detail(exc)}
+    doc = await db.products.find_one({"id": pid}) or doc
     asyncio.create_task(refresh_static_sitemap())
-    return product_out(doc)
+    return {**product_out(doc), "cloverSync": clover_sync}
 
 
 @api_router.put("/admin/products/{product_id}")
@@ -2554,6 +2774,7 @@ async def admin_update_product(product_id: int, inp: ProductInput, admin: dict =
     existing = await db.products.find_one({"id": product_id})
     if not existing:
         raise HTTPException(status_code=404, detail="Product not found")
+    await ensure_unique_inventory_identifiers(inp, product_id)
     doc = inp.dict()
     doc["image2"] = inp.image2 or inp.image
     doc["brandName"] = await resolve_brand_name(inp)
@@ -2573,8 +2794,14 @@ async def admin_update_product(product_id: int, inp: ProductInput, admin: dict =
         )
         notified = res.modified_count
         logger.info("Restock: notified %s subscriber(s) for product %s", notified, product_id)
+    clover_sync = {"status": "not_connected", "action": "none"}
+    try:
+        clover_sync = await clover_integration().sync_product_details(product_id, source="admin_product_edit")
+    except CloverError as exc:
+        clover_sync = {"status": "failed", "action": "update", "error": clover_error_detail(exc)}
+    updated = await db.products.find_one({"id": product_id}) or updated
     asyncio.create_task(refresh_static_sitemap())
-    return {**product_out(updated), "restockNotified": notified}
+    return {**product_out(updated), "restockNotified": notified, "cloverSync": clover_sync}
 
 
 @api_router.delete("/admin/products/{product_id}")
@@ -2582,7 +2809,215 @@ async def admin_delete_product(product_id: int, admin: dict = Depends(get_admin_
     res = await db.products.update_one({"id": product_id}, {"$set": {"active": False, "updatedAt": now_utc()}})
     if not res.matched_count:
         raise HTTPException(status_code=404, detail="Product not found")
+    clover_sync = {"status": "not_connected", "action": "none"}
+    try:
+        clover_sync = await clover_integration().sync_product_details(product_id, source="admin_product_hide")
+    except CloverError as exc:
+        clover_sync = {"status": "failed", "action": "update", "error": clover_error_detail(exc)}
     asyncio.create_task(refresh_static_sitemap())
+    return {"ok": True, "cloverSync": clover_sync}
+
+
+# ---- Clover inventory sync ----
+class CloverProductLinkInput(BaseModel):
+    productId: int = Field(ge=1)
+    cloverItemId: str = Field(min_length=1, max_length=120)
+
+
+class CloverImportInput(BaseModel):
+    cloverItemId: str = Field(min_length=1, max_length=120)
+
+
+def clover_error_detail(exc: Exception) -> str:
+    message = str(exc).strip()
+    return message if message else "Clover could not complete that request."
+
+
+@api_router.get("/admin/clover/status")
+async def admin_clover_status(admin: dict = Depends(get_admin_user)):
+    integration = clover_integration()
+    config = await integration.config() or {}
+    linked = await db.products.count_documents({"cloverItemId": {"$exists": True, "$ne": ""}})
+    total = await db.products.count_documents({})
+    products_needing_retry = await db.products.count_documents({"cloverSyncError": {"$exists": True, "$ne": ""}})
+    failed = await db.clover_sync_logs.count_documents({"status": "failed"})
+    missing = []
+    if not CLOVER_CLIENT_ID:
+        missing.append("Clover App ID")
+    if not CLOVER_CLIENT_SECRET:
+        missing.append("Clover App Secret")
+    if not CLOVER_REDIRECT_URI:
+        missing.append("Clover redirect URL")
+    if not CLOVER_WEBHOOK_AUTH_CODE:
+        missing.append("Clover webhook auth code")
+    return {
+        "configured": integration.configured,
+        "connected": bool(config.get("encryptedAccessToken") and config.get("merchantId")),
+        "environment": integration.environment,
+        "merchantId": config.get("merchantId", ""),
+        "merchantName": config.get("merchantName", ""),
+        "connectedAt": config.get("connectedAt"),
+        "lastSyncAt": config.get("lastSyncAt"),
+        "lastSyncStatus": config.get("lastSyncStatus", "never"),
+        "lastSyncError": config.get("lastSyncError", ""),
+        "lastSyncSummary": config.get("lastSyncSummary", {}),
+        "linkedProducts": linked,
+        "totalProducts": total,
+        "productsNeedingRetry": products_needing_retry,
+        "unmatchedItems": config.get("unmatchedItems", []),
+        "failedLogCount": failed,
+        "webhookUrl": integration.webhook_url,
+        "webhookVerificationCode": config.get("webhookVerificationCode", ""),
+        "webhookAuthConfigured": bool(CLOVER_WEBHOOK_AUTH_CODE),
+        "redirectUri": CLOVER_REDIRECT_URI,
+        "missingSetup": missing,
+    }
+
+
+@api_router.get("/admin/clover/logs")
+async def admin_clover_logs(admin: dict = Depends(get_admin_user)):
+    rows = await db.clover_sync_logs.find({}, {"_id": 0}).sort("createdAt", -1).to_list(100)
+    return {"logs": rows}
+
+
+@api_router.post("/admin/clover/connect-url")
+async def admin_clover_connect_url(admin: dict = Depends(get_admin_user)):
+    try:
+        return {"url": await clover_integration().create_authorization_url(admin["id"])}
+    except CloverError as exc:
+        raise HTTPException(status_code=400, detail=clover_error_detail(exc))
+
+
+@api_router.get("/clover/oauth/callback")
+async def clover_oauth_callback(code: str = "", merchant_id: str = "", state: str = "", error: str = ""):
+    if error or not code or not merchant_id or not state:
+        return RedirectResponse(f"{SITE_URL}/admin/clover?clover=error", status_code=303)
+    try:
+        integration = clover_integration()
+        await integration.exchange_code(code, merchant_id, state)
+        asyncio.create_task(integration.sync_from_clover(source="initial_connection"))
+        return RedirectResponse(f"{SITE_URL}/admin/clover?clover=connected", status_code=303)
+    except CloverError as exc:
+        logger.error("Clover authorization failed: %s", exc)
+        return RedirectResponse(f"{SITE_URL}/admin/clover?clover=error", status_code=303)
+
+
+@api_router.post("/clover/webhook")
+async def clover_webhook(request: Request):
+    content_length = request.headers.get("content-length", "0")
+    if content_length.isdigit() and int(content_length) > 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Webhook body is too large")
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid webhook body")
+    if payload.get("verificationCode"):
+        verification_code = str(payload["verificationCode"]).strip()
+        if not verification_code or len(verification_code) > 200:
+            raise HTTPException(status_code=400, detail="Invalid verification code")
+        await db.integrations.update_one(
+            {"key": "clover"},
+            {"$set": {"webhookVerificationCode": verification_code, "webhookVerificationReceivedAt": now_utc(), "updatedAt": now_utc()}},
+            upsert=True,
+        )
+        return {"ok": True}
+    integration = clover_integration()
+    if not CLOVER_WEBHOOK_AUTH_CODE:
+        raise HTTPException(status_code=503, detail="Clover webhook authentication is not configured")
+    received_auth = request.headers.get("X-Clover-Auth", "")
+    if not received_auth or not secrets.compare_digest(received_auth, CLOVER_WEBHOOK_AUTH_CODE):
+        raise HTTPException(status_code=401, detail="Invalid Clover webhook authentication")
+    if payload.get("appId") and payload.get("appId") != CLOVER_CLIENT_ID:
+        raise HTTPException(status_code=401, detail="Webhook app does not match")
+    config = await integration.config() or {}
+    merchant_id = config.get("merchantId", "")
+    events = (payload.get("merchants") or {}).get(merchant_id, []) if merchant_id else []
+    inventory_events = [event for event in events if str(event.get("type", "")).startswith("I")]
+    if inventory_events:
+        asyncio.create_task(run_clover_webhook_sync(integration))
+    return {"ok": True, "accepted": len(inventory_events)}
+
+
+async def run_clover_webhook_sync(integration: CloverIntegration):
+    try:
+        summary = await integration.sync_from_clover(source="webhook")
+        await notify_restocked_products(summary.get("restockedProductIds", []))
+    except Exception as exc:
+        logger.error("Clover webhook sync failed: %s", exc)
+
+
+@api_router.post("/admin/clover/sync")
+async def admin_clover_sync(admin: dict = Depends(get_admin_user)):
+    try:
+        summary = await clover_integration().sync_from_clover(source="admin")
+        await notify_restocked_products(summary.get("restockedProductIds", []))
+        return summary
+    except CloverError as exc:
+        raise HTTPException(status_code=502, detail=clover_error_detail(exc))
+
+
+@api_router.post("/admin/clover/link")
+async def admin_clover_link(inp: CloverProductLinkInput, admin: dict = Depends(get_admin_user)):
+    try:
+        result = await clover_integration().link_product(inp.productId, inp.cloverItemId)
+        return {"ok": True, "link": result}
+    except CloverError as exc:
+        raise HTTPException(status_code=400, detail=clover_error_detail(exc))
+
+
+@api_router.post("/admin/clover/import")
+async def admin_clover_import(inp: CloverImportInput, admin: dict = Depends(get_admin_user)):
+    try:
+        pid = await next_product_id()
+        safe_name = "Clover item"
+        defaults = {
+            "id": pid,
+            "slug": f"{slugify(safe_name)}-{pid}",
+            "category": "Clover imports",
+            "categorySlug": "clover-imports",
+            "salePrice": None,
+            "image": "",
+            "image2": "",
+            "brand": "",
+            "brandName": "",
+            "flavors": [],
+            "puffs": None,
+            "rating": 4.5,
+            "description": "",
+            "complianceCategory": "regulated",
+            "minimumAge": 21,
+            "requiresIdAtDelivery": True,
+            "localDeliveryOnly": True,
+            "allowedStates": ["FL"],
+            "blockedStates": [],
+        }
+        product = await clover_integration().import_item(inp.cloverItemId, defaults)
+        # The integration supplies the final name after the ID is assigned.
+        final_slug = f"{slugify(product['name'])}-{pid}"
+        await db.products.update_one({"id": pid}, {"$set": {"slug": final_slug}})
+        product["slug"] = final_slug
+        asyncio.create_task(refresh_static_sitemap())
+        return {"ok": True, "product": product_out(product), "reviewRequired": True}
+    except CloverError as exc:
+        raise HTTPException(status_code=400, detail=clover_error_detail(exc))
+
+
+@api_router.post("/admin/clover/products/{product_id}/retry")
+async def admin_clover_retry_product(product_id: int, admin: dict = Depends(get_admin_user)):
+    try:
+        result = await clover_integration().sync_product_details(product_id, source="admin_retry")
+        if result.get("status") == "not_connected":
+            raise HTTPException(status_code=409, detail="Connect Clover before retrying this product.")
+        if result.get("status") != "success":
+            raise HTTPException(status_code=502, detail=result.get("error") or "Clover stock still needs a retry.")
+        return {"ok": True, "cloverSync": result}
+    except CloverError as exc:
+        raise HTTPException(status_code=502, detail=clover_error_detail(exc))
+
+
+@api_router.post("/admin/clover/disconnect")
+async def admin_clover_disconnect(admin: dict = Depends(get_admin_user)):
+    await clover_integration().disconnect()
     return {"ok": True}
 
 
@@ -2618,7 +3053,7 @@ async def admin_upload(file: UploadFile = File(...), admin: dict = Depends(get_a
     return {"path": url.replace("/api/files/", "", 1), "url": url}
 
 
-# ---- Image migration: copy hot-linked product photos into Puff2door storage ----
+# ---- Image migration: copy hot-linked product photos into HD Smoke Shop storage ----
 _migration: dict = {"running": False, "total": 0, "done": 0, "migrated": 0, "skipped": 0, "failed": [], "startedAt": None, "finishedAt": None}
 
 
@@ -2640,7 +3075,7 @@ async def _fetch_and_store(client: httpx.AsyncClient, url: str, admin_id: str) -
     current_url = url
     for _ in range(6):
         await _assert_safe_external_url(current_url)
-        r = await client.get(current_url, headers={"User-Agent": "Mozilla/5.0 (Puff2Door image importer)", "Referer": SITE_URL + "/"})
+        r = await client.get(current_url, headers={"User-Agent": "Mozilla/5.0 (HD Smoke Shop image importer)", "Referer": SITE_URL + "/"})
         if r.is_redirect:
             location = r.headers.get("location")
             if not location:
@@ -2952,6 +3387,7 @@ async def admin_update_order_status(order_id: str, inp: OrderStatusInput, admin:
         await loyalty_award_for_order(updated)
     if inp.status in STAGE_KEYS:
         asyncio.create_task(emails.send_status_update(updated, inp.status))
+    asyncio.create_task(send_order_push(updated, inp.status))
     return order_response(await db.orders.find_one({"id": order_id}))
 
 
@@ -3300,7 +3736,7 @@ async def admin_stock_alerts(admin: dict = Depends(get_admin_user)):
 # browser's secret token (or as admin). No public listing.
 # =====================================================================
 CHAT_DEFAULTS = {"chatEnabled": True, "chatOnline": True,
-                 "chatWelcome": "Hi! Welcome to Puff2door. How can we help you today?",
+                 "chatWelcome": "Hi! Welcome to HD Smoke Shop. How can we help you today?",
                  "chatOffline": "We're currently offline. Leave us a message and we'll get back to you."}
 
 
@@ -3566,6 +4002,44 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 
+def replace_legacy_brand_copy(value):
+    """Replace the former display name without touching domains, emails, or IDs."""
+    if isinstance(value, str):
+        return value.replace("Puff2Door", "HD Smoke Shop").replace("Puff2door", "HD Smoke Shop")
+    if isinstance(value, list):
+        return [replace_legacy_brand_copy(item) for item in value]
+    if isinstance(value, dict):
+        return {key: replace_legacy_brand_copy(item) for key, item in value.items()}
+    return value
+
+
+async def migrate_legacy_brand_copy():
+    """Update editable storefront copy already saved in MongoDB after the rename."""
+    settings = await db.site_settings.find_one({"key": "store"}, {"_id": 0})
+    if settings:
+        updated = replace_legacy_brand_copy(settings)
+        if updated != settings:
+            await db.site_settings.update_one({"key": "store"}, {"$set": updated})
+            invalidate_settings()
+
+    home = await db.site_content.find_one({"key": "home"}, {"_id": 0})
+    if home:
+        updated = replace_legacy_brand_copy(home)
+        if updated != home:
+            await db.site_content.update_one({"key": "home"}, {"$set": updated})
+
+    async for product in db.products.find({}, {"_id": 1, "name": 1, "description": 1}):
+        updates = {}
+        for field in ("name", "description"):
+            current = product.get(field)
+            replaced = replace_legacy_brand_copy(current)
+            if replaced != current:
+                updates[field] = replaced
+        if updates:
+            updates["updatedAt"] = now_utc()
+            await db.products.update_one({"_id": product["_id"]}, {"$set": updates})
+
+
 @app.on_event("startup")
 async def create_indexes():
     await db.users.create_index("email", unique=True)
@@ -3575,6 +4049,12 @@ async def create_indexes():
     await db.login_attempts.create_index("identifier")
     await db.products.create_index("id", unique=True)
     await db.products.create_index("slug")
+    await db.products.create_index("cloverItemId", unique=True, sparse=True)
+    await db.products.create_index("sku")
+    await db.products.create_index("barcode")
+    await db.integrations.create_index("key", unique=True)
+    await db.clover_oauth_states.create_index("expiresAt", expireAfterSeconds=0)
+    await db.clover_sync_logs.create_index("createdAt")
     await db.files.create_index("storage_path")
     await db.loyalty_transactions.create_index("key", unique=True)
     await db.loyalty_transactions.create_index([("userId", 1), ("createdAt", -1)])
@@ -3587,6 +4067,8 @@ async def create_indexes():
     await db.rate_limits.create_index("expires_at", expireAfterSeconds=0)
     await db.revoked_tokens.create_index("jti", unique=True)
     await db.revoked_tokens.create_index("expires_at", expireAfterSeconds=0)
+    await db.push_subscriptions.create_index("endpointHash", unique=True)
+    await db.push_subscriptions.create_index([("userId", 1), ("updatedAt", -1)])
 
 
 @app.on_event("startup")
@@ -3633,6 +4115,7 @@ async def seed_data():
         await db.users.update_many({"email": {"$in": ADMIN_EMAILS}}, {"$set": {"role": "admin"}})
     await seed_brands()
     await seed_categories()
+    await migrate_legacy_brand_copy()
     await refresh_static_sitemap()
 
 
@@ -3661,5 +4144,7 @@ if FRONTEND_BUILD_DIR.exists():
         if candidate.is_file():
             if full_path == ".well-known/apple-developer-merchantid-domain-association":
                 return FileResponse(candidate, media_type="application/octet-stream", headers={"Cache-Control": "public, max-age=3600"})
-            return FileResponse(candidate)
-        return FileResponse(FRONTEND_BUILD_DIR / "index.html")
+            immutable = bool(re.search(r"\.[0-9a-f]{8,}\.", candidate.name))
+            headers = {"Cache-Control": "public, max-age=31536000, immutable" if immutable else "public, max-age=3600"}
+            return FileResponse(candidate, headers=headers)
+        return FileResponse(FRONTEND_BUILD_DIR / "index.html", headers={"Cache-Control": "no-cache"})

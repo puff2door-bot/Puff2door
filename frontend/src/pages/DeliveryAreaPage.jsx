@@ -10,12 +10,12 @@ import { breadcrumbJsonLd, faqJsonLd, SITE_URL, titleCase } from "../seo/config"
 
 // Add a hosted walkthrough URL here when a delivery video is ready.
 const DELIVERY_VIDEO_URL = "";
-// A real Google review embed requires both values. Until they are configured, the page shows an honest placeholder and never invents reviews.
+// A real Google review embed can be enabled with these build-time values. A normal Google review link can also be entered in Store Settings.
 const GOOGLE_PLACE_ID = (process.env.REACT_APP_GOOGLE_PLACE_ID || "").trim();
 const GOOGLE_MAPS_KEY = (process.env.REACT_APP_GOOGLE_MAPS_EMBED_KEY || "").trim();
 
 const DeliveryAreaPage = () => {
-  const { delivery, pricing } = useCart();
+  const { delivery, pricing, trust } = useCart();
   const { activeCategories } = useCatalog();
   const [area, setArea] = useState(null);
 
@@ -26,6 +26,7 @@ const DeliveryAreaPage = () => {
   const radius = area?.radiusMiles ?? delivery.radiusMiles;
   const center = area?.centerZip ?? delivery.zip;
   const selected = (area?.mode || delivery.mode) === "selected_zips";
+  const sameDayEnabled = delivery.sameDayEnabled === true;
   const zoneDescription = selected ? `${area?.zipCount ?? delivery.allowedZipCodes.length} selected ZIP codes in the Orlando, Florida area` : `addresses within ${radius} miles of ZIP ${center} in the Orlando, Florida area`;
   const mapSrc = area?.centerLat && area?.centerLng ? (() => {
     const latSpan = Math.max(radius / 69, 0.08);
@@ -34,10 +35,10 @@ const DeliveryAreaPage = () => {
     return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${area.centerLat}%2C${area.centerLng}`;
   })() : "";
   const faqs = [
-    { q: "Where does Puff2door deliver?", a: `Puff2door delivers to ${zoneDescription}. Enter your ZIP code above to confirm instantly.` },
-    { q: "Is there a delivery fee in Orlando?", a: `Local delivery is free on orders over $${pricing.freeDeliveryMin}. Orders below that carry a $${pricing.deliveryFee} delivery fee, shown before you pay.` },
+    { q: "Where does HD Smoke Shop deliver?", a: `HD Smoke Shop delivers to ${zoneDescription}. Enter your ZIP code above to confirm instantly.` },
+    { q: "Is there a delivery fee in Orlando?", a: pricing.freeDeliveryMin <= 0 ? "Local delivery is currently free. Your final total is shown before you pay." : `Local delivery is free on orders over $${pricing.freeDeliveryMin}.${pricing.deliveryFee > 0 ? ` Orders below that carry a $${pricing.deliveryFee} delivery fee.` : ""} Your final total is shown before you pay.` },
     { q: "Do I need ID for vape delivery?", a: "Yes. You must be 21 or older, and a valid government-issued ID may be checked at delivery. Orders cannot be left with anyone under 21." },
-    { q: "What can I order for delivery?", a: `Everything in our online smoke shop: ${activeCategories.map((c) => titleCase(c.name).toLowerCase()).join(", ")}.` },
+    { q: "What can I order for delivery?", a: activeCategories.length ? `Everything in our online smoke shop: ${activeCategories.map((c) => titleCase(c.name).toLowerCase()).join(", ")}.` : "Browse the Shop page to see every product currently available for local delivery." },
   ];
   const jsonLd = [
     breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Delivery Area", path: "/delivery-area" }]),
@@ -56,8 +57,8 @@ const DeliveryAreaPage = () => {
   return (
     <div data-testid="delivery-area-page">
       <Seo
-        title="Vape Delivery Orlando, FL | Puff2door Delivery Area"
-        description={`Puff2door delivers vapes, delta products, glass and smoke shop essentials to ${zoneDescription}. Check your ZIP code and see every area we serve. 21+ only.`}
+        title="Vape Delivery Orlando, FL | HD Smoke Shop Delivery Area"
+        description={`HD Smoke Shop delivers vapes, delta products, glass and smoke shop essentials to ${zoneDescription}. Check your ZIP code and see every area we serve. 21+ only.`}
         path="/delivery-area"
         jsonLd={jsonLd}
       />
@@ -69,15 +70,15 @@ const DeliveryAreaPage = () => {
         <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full" />
         <h1 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-700 text-neutral-900 uppercase tracking-tight mb-3">Vape Delivery in Orlando, FL</h1>
         <p className="text-neutral-600 leading-relaxed max-w-3xl mb-10">
-          Puff2door is an online smoke shop with local vape delivery — not a walk-in store. Order disposable vapes, hemp-derived delta products,
-          glass pipes, kratom and more, and we bring them to your door in {zoneDescription}. Same-day local delivery is
-          available, every order is age-verified (21+), and delivery is free on orders over ${pricing.freeDeliveryMin}.
+          HD Smoke Shop is an online smoke shop with local vape delivery — not a walk-in store. Order disposable vapes, hemp-derived delta products,
+          glass pipes, kratom and more, and we bring them to your door in {zoneDescription}. {sameDayEnabled ? "Order before the cutoff for same-day local delivery. " : "Choose from the available local delivery windows at checkout. "}
+          Every order is age-verified (21+){pricing.freeDeliveryMin > 0 ? `, and delivery is free on orders over $${pricing.freeDeliveryMin}` : ", and local delivery is currently free"}.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
           {[
-            { icon: Truck, t: "Free over $" + pricing.freeDeliveryMin, d: `$${pricing.deliveryFee} delivery fee on smaller orders` },
-            { icon: Clock, t: "Same-Day Local", d: "Order today, delivered today in the Orlando area" },
+            { icon: Truck, t: pricing.freeDeliveryMin > 0 ? "Free over $" + pricing.freeDeliveryMin : "Free Local Delivery", d: pricing.deliveryFee > 0 && pricing.freeDeliveryMin > 0 ? `$${pricing.deliveryFee} delivery fee on smaller orders` : "No delivery fee is currently charged" },
+            sameDayEnabled ? { icon: Clock, t: "Same-Day Local", d: "Order before cutoff for delivery today" } : { icon: Clock, t: "Scheduled Local", d: "Choose the next available delivery window" },
             { icon: ShieldCheck, t: "21+ ID Verified", d: "Valid ID checked at the door" },
           ].map((f, i) => (
             <div key={i} className="border border-neutral-200 rounded-xl p-5 flex gap-3 items-center">
@@ -108,8 +109,8 @@ const DeliveryAreaPage = () => {
           </div>
           {mapSrc && (
             <div className="mt-6 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50" data-testid="delivery-map">
-              <iframe title={`Puff2door delivery area around ${center}`} src={mapSrc} className="w-full h-[360px]" loading="lazy" referrerPolicy="no-referrer" />
-              <p className="px-4 py-3 text-xs text-neutral-500">Map centered on ZIP {center}. Enter your ZIP above for the final delivery check within {radius} miles.</p>
+              <iframe title={`HD Smoke Shop delivery area around ${center}`} src={mapSrc} className="w-full h-[360px]" loading="lazy" referrerPolicy="no-referrer" />
+              <p className="px-4 py-3 text-xs text-neutral-500">Map centered on ZIP {center}. Enter your ZIP above for the final {selected ? "selected-ZIP" : `${radius}-mile`} delivery check.</p>
             </div>
           )}
         </section>
@@ -120,7 +121,7 @@ const DeliveryAreaPage = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { icon: SearchCheck, n: "1", t: "Check your ZIP", d: "Confirm your address is inside the live delivery area." },
-              { icon: ShoppingBag, n: "2", t: "Order before cutoff", d: "Choose an available two-hour delivery window at checkout." },
+              sameDayEnabled ? { icon: ShoppingBag, n: "2", t: "Order before cutoff", d: "Choose an available two-hour delivery window at checkout." } : { icon: ShoppingBag, n: "2", t: "Choose a time", d: "Select the next available delivery window at checkout." },
               { icon: ShieldCheck, n: "3", t: "Have 21+ ID ready", d: "We check a valid government-issued photo ID at the door." },
               { icon: Camera, n: "4", t: "Track the delivery", d: "Follow live status updates and see a door photo when provided." },
             ].map((step) => (
@@ -133,19 +134,20 @@ const DeliveryAreaPage = () => {
           {DELIVERY_VIDEO_URL && <a href={DELIVERY_VIDEO_URL} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-emerald-700 hover:underline"><Video className="h-4 w-4" /> Watch how delivery works</a>}
         </section>
 
-        <section aria-labelledby="local-reviews" className="mb-12" data-testid="local-reviews">
+        {(GOOGLE_PLACE_ID && GOOGLE_MAPS_KEY) || trust.googleReviewUrl ? <section aria-labelledby="local-reviews" className="mb-12" data-testid="local-reviews">
           <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full" />
           <h2 id="local-reviews" className="font-heading text-3xl sm:text-4xl font-700 text-neutral-900 uppercase tracking-tight mb-4">What Local Customers Say</h2>
           {GOOGLE_PLACE_ID && GOOGLE_MAPS_KEY ? (
-            <iframe title="Puff2door on Google Maps" className="w-full h-[360px] rounded-2xl border border-neutral-200" loading="lazy" allowFullScreen src={`https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(GOOGLE_MAPS_KEY)}&q=place_id:${encodeURIComponent(GOOGLE_PLACE_ID)}`} />
+            <iframe title="HD Smoke Shop on Google Maps" className="w-full h-[360px] rounded-2xl border border-neutral-200" loading="lazy" allowFullScreen src={`https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(GOOGLE_MAPS_KEY)}&q=place_id:${encodeURIComponent(GOOGLE_PLACE_ID)}`} />
           ) : (
-            <div className="border border-dashed border-neutral-300 rounded-2xl p-8 text-center bg-neutral-50">
+            <div className="border border-neutral-200 rounded-2xl p-8 text-center bg-neutral-50">
               <Star className="h-8 w-8 text-emerald-600 mx-auto mb-3" />
-              <p className="font-bold text-neutral-900">Google reviews are coming here soon.</p>
-              <p className="text-sm text-neutral-500 mt-1">We will display verified local reviews once the Google Business Place ID is connected.</p>
+              <p className="font-bold text-neutral-900">Read our verified Google reviews</p>
+              <p className="text-sm text-neutral-500 mt-1 mb-4">See current customer feedback directly on Google.</p>
+              <a href={trust.googleReviewUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center rounded-full bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-emerald-700">Open Google Reviews</a>
             </div>
           )}
-        </section>
+        </section> : null}
 
         <section aria-labelledby="da-faq-heading" className="mb-12">
           <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full" />

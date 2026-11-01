@@ -23,7 +23,7 @@ import SmartSearch from "./SmartSearch";
 
 const Header = () => {
   const navigate = useNavigate();
-  const { count } = useCart();
+  const { count, delivery } = useCart();
   const { count: wishCount } = useWishlist();
   const { user } = useApp();
   const { activeCategories: categories, activeBrands: brands } = useCatalog();
@@ -32,6 +32,7 @@ const Header = () => {
   const [query, setQuery] = useState("");
   const [openMenu, setOpenMenu] = useState(null);
   const [dark, setDark] = useState(() => localStorage.getItem("p2d_theme") === "dark");
+  const visibleAnnouncements = announcements.filter((text) => delivery.sameDayEnabled === true || !text.includes("SAME-DAY"));
 
   useEffect(() => {
     document.documentElement.classList.toggle("p2d-dark", dark);
@@ -54,7 +55,7 @@ const Header = () => {
       {/* Announcement marquee */}
       <div className="bg-neutral-900 text-white overflow-hidden">
         <div className="flex whitespace-nowrap animate-marquee">
-          {[...announcements, ...announcements, ...announcements, ...announcements].map((a, i) => (
+          {[...visibleAnnouncements, ...visibleAnnouncements, ...visibleAnnouncements, ...visibleAnnouncements].map((a, i) => (
             <span key={i} className="mx-8 py-2 text-[11px] tracking-[0.2em] font-medium flex items-center">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-3" />
               {a}
@@ -74,10 +75,10 @@ const Header = () => {
             <Link to="/" className="flex items-center gap-2 shrink-0 min-w-0">
               <AnimatedLogo testId="header-logo" className="h-10 w-10 sm:h-11 sm:w-11" />
               <span className="leading-none">
-                <span className="block font-heading font-700 text-[20px] sm:text-[22px] tracking-tight text-neutral-900">
-                  Puff<span className="p2d-logo-accent text-emerald-600">2</span>Door
+                <span className="block font-heading font-700 text-[17px] sm:text-[21px] tracking-tight text-neutral-900 whitespace-nowrap">
+                  H<span className="p2d-logo-accent text-emerald-600">D</span> Smoke Shop
                 </span>
-                <span className="hidden sm:block text-[9px] tracking-[0.28em] text-neutral-500 uppercase">
+                <span className="block text-[7px] sm:text-[9px] tracking-[0.13em] sm:tracking-[0.2em] text-neutral-500 uppercase whitespace-nowrap mt-0.5">
                   {BRAND.tagline}
                 </span>
               </span>
@@ -90,7 +91,7 @@ const Header = () => {
               <button onClick={() => setDark((value) => !value)} data-testid="theme-toggle" aria-label={dark ? "Use light mode" : "Use dark mode"} className="p-2.5 rounded-lg hover:bg-neutral-100 transition-colors">
                 {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </button>
-              <Link to="/my-account" className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
+              <Link to="/my-account" className="hidden lg:flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
                 <User className="h-5 w-5" />
                 <span className="text-xs leading-tight">
                   <span className="block text-neutral-500">{user ? "Hi," : "Account"}</span>
@@ -106,7 +107,7 @@ const Header = () => {
                     </span>
                   )}
                 </div>
-                <span className="hidden sm:block text-xs font-semibold">Wishlist</span>
+                <span className="hidden lg:block text-xs font-semibold">Wishlist</span>
               </Link>
               <Link to="/cart" data-testid="header-cart-link" className="relative flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
                 <div className="relative">
@@ -117,7 +118,7 @@ const Header = () => {
                     </span>
                   )}
                 </div>
-                <span className="hidden sm:block text-xs font-semibold">Cart</span>
+                <span className="hidden lg:block text-xs font-semibold">Cart</span>
               </Link>
             </div>
           </div>
@@ -213,7 +214,10 @@ const Header = () => {
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
           <div className="absolute left-0 top-0 h-full w-[85%] max-w-sm bg-white shadow-xl overflow-y-auto animate-fade-up">
             <div className="flex items-center justify-between p-4 border-b">
-              <span className="font-heading font-700 text-xl">Puff<span className="text-emerald-600">2</span>Door</span>
+              <span>
+                <span className="block font-heading font-700 text-xl">H<span className="p2d-logo-accent text-emerald-600">D</span> Smoke Shop</span>
+                <span className="block text-[8px] tracking-[0.16em] text-neutral-500 uppercase mt-0.5">{BRAND.tagline}</span>
+              </span>
               <button onClick={() => setMobileOpen(false)}><X className="h-6 w-6" /></button>
             </div>
             <div className="p-4" data-testid="mobile-menu">

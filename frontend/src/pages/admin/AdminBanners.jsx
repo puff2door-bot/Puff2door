@@ -64,7 +64,7 @@ const AdminBanners = () => {
       <section className="mb-10">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-heading text-xl uppercase tracking-wide">Hero Slider <span className="text-neutral-400 text-base">({slides.length})</span></h2>
-          <button onClick={() => setSlides((p) => [...p, { id: nextId(p), image: "", tag: "Puff2Door", title: "", subtitle: "", cta: "Shop Now", link: "/shop" }])} data-testid="add-hero-slide" className="inline-flex items-center gap-1 text-sm font-bold text-emerald-600 hover:underline"><Plus className="h-4 w-4" /> Add slide</button>
+          <button onClick={() => setSlides((p) => [...p, { id: nextId(p), image: "", tag: "HD Smoke Shop", title: "", subtitle: "", cta: "Shop Now", link: "/shop" }])} data-testid="add-hero-slide" className="inline-flex items-center gap-1 text-sm font-bold text-emerald-600 hover:underline"><Plus className="h-4 w-4" /> Add slide</button>
         </div>
         <div className="space-y-4">
           {slides.map((s, i) => (

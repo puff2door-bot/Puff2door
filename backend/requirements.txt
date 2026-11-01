@@ -14,3 +14,5 @@ zipcodes==3.0.0
 Pillow==12.3.0
 resend==2.42.0
 tzdata==2026.3
+pywebpush==2.5.0
+cryptography==50.0.2

@@ -24,3 +24,4 @@ main { padding-bottom: 68px; }
 .compare-tray th,.compare-tray td { text-align:left; padding:6px 8px; border-bottom:1px solid #f0f0f0; min-width:115px; }
 .compare-tray th { color:#737373; min-width:72px; }
 @media(max-width:1023px){.compare-tray{bottom:82px}.compare-tray{max-height:45vh;overflow:auto} }
+@media(min-width:1024px){.mobile-bottom-nav{display:none}main{padding-bottom:0}}

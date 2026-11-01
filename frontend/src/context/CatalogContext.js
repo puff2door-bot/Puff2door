@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import api from "../api";
 
 const CatalogContext = createContext(null);
@@ -9,6 +9,7 @@ export const CatalogProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [brandRecords, setBrandRecords] = useState([]);
   const [categoryRecords, setCategoryRecords] = useState([]);
+  const loadFailed = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -17,12 +18,20 @@ export const CatalogProvider = ({ children }) => {
       setProducts(p.data.products || []);
       setHome({ heroSlides: c.data.heroSlides || [], promoBlocks: c.data.promoBlocks || [] });
       setBrandRecords(b.data.brands || []);
+      loadFailed.current = false;
+    } catch {
+      loadFailed.current = true;
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    refresh();
+    const retryAfterWake = () => { if (loadFailed.current) refresh(); };
+    window.addEventListener("p2d-backend-ready", retryAfterWake);
+    return () => window.removeEventListener("p2d-backend-ready", retryAfterWake);
+  }, [refresh]);
 
   const value = useMemo(() => {
     const inStock = products.filter((p) => p.categorySlug === "disposable" && p.inStock);

@@ -133,7 +133,7 @@ const OrderPage = () => {
           </div>
           {order.userId && (order.pointsEarned > 0 || order.rewardPoints > 0 || order.paymentStatus === "awaiting_payment") && (
             <div className="border border-emerald-200 bg-emerald-50/50 rounded-xl p-5" data-testid="order-rewards">
-              <h2 className="font-heading text-lg uppercase tracking-wide mb-2 flex items-center gap-2"><Gift className="h-4 w-4 text-emerald-600" /> Puff2door Rewards</h2>
+              <h2 className="font-heading text-lg uppercase tracking-wide mb-2 flex items-center gap-2"><Gift className="h-4 w-4 text-emerald-600" /> HD Smoke Shop Rewards</h2>
               <div className="text-sm text-neutral-700 space-y-1">
                 {order.rewardPoints > 0 && <p data-testid="order-rewards-redeemed">Redeemed <b>{order.rewardPoints.toLocaleString()} pts</b> for ${order.rewardDiscount.toFixed(2)} off.</p>}
                 {order.pointsEarned > 0 ? (

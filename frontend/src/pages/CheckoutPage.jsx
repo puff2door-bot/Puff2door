@@ -274,7 +274,7 @@ const CheckoutPage = () => {
               <input type="checkbox" checked={ageAttestationAccepted} onChange={(e) => setAgeAttestationAccepted(e.target.checked)} className="mt-0.5 h-5 w-5 accent-emerald-600 shrink-0" data-testid="checkout-age-attestation-checkbox" />
               <span>I confirm I am 21 or older, the date of birth above is accurate, and I will present a valid, unexpired government-issued photo ID matching this order when it is delivered.</span>
             </label>
-            <p className="mt-3 text-xs text-neutral-600">The driver records only the verification result and basic audit details. Puff2door does not ask the driver to upload or retain a complete ID image.</p>
+            <p className="mt-3 text-xs text-neutral-600">The driver records only the verification result and basic audit details. HD Smoke Shop does not ask the driver to upload or retain a complete ID image.</p>
           </section>
 
           {/* Driver tip */}

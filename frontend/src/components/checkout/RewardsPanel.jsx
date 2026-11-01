@@ -33,7 +33,7 @@ const RewardsPanel = () => {
       <div data-testid="rewards-guest" className="border border-dashed border-emerald-300 bg-emerald-50/50 rounded-xl px-5 py-4 flex items-start gap-3">
         <Sparkles className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
         <p className="text-sm text-neutral-700">
-          <span className="font-bold text-neutral-900">Earn {totals.pointsToEarn} Puff2door Rewards points on this order.</span>{" "}
+          <span className="font-bold text-neutral-900">Earn {totals.pointsToEarn} HD Smoke Shop Rewards points on this order.</span>{" "}
           <Link to="/my-account" className="text-emerald-700 font-semibold hover:underline" data-testid="rewards-signin-link">Sign in or create an account</Link> to collect points{loyalty.signupBonusPoints ? ` (new members get ${loyalty.signupBonusPoints} bonus points)` : ""} — every {per} points = ${loyalty.rewardValue.toFixed(2)} off a future order.
         </p>
       </div>
@@ -49,7 +49,7 @@ const RewardsPanel = () => {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <Gift className="h-5 w-5 text-emerald-600" />
-          <h3 className="font-heading text-lg uppercase tracking-wide">Puff2door Rewards</h3>
+          <h3 className="font-heading text-lg uppercase tracking-wide">HD Smoke Shop Rewards</h3>
         </div>
         <span data-testid="rewards-balance" className="text-xs font-bold bg-white border border-emerald-200 text-emerald-800 px-3 py-1 rounded-full">
           {me ? `${me.available.toLocaleString()} pts · $${me.availableValue.toFixed(2)}` : "Loading..."}

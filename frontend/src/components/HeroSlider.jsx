@@ -15,6 +15,23 @@ const HeroSlider = () => {
     return () => clearInterval(t);
   }, [n]);
 
+  useEffect(() => {
+    const firstImage = heroSlides[0]?.image;
+    if (!firstImage) return undefined;
+    const href = imgUrl(firstImage);
+    let preload = document.head.querySelector('link[data-p2d-hero-preload="true"]');
+    if (!preload) {
+      preload = document.createElement("link");
+      preload.rel = "preload";
+      preload.as = "image";
+      preload.dataset.p2dHeroPreload = "true";
+      document.head.appendChild(preload);
+    }
+    preload.href = href;
+    preload.fetchPriority = "high";
+    return undefined;
+  }, [heroSlides]);
+
   if (n === 0) return <section className="w-full h-[380px] sm:h-[460px] lg:h-[560px] bg-neutral-900" />;
 
   const go = (d) => setIdx((i) => (i + d + n) % n);
@@ -27,7 +44,7 @@ const HeroSlider = () => {
           key={s.id}
           className={`hero-slide absolute inset-0 ${i === safeIdx ? "opacity-100 z-10" : "opacity-0 z-0"}`}
         >
-          <img src={imgUrl(s.image)} alt={s.title} loading={i === 0 ? "eager" : "lazy"} fetchPriority={i === 0 ? "high" : "auto"} width="1264" height="848" className="h-full w-full object-cover object-right" />
+          <img src={imgUrl(s.image)} alt={s.title} loading={i === 0 ? "eager" : "lazy"} fetchPriority={i === 0 ? "high" : "auto"} decoding={i === 0 ? "sync" : "async"} width="1264" height="848" sizes="100vw" className="h-full w-full object-cover object-right" />
           <div className="absolute inset-0 bg-gradient-to-r from-neutral-900/90 via-neutral-900/50 to-transparent" />
           <div className="absolute inset-0 flex items-center">
             <div className="max-w-[1280px] w-full mx-auto px-6 lg:px-4">
