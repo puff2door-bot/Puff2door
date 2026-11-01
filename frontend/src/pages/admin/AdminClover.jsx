@@ -13,6 +13,9 @@ const AdminClover = () => {
   const [products, setProducts] = useState([]);
   const [choice, setChoice] = useState({});
   const [mapRows, setMapRows] = useState(null);
+  const [previewQuery, setPreviewQuery] = useState("");
+  const [previewFilter, setPreviewFilter] = useState("all");
+  const [previewPage, setPreviewPage] = useState(0);
   const [busy, setBusy] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
@@ -95,7 +98,7 @@ const AdminClover = () => {
   const saveMap = async () => {
     setBusy("map");
     try {
-      const mappings = (mapRows || []).filter((row) => row.cloverName.trim() && row.categorySlug);
+      const mappings = (mapRows || []).filter((row) => row.cloverName.trim() && (row.categorySlug || row.keywordSplit));
       const { data } = await api.put("/admin/clover/category-map", { mappings });
       setMapRows(data.mappings || []);
       await load();
@@ -227,14 +230,14 @@ const AdminClover = () => {
           {(mapRows || []).map((row, index) => (
             <div key={`${row.cloverName}-${index}`} className="grid gap-2 sm:grid-cols-[1fr_220px_auto]">
               <input value={row.cloverName} onChange={(event) => setMapRows((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, cloverName: event.target.value } : item))} className="rounded-lg border px-3 py-2 text-sm" placeholder="Clover category name" />
-              <SearchableSelect
+              {row.keywordSplit ? <p className="rounded-lg border border-dashed px-3 py-2 text-sm text-neutral-600">Keyword split: cigars, hemp wraps, or hookah. Otherwise needs review.</p> : <SearchableSelect
                 testId={`clover-map-${index}`}
                 placeholder="Search website categories"
                 buttonClassName="rounded-lg border px-3 py-2 text-sm bg-white w-full text-left"
                 options={(status.websiteCategories || []).map((category) => ({ value: category.slug, label: category.name }))}
                 value={row.categorySlug}
                 onChange={(categorySlug) => setMapRows((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, categorySlug } : item))}
-              />
+              />}
               <button type="button" className="text-xs font-bold text-red-600" onClick={() => setMapRows((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>
             </div>
           ))}
@@ -242,17 +245,47 @@ const AdminClover = () => {
         </div>
       </section>
 
-      {(status.lastCatalogPlan?.reviewItems || []).length > 0 && (
-        <section className="rounded-2xl border overflow-hidden mb-6">
-          <div className="p-5 border-b"><h2 className="font-bold">Preview: category and brand</h2><p className="text-sm text-neutral-500 mt-1">Low-confidence and unmatched items stay hidden drafts and are marked needs review. Nothing here is published.</p></div>
-          <div className="divide-y">{status.lastCatalogPlan.reviewItems.map((item) => (
-            <div key={item.id} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div><p className="font-semibold">{item.name}</p><p className="text-xs text-neutral-500">Clover: {(item.cloverCategories || []).join(", ") || "No category"} · Website: {item.mappedCategoryName || "Unmatched"} · Brand: {item.mappedBrandName || "Unmatched"}</p></div>
-              <span className="self-start rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">{item.needsReview ? "Needs review" : item.confidence}</span>
+      {(() => {
+        const previewItems = status.lastCatalogPlan?.previewItems || status.lastCatalogPlan?.reviewItems || [];
+        if (!previewItems.length) return null;
+        const needle = previewQuery.trim().toLowerCase();
+        const filtered = previewItems.filter((item) => {
+          if (previewFilter === "review" && !item.needsReview) return false;
+          if (previewFilter === "matched" && item.needsReview) return false;
+          if (!needle) return true;
+          return `${item.name} ${(item.cloverCategories || []).join(" ")} ${item.mappedCategoryName || ""}`.toLowerCase().includes(needle);
+        });
+        const pageSize = 50;
+        const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+        const page = Math.min(previewPage, pages - 1);
+        const visible = filtered.slice(page * pageSize, page * pageSize + pageSize);
+        return (
+          <section className="rounded-2xl border overflow-hidden mb-6" data-testid="clover-preview-rows">
+            <div className="p-5 border-b flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div><h2 className="font-bold">Preview: category and brand</h2><p className="text-sm text-neutral-500 mt-1">{filtered.length} of {status.lastCatalogPlan?.previewTotal || previewItems.length} items. A mapped Clover category is not marked needs review. Needs review is only no match or a conflict.</p></div>
+              <div className="flex flex-wrap gap-2">
+                <input value={previewQuery} onChange={(event) => { setPreviewQuery(event.target.value); setPreviewPage(0); }} placeholder="Filter name or category" className="rounded-lg border px-3 py-2 text-sm" data-testid="preview-filter" />
+                <select value={previewFilter} onChange={(event) => { setPreviewFilter(event.target.value); setPreviewPage(0); }} className="rounded-lg border px-3 py-2 text-sm bg-white" data-testid="preview-status-filter">
+                  <option value="all">All items</option>
+                  <option value="matched">Mapped</option>
+                  <option value="review">Needs review</option>
+                </select>
+              </div>
             </div>
-          ))}</div>
-        </section>
-      )}
+            <div className="divide-y">{visible.map((item) => (
+              <div key={item.id} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div><p className="font-semibold">{item.name}</p><p className="text-xs text-neutral-500">Clover: {(item.cloverCategories || []).join(", ") || "No category"} · Website: {item.mappedCategoryName || "Unmatched"} · Brand: {item.mappedBrandName || "Unmatched"}</p></div>
+                <span className={`self-start rounded-full px-3 py-1 text-xs font-bold ${item.needsReview ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>{item.needsReview ? "Needs review" : "Mapped"}</span>
+              </div>
+            ))}</div>
+            <div className="flex items-center justify-between border-t px-5 py-3 text-sm">
+              <button type="button" disabled={page === 0} onClick={() => setPreviewPage(page - 1)} className="font-bold disabled:opacity-40">Previous</button>
+              <span>Page {page + 1} of {pages}</span>
+              <button type="button" disabled={page + 1 >= pages} onClick={() => setPreviewPage(page + 1)} className="font-bold disabled:opacity-40">Next</button>
+            </div>
+          </section>
+        );
+      })()}
 
       {(status.lastCatalogPlan?.unmatchedPhotoBarcodes || []).length > 0 && (
         <section className="rounded-2xl border overflow-hidden mb-6">

@@ -2390,8 +2390,16 @@ CLOVER_CLIENT_SECRET = os.environ.get("CLOVER_CLIENT_SECRET", "").strip()
 CLOVER_ENV = os.environ.get("CLOVER_ENV", "production").strip().lower()
 CLOVER_REDIRECT_URI = os.environ.get("CLOVER_REDIRECT_URI", "https://puff2door.com/api/clover/oauth/callback").strip()
 CLOVER_WEBHOOK_AUTH_CODE = os.environ.get("CLOVER_WEBHOOK_AUTH_CODE", "").strip()
-CLOVER_SYNC_ENABLED = os.environ.get("CLOVER_SYNC_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
-CLOVER_SYNC_DRY_RUN = os.environ.get("CLOVER_SYNC_DRY_RUN", "").strip().lower() in {"1", "true", "yes", "on"}
+def _clover_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+CLOVER_SYNC_ENABLED = _clover_flag("CLOVER_SYNC_ENABLED")
+CLOVER_SYNC_DRY_RUN = _clover_flag("CLOVER_SYNC_DRY_RUN")
+CLOVER_SYNC_PRICES = _clover_flag("CLOVER_SYNC_PRICES")
+CLOVER_SYNC_NAMES = _clover_flag("CLOVER_SYNC_NAMES")
+CLOVER_CREATE_ITEMS = _clover_flag("CLOVER_CREATE_ITEMS")
+CLOVER_CATEGORY_WRITEBACK_ENABLED = _clover_flag("CLOVER_CATEGORY_WRITEBACK_ENABLED")
 CLOVER_SYNC_INTERVAL_SECONDS = 12 * 60
 CLOVER_API_TOKEN = os.environ.get("CLOVER_API_TOKEN", "").strip()
 CLOVER_MERCHANT_ID = os.environ.get("CLOVER_MERCHANT_ID", "").strip()
@@ -2411,6 +2419,10 @@ def clover_integration() -> CloverIntegration:
         dry_run=CLOVER_SYNC_DRY_RUN,
         api_token=CLOVER_API_TOKEN,
         merchant_id=CLOVER_MERCHANT_ID,
+        sync_prices=CLOVER_SYNC_PRICES,
+        sync_names=CLOVER_SYNC_NAMES,
+        create_items=CLOVER_CREATE_ITEMS,
+        category_writeback=CLOVER_CATEGORY_WRITEBACK_ENABLED,
     )
 
 

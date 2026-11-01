@@ -14,7 +14,8 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-from clover_mapping import classify_item, clover_category_names, seed_category_mappings
+from clover_catalog import field_changes, normalized_name, parse_time, price_cents, price_guard
+from clover_mapping import brand_report, classify_item, clover_category_names, resolve_category_names, seed_category_mappings
 from urllib.parse import urlencode
 
 import httpx
@@ -111,6 +112,10 @@ class CloverIntegration:
         dry_run: bool = False,
         api_token: str = "",
         merchant_id: str = "",
+        sync_prices: bool = False,
+        sync_names: bool = False,
+        create_items: bool = False,
+        category_writeback: bool = False,
     ):
         self.db = db
         self.client_id = client_id.strip()
@@ -123,6 +128,10 @@ class CloverIntegration:
         # the server flag is turned on. The API merchant id is never hardcoded.
         self.sync_enabled = bool(sync_enabled)
         self.dry_run = bool(dry_run)
+        self.sync_prices = bool(sync_prices)
+        self.sync_names = bool(sync_names)
+        self.create_items = bool(create_items)
+        self.category_writeback = bool(category_writeback)
         # Merchant API token mode. The token stays in memory for this process.
         self.api_token = (api_token or "").strip()
         self.merchant_id = (merchant_id or "").strip()
@@ -345,6 +354,27 @@ class CloverIntegration:
             offset += len(page)
         return rows
 
+    async def _category_directory(self, merchant_id: str) -> tuple[dict, dict]:
+        """Join Clover category ids to names. Item expand often omits the name."""
+        by_id: dict[str, str] = {}
+        by_item: dict[str, list[str]] = {}
+        try:
+            for row in await self._paged(f"/v3/merchants/{merchant_id}/categories"):
+                if row.get("id") and row.get("name"):
+                    by_id[str(row["id"])] = str(row["name"]).strip()
+            for row in await self._paged(f"/v3/merchants/{merchant_id}/category_items", {"expand": "category,item"}):
+                item = row.get("item") if isinstance(row.get("item"), dict) else {}
+                item_id = str(item.get("id") or row.get("itemId") or "")
+                category = row.get("category") if isinstance(row.get("category"), dict) else {}
+                name = str(category.get("name") or by_id.get(str(category.get("id") or row.get("categoryId") or "")) or "").strip()
+                if item_id and name:
+                    names = by_item.setdefault(item_id, [])
+                    if name not in names:
+                        names.append(name)
+        except Exception:
+            LOGGER.warning("Clover category list could not be loaded; using category names on each item")
+        return by_id, by_item
+
     def _merchant_id(self, config: Optional[dict] = None) -> str:
         if self.token_mode:
             return self.merchant_id
@@ -360,6 +390,7 @@ class CloverIntegration:
             merchant_id = doc["merchantId"]
         items = await self._paged(f"/v3/merchants/{merchant_id}/items", {"expand": "categories,tags"})
         stocks = await self._paged(f"/v3/merchants/{merchant_id}/item_stocks")
+        by_id, by_item = await self._category_directory(merchant_id)
         stock_by_id = {_stock_item_id(stock): _stock_quantity(stock) for stock in stocks if _stock_item_id(stock)}
         normalized = []
         for item in items:
@@ -372,9 +403,10 @@ class CloverIntegration:
                 "sku": _clean_identifier(item.get("sku")),
                 "barcode": _clean_identifier(item.get("code")),
                 "price": round(float(item.get("price") or 0) / 100, 2),
+                "modifiedTime": item.get("modifiedTime"),
                 "stock": stock_by_id.get(item_id, 0),
                 "hidden": bool(item.get("hidden", False)),
-                "categories": item.get("categories"),
+                "categories": {"elements": [{"name": name} for name in resolve_category_names(item, by_id, by_item)]},
                 "tags": item.get("tags"),
             })
         return await self._annotate_items(normalized)
@@ -399,18 +431,34 @@ class CloverIntegration:
             categories, _brands = await self._website_catalog()
         allowed = {row.get("slug") for row in categories if row.get("slug")}
         config = await self.config() or {}
-        saved = config.get("categoryMappings")
-        if isinstance(saved, list) and saved:
-            rows = []
-            for row in saved:
-                if not isinstance(row, dict):
-                    continue
-                name = str(row.get("cloverName") or "").strip()
-                slug = str(row.get("categorySlug") or "").strip()
-                if name and slug in allowed:
-                    rows.append({"cloverName": name, "categorySlug": slug})
-            return rows
-        return seed_category_mappings(allowed)
+        saved = config.get("categoryMappings") if isinstance(config.get("categoryMappings"), list) else []
+        defaults = seed_category_mappings(allowed)
+        if config.get("categoryMappingsMigrated") and saved:
+            return [row for row in saved if isinstance(row, dict) and (row.get("keywordSplit") or row.get("categorySlug") in allowed)]
+        by_saved = {}
+        for row in saved:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("cloverName") or "").strip()
+            slug = str(row.get("categorySlug") or "").strip()
+            if name and (row.get("keywordSplit") or slug in allowed):
+                by_saved[name.lower()] = {"cloverName": name, "categorySlug": slug, "keywordSplit": bool(row.get("keywordSplit"))}
+        merged = []
+        seen = set()
+        for row in defaults:
+            key = row["cloverName"].lower()
+            # Keep an owner choice for a name they already saved. Add every new default they do not have.
+            merged.append(by_saved.get(key) or row)
+            seen.add(key)
+        for key, row in by_saved.items():
+            if key not in seen:
+                merged.append(row)
+        await self.db.integrations.update_one(
+            {"key": "clover"},
+            {"$set": {"categoryMappings": merged, "categoryMappingsMigrated": True, "updatedAt": utcnow()}},
+            upsert=True,
+        )
+        return merged
 
     async def save_category_mappings(self, mappings: list[dict]) -> list[dict]:
         categories, _brands = await self._website_catalog()
@@ -420,7 +468,13 @@ class CloverIntegration:
         for row in mappings:
             name = str(row.get("cloverName") or "").strip()
             slug = str(row.get("categorySlug") or "").strip()
-            if not name or not slug:
+            if not name:
+                continue
+            if row.get("keywordSplit"):
+                cleaned.append({"cloverName": name, "categorySlug": "", "keywordSplit": True})
+                seen.add(name.lower())
+                continue
+            if not slug:
                 continue
             if slug not in allowed:
                 raise CloverError(f"Website category {slug} does not exist. Create it in Categories before mapping it.")
@@ -435,8 +489,9 @@ class CloverIntegration:
     async def _annotate_items(self, items: list[dict]) -> list[dict]:
         categories, brands = await self._website_catalog()
         mappings = await self.category_mappings(categories)
+        aliases = await self.brand_aliases()
         for item in items:
-            item.update(classify_item(item, mappings, categories, brands))
+            item.update(classify_item(item, mappings, categories, brands, aliases))
             item["cloverCategories"] = clover_category_names(item)
         return items
 
@@ -469,6 +524,7 @@ class CloverIntegration:
             matched_remote: set[str] = set()
             linked = auto_matched = updated = price_changes = 0
             restocked: list[int] = []
+            outbound_fields: list[dict] = []
             for item in remote:
                 product = linked_ids.get(item["id"])
                 auto = False
@@ -498,12 +554,22 @@ class CloverIntegration:
                     "cloverReportedStock": reported_stock,
                     "stockSyncState": stock_state,
                     "stock": effective_stock,
-                    "updatedAt": utcnow(),
                 }
-                if item.get("sku") and not product.get("sku"):
-                    changes["sku"] = item["sku"]
-                if item.get("barcode") and not product.get("barcode"):
-                    changes["barcode"] = item["barcode"]
+                if item.get("modifiedTime"):
+                    changes["cloverModifiedTime"] = item.get("modifiedTime")
+                field_rows = field_changes(product, item, sync_prices=self.sync_prices, sync_names=self.sync_names)
+                for row in field_rows:
+                    if row["direction"] == "clover_to_website" and row["apply"]:
+                        changes[row["field"]] = row["to"]
+                        if row["field"] == "price":
+                            price_changes += 1
+                        await self.log("catalog_change", "success", field=row["field"], direction=row["direction"], productId=product["id"], cloverItemId=item["id"], oldValue=row["from"], newValue=row["to"])
+                    elif row["direction"] == "website_to_clover" and row["apply"]:
+                        outbound_fields.append(row)
+                    elif row["conflict"]:
+                        await self.log("catalog_change", "conflict", field=row["field"], direction=row["direction"], productId=product["id"], cloverItemId=item["id"], oldValue=row["from"], newValue=row["to"], error=row.get("blocked") or "")
+                if any(row["field"] in changes for row in field_rows):
+                    changes["updatedAt"] = parse_time(item.get("modifiedTime")) or utcnow()
                 if item.get("mappedCategorySlug") and not str(product.get("categorySlug") or "").strip():
                     changes["categorySlug"] = item["mappedCategorySlug"]
                     changes["category"] = item.get("mappedCategoryName") or item["mappedCategorySlug"]
@@ -518,6 +584,14 @@ class CloverIntegration:
                 if old_stock == 0 and effective_stock > 0:
                     restocked.append(product["id"])
 
+            if self.sync_enabled and not self.dry_run:
+                await self._push_field_changes(outbound_fields)
+            remote_ids = {row["id"] for row in remote}
+            for product in local:
+                if product.get("cloverItemId") and product["cloverItemId"] not in remote_ids:
+                    await self.db.products.update_one({"id": product["id"]}, {"$set": {"cloverMissing": True, "cloverDeletionFlag": "missing_in_clover"}})
+                elif product.get("cloverMissing"):
+                    await self.db.products.update_one({"id": product["id"]}, {"$set": {"cloverMissing": False}, "$unset": {"cloverDeletionFlag": ""}})
             unmatched = [item for item in remote if item["id"] not in matched_remote]
             summary = {
                 "source": source,
@@ -578,13 +652,287 @@ class CloverIntegration:
             LOGGER.error("Could not update Clover stock for product %s: %s", product_id, exc)
             return False
 
-    async def sync_product_details(self, product_id: int, source: str = "admin") -> dict:
-        """Website item and price edits stay on the website. Clover is read-only for catalog data."""
+    async def brand_aliases(self) -> list[dict]:
+        config = await self.config() or {}
+        saved = config.get("brandAliases") if isinstance(config.get("brandAliases"), list) else []
+        return [row for row in saved if isinstance(row, dict)]
+
+    async def save_brand_aliases(self, rows: list[dict]) -> list[dict]:
+        _categories, brands = await self._website_catalog()
+        allowed = {str(brand.get("slug")) for brand in brands if brand.get("slug")}
+        cleaned = []
+        for row in rows:
+            slug = str(row.get("brandSlug") or "").strip()
+            if slug not in allowed:
+                continue
+            aliases = []
+            for alias in row.get("aliases") or []:
+                text = str(alias).strip()
+                if text and text not in aliases:
+                    aliases.append(text)
+            cleaned.append({"brandSlug": slug, "aliases": aliases})
+        await self.db.integrations.update_one({"key": "clover"}, {"$set": {"brandAliases": cleaned, "updatedAt": utcnow()}}, upsert=True)
+        return cleaned
+
+    async def _push_field_changes(self, rows: list[dict]) -> None:
+        if not rows:
+            return
+        merchant_id = self._merchant_id(await self.config() or {})
+        if not merchant_id:
+            return
+        grouped: dict[str, dict] = {}
+        undo = []
+        for row in rows:
+            body = grouped.setdefault(row["cloverItemId"], {})
+            if row["field"] == "price":
+                body["price"] = price_cents(row["to"])
+            elif row["field"] == "name":
+                body["name"] = row["to"]
+            elif row["field"] == "sku":
+                body["sku"] = row["to"]
+            undo.append({"target": "clover", "cloverItemId": row["cloverItemId"], "previous": {row["field"]: row["from"]}})
+        for clover_item_id, body in grouped.items():
+            await self.request("POST", f"/v3/merchants/{merchant_id}/items/{clover_item_id}", json_body=body)
+            await self.log("catalog_change", "success", direction="website_to_clover", cloverItemId=clover_item_id, newValue=body)
+        if undo:
+            await self._save_undo(undo, "field_push")
+
+    def _deletion_flags(self, local: list[dict], remote: list[dict]) -> list[dict]:
+        remote_ids = {item.get("id") for item in remote}
+        flags = []
+        for product in local:
+            clover_id = product.get("cloverItemId")
+            if not clover_id:
+                continue
+            if clover_id not in remote_ids:
+                flags.append({"productId": product.get("id"), "name": product.get("name") or "", "cloverItemId": clover_id, "flag": "missing_in_clover"})
+            elif product.get("active") is False:
+                flags.append({"productId": product.get("id"), "name": product.get("name") or "", "cloverItemId": clover_id, "flag": "website_hidden"})
+        return flags
+
+    async def catalog_report(self, remote: list[dict]) -> dict:
+        categories, brands = await self._website_catalog()
+        category_counts: dict[str, int] = {}
+        brand_counts: dict[str, int] = {}
+        for item in remote:
+            labels = item.get("cloverCategories") or clover_category_names(item)
+            if not labels:
+                category_counts["(no category)"] = category_counts.get("(no category)", 0) + 1
+            for label in labels:
+                if not item.get("mappedCategorySlug"):
+                    category_counts[label] = category_counts.get(label, 0) + 1
+            if not item.get("mappedBrandSlug"):
+                token = str(item.get("name") or "").split(" ")[0].strip()
+                if token:
+                    brand_counts[token] = brand_counts.get(token, 0) + 1
+        names = {}
+        for category in categories:
+            key = normalized_name(category.get("name"))
+            if key:
+                names.setdefault(key, []).append(category.get("name"))
+        category_duplicates = [rows for rows in names.values() if len(rows) > 1]
         return {
-            "status": "skipped",
-            "action": "none",
-            "reason": "Clover is the source of truth for item names and prices. This website edit was not sent to Clover.",
+            "unmatchedCategories": [{"name": name, "count": count} for name, count in sorted(category_counts.items(), key=lambda row: -row[1])],
+            "unmatchedBrandNames": [{"name": name, "count": count} for name, count in sorted(brand_counts.items(), key=lambda row: -row[1])[:30]],
+            "possibleCategoryDuplicates": category_duplicates,
+            "possibleBrandDuplicates": brand_report(brands).get("possibleDuplicates") or [],
+            "oddBrands": brand_report(brands).get("oddBrands") or [],
         }
+
+    async def _save_undo(self, entries: list[dict], source: str) -> None:
+        if not entries:
+            return
+        await self.db.integrations.update_one({"key": "clover"}, {"$set": {"lastUndo": {
+            "id": secrets.token_hex(8),
+            "createdAt": utcnow(),
+            "source": source,
+            "undone": False,
+            "entries": entries,
+        }}}, upsert=True)
+
+    async def undo_last_batch(self) -> dict:
+        batch = (await self.config() or {}).get("lastUndo") or {}
+        if not batch or batch.get("undone"):
+            raise CloverError("There is no Clover change batch to undo.")
+        merchant_id = self._merchant_id(await self.config() or {})
+        for entry in batch.get("entries") or []:
+            previous = entry.get("previous") or {}
+            if entry.get("target") == "website" and entry.get("productId") is not None:
+                await self.db.products.update_one({"id": entry["productId"]}, {"$set": previous})
+            elif entry.get("target") == "clover" and merchant_id and entry.get("cloverItemId"):
+                body = {}
+                if "price" in previous:
+                    body["price"] = price_cents(previous["price"])
+                if "name" in previous:
+                    body["name"] = previous["name"]
+                if "sku" in previous:
+                    body["sku"] = previous["sku"]
+                if body:
+                    await self.request("POST", f"/v3/merchants/{merchant_id}/items/{entry['cloverItemId']}", json_body=body)
+        batch["undone"] = True
+        await self.db.integrations.update_one({"key": "clover"}, {"$set": {"lastUndo": batch}})
+        await self.log("undo", "success", source=batch.get("source") or "")
+        return {"undone": True, "id": batch.get("id")}
+
+    async def sync_product_details(self, product_id: int, source: str = "admin", confirm_price: bool = False, create_in_clover: bool = False) -> dict:
+        product = await self.db.products.find_one({"id": product_id})
+        if not product:
+            return {"status": "skipped", "action": "none", "reason": "Product was not found."}
+        if source == "admin_product_hide":
+            if product.get("cloverItemId"):
+                await self.db.products.update_one({"id": product_id}, {"$set": {"cloverDeletionFlag": "website_hidden"}})
+                await self.log("deletion_flag", "success", productId=product_id, cloverItemId=product.get("cloverItemId"), flag="website_hidden")
+            return {"status": "flagged", "action": "none", "reason": "Hiding a website product does not delete the Clover item."}
+        if not product.get("cloverItemId"):
+            if create_in_clover or source == "admin_product_create" and self.create_items:
+                return await self.create_clover_item(product, confirm_price=confirm_price)
+            return {"status": "skipped", "action": "none", "reason": "This product is not linked to Clover."}
+        if not self.sync_prices and not self.sync_names:
+            return {"status": "skipped", "action": "none", "reason": "Clover name and price sync are off."}
+        if self.dry_run or not self.sync_enabled:
+            return {"status": "planned", "action": "update", "reason": "Preview only. Nothing was sent to Clover."}
+        merchant_id = self._merchant_id(await self.config() or {})
+        if not merchant_id:
+            return {"status": "not_connected", "action": "none"}
+        body = {}
+        blocked = ""
+        if self.sync_names:
+            body["name"] = product.get("name") or ""
+            body["sku"] = product.get("sku") or ""
+        if self.sync_prices:
+            blocked = price_guard(product.get("cloverPrice") or product.get("price"), product.get("price"), confirm_price)
+            # Guard compares against the last Clover dollar price when we have it.
+            last_clover = product.get("cloverPrice")
+            if last_clover is None:
+                blocked = price_guard(product.get("price"), product.get("price"), True) if confirm_price else ""
+                if float(product.get("price") or 0) <= 0 and not confirm_price:
+                    blocked = price_guard(1, 0, False)
+            else:
+                blocked = price_guard(last_clover, product.get("price"), confirm_price)
+            if not blocked:
+                body["price"] = price_cents(product.get("price"))
+        if blocked and "price" not in body and not self.sync_names:
+            await self.log("catalog_change", "conflict", field="price", productId=product_id, error=blocked)
+            return {"status": "needs_confirmation", "action": "update", "error": blocked}
+        if not body:
+            return {"status": "skipped", "action": "none", "reason": blocked or "Nothing to send."}
+        await self.request("POST", f"/v3/merchants/{merchant_id}/items/{product['cloverItemId']}", json_body=body)
+        await self._save_undo([{"target": "clover", "cloverItemId": product["cloverItemId"], "previous": {"name": product.get("name"), "sku": product.get("sku"), "price": product.get("price")}}], "admin_save")
+        await self.log("catalog_change", "success", direction="website_to_clover", productId=product_id, newValue=body)
+        result = {"status": "success", "action": "update"}
+        if blocked:
+            result["priceBlocked"] = blocked
+            result["status"] = "partial"
+        return result
+
+    async def create_clover_item(self, product: dict, confirm_price: bool = False) -> dict:
+        if not self.create_items:
+            return {"status": "skipped", "action": "none", "reason": "CLOVER_CREATE_ITEMS is off."}
+        if self.dry_run:
+            return {"status": "planned", "action": "create", "reason": "Dry run. The Clover item was not created."}
+        merchant_id = self._merchant_id(await self.config() or {})
+        if not merchant_id:
+            return {"status": "not_connected", "action": "none"}
+        if float(product.get("price") or 0) <= 0 and not confirm_price:
+            return {"status": "needs_confirmation", "action": "create", "error": price_guard(1, 0, False)}
+        remote = await self.fetch_inventory()
+        sku_key = _match_identifier(product.get("sku"))
+        name_key = normalized_name(product.get("name"))
+        for item in remote:
+            sku_match = sku_key and _match_identifier(item.get("sku")) == sku_key
+            name_match = name_key and normalized_name(item.get("name")) == name_key
+            if sku_match or name_match:
+                await self.db.products.update_one({"id": product["id"]}, {"$set": {"cloverItemId": item["id"], "cloverLastSyncedAt": utcnow()}})
+                await self.log("link", "success", productId=product["id"], cloverItemId=item["id"], reason="existing item")
+                return {"status": "success", "action": "linked_existing", "cloverItemId": item["id"]}
+        created = await self.request("POST", f"/v3/merchants/{merchant_id}/items", json_body={
+            "name": product.get("name") or "Website item",
+            "price": price_cents(product.get("price")),
+            "sku": product.get("sku") or "",
+            "code": product.get("barcode") or "",
+        })
+        clover_id = str((created or {}).get("id") or "")
+        if not clover_id:
+            return {"status": "failed", "action": "create", "error": "Clover did not return an item id."}
+        await self.db.products.update_one({"id": product["id"]}, {"$set": {"cloverItemId": clover_id, "cloverLastSyncedAt": utcnow()}})
+        await self._attach_category_and_brand(merchant_id, clover_id, product, remote)
+        await self.log("import", "success", productId=product["id"], cloverItemId=clover_id, direction="website_to_clover")
+        return {"status": "success", "action": "create", "cloverItemId": clover_id}
+
+    async def _attach_category_and_brand(self, merchant_id: str, clover_id: str, product: dict, remote: list[dict]) -> None:
+        category_name = str(product.get("category") or "").strip()
+        if category_name:
+            categories = await self._paged(f"/v3/merchants/{merchant_id}/categories")
+            match = next((row for row in categories if normalized_name(row.get("name")) == normalized_name(category_name)), None)
+            if match and match.get("id"):
+                await self.request("POST", f"/v3/merchants/{merchant_id}/category_items", json_body={"category": {"id": match["id"]}, "item": {"id": clover_id}})
+        brand_name = str(product.get("brandName") or "").strip()
+        if not brand_name:
+            return
+        tags = await self._paged(f"/v3/merchants/{merchant_id}/tags")
+        tag = next((row for row in tags if normalized_name(row.get("name")) == normalized_name(brand_name)), None)
+        if not tag:
+            tag = await self.request("POST", f"/v3/merchants/{merchant_id}/tags", json_body={"name": brand_name})
+        if tag and tag.get("id"):
+            await self.request("POST", f"/v3/merchants/{merchant_id}/tag_items", json_body={"tag": {"id": tag["id"]}, "item": {"id": clover_id}})
+
+    async def category_writeback_plan(self) -> dict:
+        remote = await self.fetch_inventory()
+        categories = await self._paged(f"/v3/merchants/{self._merchant_id(await self.config() or {})}/categories") if self._merchant_id(await self.config() or {}) else []
+        tags = await self._paged(f"/v3/merchants/{self._merchant_id(await self.config() or {})}/tags") if self._merchant_id(await self.config() or {}) else []
+        by_category = {normalized_name(row.get("name")): row for row in categories if row.get("name")}
+        by_tag = {normalized_name(row.get("name")): row for row in tags if row.get("name")}
+        changes = []
+        for product in await self.db.products.find({"cloverItemId": {"$exists": True, "$ne": ""}}).to_list(5000):
+            category_name = str(product.get("category") or "").strip()
+            if category_name:
+                match = by_category.get(normalized_name(category_name))
+                changes.append({
+                    "productId": product.get("id"),
+                    "name": product.get("name") or "",
+                    "cloverItemId": product.get("cloverItemId"),
+                    "action": "assign_category" if match else "skip_category",
+                    "detail": (match or {}).get("name") or category_name,
+                    "creates": False,
+                })
+            brand_name = str(product.get("brandName") or "").strip()
+            if brand_name:
+                tag = by_tag.get(normalized_name(brand_name))
+                changes.append({
+                    "productId": product.get("id"),
+                    "name": product.get("name") or "",
+                    "cloverItemId": product.get("cloverItemId"),
+                    "action": "reuse_tag" if tag else "add_tag",
+                    "detail": brand_name,
+                    "creates": not bool(tag),
+                })
+        return {"changes": changes, "remoteItems": len(remote)}
+
+    async def apply_category_writeback(self, confirm: bool = False) -> dict:
+        plan = await self.category_writeback_plan()
+        if not self.category_writeback:
+            return {"applied": False, "reason": "writeback_disabled", "plan": plan}
+        if self.dry_run or not confirm:
+            return {"applied": False, "dryRun": True, "plan": plan}
+        merchant_id = self._merchant_id(await self.config() or {})
+        if not merchant_id:
+            return {"applied": False, "reason": "not_connected", "plan": plan}
+        for change in plan["changes"]:
+            if change["action"] == "assign_category":
+                categories = await self._paged(f"/v3/merchants/{merchant_id}/categories")
+                match = next((row for row in categories if normalized_name(row.get("name")) == normalized_name(change["detail"])), None)
+                if match and match.get("id"):
+                    await self.request("POST", f"/v3/merchants/{merchant_id}/category_items", json_body={"category": {"id": match["id"]}, "item": {"id": change["cloverItemId"]}})
+            elif change["action"] in {"reuse_tag", "add_tag"}:
+                tags = await self._paged(f"/v3/merchants/{merchant_id}/tags")
+                tag = next((row for row in tags if normalized_name(row.get("name")) == normalized_name(change["detail"])), None)
+                if not tag:
+                    tag = await self.request("POST", f"/v3/merchants/{merchant_id}/tags", json_body={"name": change["detail"]})
+                if tag and tag.get("id"):
+                    await self.request("POST", f"/v3/merchants/{merchant_id}/tag_items", json_body={"tag": {"id": tag["id"]}, "item": {"id": change["cloverItemId"]}})
+            await self.log("category_writeback", "success", **{key: change[key] for key in ("productId", "cloverItemId", "action", "detail")})
+        await self._save_undo([{"target": "note", "previous": {"writeback": "last batch"}}], "category_writeback")
+        return {"applied": True, "plan": plan}
 
     def _photo_plan(self, remote: list[dict], captures: list[dict]) -> dict:
         by_code: dict[str, list[str]] = {}
@@ -632,6 +980,7 @@ class CloverIntegration:
         stock_changes = []
         stock_holds = []
         price_changes = []
+        field_plan_rows = []
         matched: set[str] = set()
         for item in remote:
             product = linked_ids.get(item["id"])
@@ -673,7 +1022,8 @@ class CloverIntegration:
                     "state": "pending",
                 })
             if float(product.get("price") or 0) != float(item["price"]):
-                price_changes.append({"productId": product["id"], "cloverItemId": item["id"], "from": product.get("price"), "to": item["price"]})
+                price_changes.append({"productId": product["id"], "cloverItemId": item["id"], "from": product.get("price"), "to": item["price"], "name": product.get("name") or item.get("name") or ""})
+            field_plan_rows.extend(field_changes(product, item, sync_prices=self.sync_prices, sync_names=self.sync_names))
         captures = await self.db.inventory_captures.find({}).to_list(5000)
         photos = self._photo_plan(remote, captures)
         outbound = await self._planned_clover_writes()
@@ -686,6 +1036,10 @@ class CloverIntegration:
             "stockHolds": stock_holds,
             "cloverStockChanges": outbound,
             "priceChanges": price_changes,
+            "fieldChanges": field_plan_rows,
+            "conflicts": [row for row in field_plan_rows if row.get("conflict")],
+            "catalogReport": await self.catalog_report(remote),
+            "deletionFlags": self._deletion_flags(local, remote),
             "unmatchedItems": len(remote) - len(matched),
             **photos,
         }
@@ -703,7 +1057,7 @@ class CloverIntegration:
         remote = await self.fetch_inventory()
         plan = await self._catalog_plan(remote)
         plan["source"] = source
-        plan["reviewItems"] = [{
+        preview_items = [{
             "id": item.get("id"),
             "name": item.get("name"),
             "cloverCategories": item.get("cloverCategories") or [],
@@ -712,8 +1066,12 @@ class CloverIntegration:
             "mappedBrandSlug": item.get("mappedBrandSlug") or "",
             "mappedBrandName": item.get("mappedBrandName") or "",
             "confidence": item.get("confidence") or "none",
-            "needsReview": bool(item.get("needsReview", True)),
-        } for item in remote if item.get("needsReview")][:200]
+            "conflict": bool(item.get("conflict")),
+            "needsReview": bool(item.get("needsReview")),
+        } for item in remote]
+        plan["previewItems"] = preview_items
+        plan["previewTotal"] = len(preview_items)
+        plan["reviewItems"] = [item for item in preview_items if item["needsReview"]]
         if not self.sync_enabled or self.dry_run:
             plan["applied"] = False
             plan["dryRun"] = True

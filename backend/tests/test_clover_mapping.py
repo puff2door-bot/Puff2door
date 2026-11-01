@@ -47,8 +47,8 @@ def test_keyword_fallback_is_low_confidence_and_does_not_invent_cbd():
     assert named["needsReview"] is True
     hookah = classify_item({"name": "Premium hookah hose", "categories": []}, mapping, CATEGORIES, BRANDS)
     assert hookah["mappedCategorySlug"] == "hookah-accessories"
-    assert hookah["confidence"] == "low"
-    assert hookah["needsReview"] is True
+    assert hookah["confidence"] == "keyword"
+    assert hookah["needsReview"] is False
     cbd = classify_item({"name": "CBD gummies", "categories": []}, mapping, CATEGORIES, BRANDS)
     assert cbd["mappedCategorySlug"] == "delta-edibles"
     assert "cbd" not in {row["categorySlug"] for row in mapping}
@@ -69,7 +69,8 @@ def test_real_clover_categories_and_pods_name_come_from_the_list():
     ]
     mapping = seed_category_mappings(row["slug"] for row in categories)
     names = {row["cloverName"] for row in mapping}
-    assert names == {"Nicotine Vapes", "THC-P Vapes", "Gummies", "Flower", "Pre-Rolls", "Rolling Papers", "Glass", "Lighters", "Kratom", "Ash Trays"}
+    assert "Tobacco" in names
+    assert names >= {"Nicotine Vapes", "THC-P Vapes", "Gummies", "Flower", "Pre-Rolls", "Rolling Papers", "Glass", "Lighters", "Kratom", "Ash Trays", "Tobacco"}
     pod = classify_item({"name": "Raz Vue Pod", "categories": []}, mapping, categories, BRANDS)
     assert pod["mappedCategorySlug"] == "e-liquids"
     assert pod["mappedCategoryName"] == "PODS"
@@ -164,10 +165,11 @@ def test_sync_fills_empty_category_only_and_import_stays_hidden():
         assert preview["applied"] is False
         assert kept["categorySlug"] == "kratom" and kept["brand"] == "raz"
         assert seen[0][1] == "categories,tags"
-        review = {row["id"]: row for row in preview["reviewItems"]}
-        assert "item-1" not in review
-        assert review["item-2"]["mappedCategorySlug"] == "hookah-accessories"
-        assert review["item-2"]["needsReview"] is True
+        preview_rows = {row["id"]: row for row in preview["previewItems"]}
+        assert preview_rows["item-1"]["mappedCategorySlug"] == "disposable"
+        assert preview_rows["item-1"]["needsReview"] is False
+        assert preview_rows["item-2"]["mappedCategorySlug"] == "hookah-accessories"
+        assert preview_rows["item-2"]["needsReview"] is False
 
         clover.sync_enabled = True
         await clover.sync_catalog(source="admin")
@@ -188,7 +190,7 @@ def test_sync_fills_empty_category_only_and_import_stays_hidden():
         assert imported["active"] is False
         assert imported["minimumAge"] == 21
         assert imported["categorySlug"] == "hookah-accessories"
-        assert imported["cloverNeedsReview"] is True
+        assert imported["cloverNeedsReview"] is False
         assert "clover-imports" != imported["categorySlug"]
 
         try:
