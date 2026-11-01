@@ -35,7 +35,7 @@ const AdminClover = () => {
     if (!result) return;
     toast({
       title: result === "connected" ? "Clover connected" : "Clover connection did not finish",
-      description: result === "connected" ? "The first inventory sync is starting." : "Return here and try Connect Clover again.",
+      description: result === "connected" ? "Clover is connected. Stock and prices stay put until automatic sync is turned on." : "Return here and try Connect Clover again.",
       variant: result === "connected" ? "default" : "destructive",
     });
     setSearchParams({}, { replace: true });
@@ -61,7 +61,7 @@ const AdminClover = () => {
     window.location.assign(data.url);
   }, "Opening Clover");
 
-  const sync = () => run("sync", () => api.post("/admin/clover/sync"), "Inventory synced from Clover");
+  const sync = () => run("sync", () => api.post("/admin/clover/sync"), status?.automaticSync ? "Inventory synced from Clover" : "Dry run finished. Nothing was changed.");
 
   const link = (item) => {
     const productId = Number(choice[item.id]);
@@ -90,10 +90,17 @@ const AdminClover = () => {
           <p className="text-sm text-neutral-500 mt-1">Keep HD Smoke Shop stock aligned with your Clover store without a third-party monthly subscription.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {status.connected && <button onClick={sync} disabled={Boolean(busy)} className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${busy === "sync" ? "animate-spin" : ""}`} /> Sync now</button>}
+          {status.connected && <button onClick={sync} disabled={Boolean(busy)} className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${busy === "sync" ? "animate-spin" : ""}`} /> {status.automaticSync ? "Sync now" : "Preview sync"}</button>}
           {!status.connected && <button onClick={connect} disabled={Boolean(busy) || !status.configured} className="inline-flex items-center gap-2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"><ExternalLink className="h-4 w-4" /> Connect Clover</button>}
         </div>
       </div>
+
+      <section className={`mb-6 rounded-2xl border p-5 ${status.automaticSync ? "border-emerald-300 bg-emerald-50/60" : "border-amber-300 bg-amber-50"}`}>
+        <h2 className="font-bold">{status.automaticSync ? "Automatic sync is on" : "Automatic sync is off"}</h2>
+        <p className="mt-1 text-sm text-neutral-700">{status.automaticSync ? `Clover is checked about every ${status.scheduleMinutes} minutes, and inventory webhooks update stock and prices. Online orders reduce the linked Clover count once.` : "Clover is connected only as far as you have authorized it. Preview sync lists stock, price, and photo matches without changing the website or Clover. Set CLOVER_SYNC_ENABLED on the server when you want those updates to apply."}</p>
+        {status.dryRun && status.syncEnabled && <p className="mt-2 text-sm font-semibold text-amber-800">Dry run is on, so scheduled sync reports changes and does not write them.</p>}
+        {status.lastCatalogPlan?.dryRun && <p className="mt-2 text-sm">Last preview: {(status.lastCatalogPlan.stockChanges || []).length} stock change(s), {(status.lastCatalogPlan.priceChanges || []).length} price change(s), {(status.lastCatalogPlan.photoLinks || []).length} photo link(s).</p>}
+      </section>
 
       {!status.configured && (
         <section className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-neutral-900">
@@ -138,6 +145,20 @@ const AdminClover = () => {
           <p className={status.webhookAuthConfigured ? "text-emerald-700" : "text-amber-700"}>{status.webhookAuthConfigured ? "Webhook authentication is configured." : "Add the Clover webhook auth code before enabling live webhooks."}</p>
         </div>
       </section>
+
+      {(status.lastCatalogPlan?.unmatchedPhotoBarcodes || []).length > 0 && (
+        <section className="rounded-2xl border overflow-hidden mb-6">
+          <div className="p-5 border-b"><h2 className="font-bold">Photo barcodes that need review</h2><p className="text-sm text-neutral-500 mt-1">Private photos stay private. A barcode links a photo to a Clover item only when that text matches exactly, including leading zeros.</p></div>
+          <div className="divide-y">{status.lastCatalogPlan.unmatchedPhotoBarcodes.map((row) => <div key={row.captureId || row.barcode} className="p-4"><p className="font-mono text-sm break-all">{row.barcode}</p><p className="text-xs text-neutral-500">{row.reason}</p></div>)}</div>
+        </section>
+      )}
+
+      {(status.failedOrderPushes || []).length > 0 && (
+        <section className="rounded-2xl border border-red-200 overflow-hidden mb-6">
+          <div className="p-5 border-b"><h2 className="font-bold">Online orders that did not update Clover stock</h2></div>
+          <div className="divide-y">{status.failedOrderPushes.map((row) => <div key={`${row.orderId}-${row.cloverItemId}`} className="p-4"><p className="text-sm font-semibold">Order {row.orderId}</p><p className="text-xs text-neutral-500">Item {row.cloverItemId} · qty {row.qty}</p><p className="text-xs text-red-700">{row.error}</p></div>)}</div>
+        </section>
+      )}
 
       {status.unmatchedItems.length > 0 && (
         <section className="rounded-2xl border overflow-hidden mb-6">
