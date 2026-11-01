@@ -17,6 +17,10 @@ const AdminClover = () => {
   const [previewQuery, setPreviewQuery] = useState("");
   const [previewFilter, setPreviewFilter] = useState("all");
   const [previewPage, setPreviewPage] = useState(0);
+  const [connectionResult, setConnectionResult] = useState("");
+  const [syncResult, setSyncResult] = useState("");
+  const [unmatchedQuery, setUnmatchedQuery] = useState("");
+  const [unmatchedPage, setUnmatchedPage] = useState(0);
   const [busy, setBusy] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
@@ -72,27 +76,46 @@ const AdminClover = () => {
     window.location.assign(data.url);
   }, "Opening Clover");
 
-  const sync = () => run("sync", () => api.post("/admin/clover/sync"), status?.automaticSync ? "Inventory synced from Clover" : "Dry run finished. Nothing was changed.");
-
-  const testConnection = async () => {
-    setBusy("test");
+  const sync = async (preview = false) => {
+    setBusy(preview ? "preview" : "sync");
     try {
-      const { data } = await api.post("/admin/clover/test-connection");
-      toast({ title: "Clover token works", description: `${data.name || "Merchant"} · ${data.itemCount} items` });
+      const { data } = await api.post(`/admin/clover/sync${preview ? "?preview=true" : ""}`);
+      const text = preview
+        ? `Preview: ${data.plannedLinks?.length || 0} would link automatically, ${data.linkCandidates?.length || 0} need confirmation. Nothing was written.`
+        : `Linked ${data.linkedItems || 0}. Stock updated ${data.stockChanges || 0}. Skipped ${data.skippedItems || data.unmatchedItems || 0}.`;
+      setSyncResult(text);
+      await load();
+      toast({ title: preview ? "Preview finished" : "Inventory synced from Clover", description: text });
     } catch (error) {
-      toast({ title: "Clover connection failed", description: error?.response?.data?.detail || "Try again.", variant: "destructive" });
+      toast({ title: "Clover action failed", description: error?.response?.data?.detail || "Try again.", variant: "destructive" });
     } finally {
       setBusy("");
     }
   };
 
-  const link = (item) => {
-    const productId = Number(choice[item.id]);
-    if (!productId) {
-      toast({ title: "Choose a HD Smoke Shop product first", variant: "destructive" });
+  const testConnection = async () => {
+    setBusy("test");
+    try {
+      const { data } = await api.post("/admin/clover/test-connection");
+      const text = `${data.name || "Merchant"} · ${data.itemCount} items`;
+      setConnectionResult(text);
+      toast({ title: "Clover token works", description: text });
+    } catch (error) {
+      const text = error?.response?.data?.detail || "Try again.";
+      setConnectionResult(text);
+      toast({ title: "Clover connection failed", description: text, variant: "destructive" });
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const link = (item, productId) => {
+    const chosen = Number(productId || choice[item.id]);
+    if (!chosen) {
+      toast({ title: "Enter the website product id to connect", variant: "destructive" });
       return;
     }
-    run(`link-${item.id}`, () => api.post("/admin/clover/link", { productId, cloverItemId: item.id }), "Product connected to Clover");
+    run(`link-${item.id}`, () => api.post("/admin/clover/link", { productId: chosen, cloverItemId: item.id }), "Product connected to Clover");
   };
 
   const importItem = (item) => run(`import-${item.id}`, () => api.post("/admin/clover/import", { cloverItemId: item.id }), "Hidden draft saved for review");
@@ -165,7 +188,8 @@ const AdminClover = () => {
           <p className="text-sm text-neutral-500 mt-1">Keep HD Smoke Shop stock aligned with your Clover store without a third-party monthly subscription.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {status.connected && <button onClick={sync} disabled={Boolean(busy)} className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${busy === "sync" ? "animate-spin" : ""}`} /> {status.automaticSync ? "Sync now" : "Preview sync"}</button>}
+          {status.connected && <button onClick={() => sync(false)} disabled={Boolean(busy)} className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${busy === "sync" ? "animate-spin" : ""}`} /> {status.automaticSync ? "Sync now" : "Preview sync"}</button>}
+          {status.connected && status.automaticSync && <button onClick={() => sync(true)} disabled={Boolean(busy)} className="inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-bold disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${busy === "preview" ? "animate-spin" : ""}`} /> Preview sync</button>}
           {status.tokenMode && <button onClick={testConnection} disabled={Boolean(busy)} className="inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-bold disabled:opacity-50">Test connection</button>}
           {!status.connected && !status.tokenMode && <button onClick={connect} disabled={Boolean(busy) || !status.configured} className="inline-flex items-center gap-2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"><ExternalLink className="h-4 w-4" /> Connect Clover</button>}
         </div>
@@ -175,6 +199,8 @@ const AdminClover = () => {
         <h2 className="font-bold">{status.automaticSync ? "Automatic sync is on" : "Automatic sync is off"}</h2>
         <p className="mt-1 text-sm text-neutral-700">{status.automaticSync ? `Clover is checked about every ${status.scheduleMinutes} minutes${status.tokenMode ? ". Webhooks need a Clover app, so this connection uses that pull and Sync now." : ", and inventory webhooks update stock and prices."} Online orders reduce the linked Clover count once.` : "Preview sync lists stock, price, and photo matches without changing the website or Clover. Set CLOVER_SYNC_ENABLED on the server when you want those updates to apply."}</p>
         {status.dryRun && status.syncEnabled && <p className="mt-2 text-sm font-semibold text-amber-800">Dry run is on, so scheduled sync reports changes and does not write them.</p>}
+        {connectionResult && <p className="mt-2 text-sm font-semibold" data-testid="clover-connection-result">{connectionResult}</p>}
+        {syncResult && <p className="mt-2 text-sm font-semibold" data-testid="clover-sync-result">{syncResult}</p>}
         {status.lastCatalogPlan?.dryRun && <p className="mt-2 text-sm">Last preview: {(status.lastCatalogPlan.stockChanges || []).length} stock change(s), {(status.lastCatalogPlan.priceChanges || []).length} price change(s), {(status.lastCatalogPlan.photoLinks || []).length} photo link(s).</p>}
       </section>
 
@@ -376,19 +402,36 @@ const AdminClover = () => {
         </section>
       )}
 
+      {(status.linkCandidates || []).length > 0 && (
+        <section className="rounded-2xl border overflow-hidden mb-6" data-testid="link-candidates">
+          <div className="p-5 border-b"><h2 className="font-bold">Confirm these links</h2><p className="text-sm text-neutral-500 mt-1">High-confidence SKU, barcode, and unique name matches are already applied. These are close name matches.</p></div>
+          <div className="divide-y">{status.linkCandidates.slice(0, 20).map((row) => (
+            <div key={`${row.cloverItemId}-${row.productId}`} className="p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div><p className="font-semibold">{row.cloverName}</p><p className="text-xs text-neutral-500">Suggested website product: {row.productName} · {row.confidence}</p></div>
+              <div className="flex gap-2">
+                <button type="button" disabled={Boolean(busy)} onClick={() => link({ id: row.cloverItemId }, row.productId)} className="rounded-full border px-3 py-1.5 text-xs font-bold">Link</button>
+              </div>
+            </div>
+          ))}</div>
+        </section>
+      )}
+
       {status.unmatchedItems.length > 0 && (
         <section className="rounded-2xl border overflow-hidden mb-6">
-          <div className="p-5 border-b"><h2 className="font-bold">Clover items that need review</h2><p className="text-sm text-neutral-500 mt-1">Connect an item to an existing product, or import it as a hidden draft to review before publishing.</p></div>
-          <div className="divide-y">
-            {status.unmatchedItems.map((item) => (
-              <div key={item.id} className="p-4 grid gap-3 lg:grid-cols-[1fr_220px_auto_auto] lg:items-center">
-                <div><p className="font-semibold">{item.name}</p><p className="text-xs text-neutral-500">SKU {item.sku || "—"} · Barcode {item.barcode || "—"} · ${Number(item.price || 0).toFixed(2)} · {item.stock} in stock</p><p className="text-xs text-neutral-600">Category {item.mappedCategoryName || "Unmatched"} · Brand {item.mappedBrandName || "Unmatched"} · {item.needsReview ? "Needs review" : item.confidence || "mapped"}</p></div>
-                <select value={choice[item.id] || ""} onChange={(event) => setChoice((old) => ({ ...old, [item.id]: event.target.value }))} className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"><option value="">Choose existing product…</option>{unlinkedProducts.map((product) => <option key={product.id} value={product.id}>{product.name} (#{product.id})</option>)}</select>
-                <button onClick={() => link(item)} disabled={Boolean(busy)} className="inline-flex items-center justify-center gap-1 rounded-full border px-4 py-2 text-xs font-bold disabled:opacity-50"><Link2 className="h-3.5 w-3.5" /> Connect</button>
-                <button onClick={() => importItem(item)} disabled={Boolean(busy)} className="inline-flex items-center justify-center gap-1 rounded-full bg-neutral-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-50"><PackagePlus className="h-3.5 w-3.5" /> Import draft</button>
-              </div>
-            ))}
+          <div className="p-5 border-b flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div><h2 className="font-bold">Clover items that need review</h2><p className="text-sm text-neutral-500 mt-1">{status.unmatchedItems.length} shown. Search instead of loading every row. Import from Clover stays off unless CLOVER_IMPORT_NEW_ITEMS is set, and it only creates hidden products in categories and brands that already match.</p></div>
+            <div className="flex gap-2">
+              <input value={unmatchedQuery} onChange={(event) => { setUnmatchedQuery(event.target.value); setUnmatchedPage(0); }} placeholder="Search Clover items" className="rounded-lg border px-3 py-2 text-sm" />
+              <button type="button" disabled={Boolean(busy)} onClick={() => run("import-new", () => api.post("/admin/clover/import-new"), status.importNewItems ? "Hidden drafts created for mapped items" : "Import new items is off")} className="rounded-full border px-3 py-2 text-xs font-bold">Import from Clover</button>
+            </div>
           </div>
+          <div className="divide-y">{status.unmatchedItems.filter((item) => `${item.name} ${item.sku || ""}`.toLowerCase().includes(unmatchedQuery.trim().toLowerCase())).slice(unmatchedPage * 20, unmatchedPage * 20 + 20).map((item) => (
+              <div key={item.id} className="p-4 grid gap-3 lg:grid-cols-[1fr_220px_auto] lg:items-center">
+                <div><p className="font-semibold">{item.name}</p><p className="text-xs text-neutral-500">SKU {item.sku || "—"} · Barcode {item.barcode || "—"} · ${Number(item.price || 0).toFixed(2)} · {item.stock} in stock</p><p className="text-xs text-neutral-600">Category {item.mappedCategoryName || "Unmatched"} · Brand {item.mappedBrandName || "Unmatched"}</p></div>
+                <input value={choice[item.id] || ""} onChange={(event) => setChoice((old) => ({ ...old, [item.id]: event.target.value }))} placeholder="Website product id" className="rounded-lg border px-3 py-2 text-sm" />
+                <button onClick={() => link(item)} disabled={Boolean(busy)} className="inline-flex items-center justify-center gap-1 rounded-full border px-4 py-2 text-xs font-bold disabled:opacity-50"><Link2 className="h-3.5 w-3.5" /> Connect</button>
+              </div>
+            ))}</div>
         </section>
       )}
 

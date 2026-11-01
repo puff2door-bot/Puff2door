@@ -14,7 +14,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-from clover_catalog import field_changes, normalized_name, parse_time, price_cents, price_guard
+from clover_catalog import field_changes, normalized_name, parse_time, price_cents, price_guard, propose_links
 from clover_mapping import brand_report, classify_item, clover_category_names, resolve_category_names, seed_category_mappings
 from urllib.parse import urlencode
 
@@ -116,6 +116,7 @@ class CloverIntegration:
         sync_names: bool = False,
         create_items: bool = False,
         category_writeback: bool = False,
+        import_new_items: bool = False,
     ):
         self.db = db
         self.client_id = client_id.strip()
@@ -132,6 +133,7 @@ class CloverIntegration:
         self.sync_names = bool(sync_names)
         self.create_items = bool(create_items)
         self.category_writeback = bool(category_writeback)
+        self.import_new_items = bool(import_new_items)
         # Merchant API token mode. The token stays in memory for this process.
         self.api_token = (api_token or "").strip()
         self.merchant_id = (merchant_id or "").strip()
@@ -503,39 +505,23 @@ class CloverIntegration:
             remote_by_id = {item["id"]: item for item in remote}
             linked_ids = {str(p.get("cloverItemId")): p for p in local if p.get("cloverItemId")}
 
-            local_sku: dict[str, list[dict]] = {}
-            local_barcode: dict[str, list[dict]] = {}
-            for product in local:
-                if _match_identifier(product.get("sku")):
-                    local_sku.setdefault(_match_identifier(product.get("sku")), []).append(product)
-                if _match_identifier(product.get("barcode")):
-                    local_barcode.setdefault(_match_identifier(product.get("barcode")), []).append(product)
-
-            remote_sku_counts: dict[str, int] = {}
-            remote_barcode_counts: dict[str, int] = {}
-            for item in remote:
-                if _match_identifier(item.get("sku")):
-                    key = _match_identifier(item["sku"])
-                    remote_sku_counts[key] = remote_sku_counts.get(key, 0) + 1
-                if _match_identifier(item.get("barcode")):
-                    key = _match_identifier(item["barcode"])
-                    remote_barcode_counts[key] = remote_barcode_counts.get(key, 0) + 1
-
             matched_remote: set[str] = set()
             linked = auto_matched = updated = price_changes = 0
             restocked: list[int] = []
             outbound_fields: list[dict] = []
+            aliases = await self.brand_aliases()
+            for brand in (await self._website_catalog())[1]:
+                aliases.append({"name": brand.get("displayName") or brand.get("name") or "", "aliases": []})
+            auto_links, link_candidates = propose_links(local, remote, aliases)
+            auto_by_item = {row["cloverItemId"]: row for row in auto_links}
             for item in remote:
                 product = linked_ids.get(item["id"])
                 auto = False
-                if not product:
-                    sku_key = _match_identifier(item.get("sku"))
-                    barcode_key = _match_identifier(item.get("barcode"))
-                    if sku_key and remote_sku_counts.get(sku_key) == 1 and len(local_sku.get(sku_key, [])) == 1:
-                        product = local_sku[sku_key][0]
-                        auto = True
-                    elif barcode_key and remote_barcode_counts.get(barcode_key) == 1 and len(local_barcode.get(barcode_key, [])) == 1:
-                        product = local_barcode[barcode_key][0]
+                if not product and item["id"] in auto_by_item:
+                    chosen = next((row for row in local if row.get("id") == auto_by_item[item["id"]]["productId"]), None)
+                    if chosen and not chosen.get("cloverItemId"):
+                        product = chosen
+                        chosen["cloverItemId"] = item["id"]
                         auto = True
                 if not product:
                     continue
@@ -599,6 +585,8 @@ class CloverIntegration:
                 "stockChanges": updated,
                 "priceChanges": price_changes,
                 "unmatchedItems": len(unmatched),
+                "skippedItems": len(unmatched),
+                "linkCandidates": len(link_candidates),
                 "restockedProductIds": restocked,
             }
             await self.db.integrations.update_one({"key": "clover"}, {
@@ -606,7 +594,8 @@ class CloverIntegration:
                     "lastSyncAt": utcnow(),
                     "lastSyncStatus": "success",
                     "lastSyncSummary": summary,
-                    "unmatchedItems": unmatched[:1000],
+                    "unmatchedItems": unmatched[:200],
+                    "linkCandidates": link_candidates,
                     "updatedAt": utcnow(),
                 },
                 "$unset": {"lastSyncError": ""},
@@ -857,6 +846,45 @@ class CloverIntegration:
         await self.log("import", "success", productId=product["id"], cloverItemId=clover_id, direction="website_to_clover")
         return {"status": "success", "action": "create", "cloverItemId": clover_id}
 
+    async def import_mapped_items(self) -> dict:
+        """Create hidden website products only for Clover items already mapped to an existing category and brand."""
+        if not self.import_new_items:
+            return {"applied": False, "reason": "import_disabled", "created": 0}
+        remote = await self.fetch_inventory()
+        existing_ids = {str(row.get("cloverItemId")) for row in await self.db.products.find({"cloverItemId": {"$exists": True, "$ne": ""}}, {"cloverItemId": 1}).to_list(10000)}
+        last = await self.db.products.find_one(sort=[("id", -1)])
+        next_id = int(last["id"]) + 1 if last and last.get("id") else 1
+        created = 0
+        for item in remote:
+            if item["id"] in existing_ids or item.get("needsReview") or not item.get("mappedCategorySlug") or not item.get("mappedBrandSlug"):
+                continue
+            await self.db.products.insert_one({
+                "id": next_id,
+                "slug": f"clover-{next_id}",
+                "name": item.get("name") or "Clover item",
+                "price": item.get("price") or 0,
+                "stock": item.get("stock") or 0,
+                "sku": item.get("sku") or "",
+                "barcode": item.get("barcode") or "",
+                "category": item.get("mappedCategoryName") or "",
+                "categorySlug": item.get("mappedCategorySlug") or "",
+                "brand": item.get("mappedBrandSlug") or "",
+                "brandName": item.get("mappedBrandName") or "",
+                "cloverItemId": item["id"],
+                "active": False,
+                "minimumAge": 21,
+                "createdAt": utcnow(),
+                "updatedAt": utcnow(),
+            })
+            existing_ids.add(item["id"])
+            next_id += 1
+            created += 1
+        return {"applied": True, "created": created}
+
+    async def unlink_product(self, product_id: int) -> dict:
+        await self.db.products.update_one({"id": product_id}, {"$unset": {"cloverItemId": "", "cloverMissing": "", "cloverDeletionFlag": ""}})
+        return {"ok": True}
+
     async def _attach_category_and_brand(self, merchant_id: str, clover_id: str, product: dict, remote: list[dict]) -> None:
         category_name = str(product.get("category") or "").strip()
         if category_name:
@@ -1050,7 +1078,7 @@ class CloverIntegration:
             "updatedAt": utcnow(),
         }}, upsert=True)
 
-    async def sync_catalog(self, source: str = "manual") -> dict:
+    async def sync_catalog(self, source: str = "manual", preview: bool = False) -> dict:
         """Pull stock and prices from Clover. Writes only when sync is on and this is not a dry run."""
         remote = await self.fetch_inventory()
         plan = await self._catalog_plan(remote)
@@ -1070,7 +1098,14 @@ class CloverIntegration:
         plan["previewItems"] = preview_items
         plan["previewTotal"] = len(preview_items)
         plan["reviewItems"] = [item for item in preview_items if item["needsReview"]]
-        if not self.sync_enabled or self.dry_run:
+        aliases = await self.brand_aliases()
+        for brand in (await self._website_catalog())[1]:
+            aliases.append({"name": brand.get("displayName") or brand.get("name") or "", "aliases": []})
+        local = await self.db.products.find({}).to_list(10000)
+        planned, candidates = propose_links(local, remote, aliases)
+        plan["plannedLinks"] = planned
+        plan["linkCandidates"] = candidates
+        if preview or not self.sync_enabled or self.dry_run:
             plan["applied"] = False
             plan["dryRun"] = True
             await self._remember_plan(plan, "dry_run" if self.sync_enabled else "disabled")

@@ -2402,6 +2402,7 @@ CLOVER_SYNC_PRICES = _clover_flag("CLOVER_SYNC_PRICES")
 CLOVER_SYNC_NAMES = _clover_flag("CLOVER_SYNC_NAMES")
 CLOVER_CREATE_ITEMS = _clover_flag("CLOVER_CREATE_ITEMS")
 CLOVER_CATEGORY_WRITEBACK_ENABLED = _clover_flag("CLOVER_CATEGORY_WRITEBACK_ENABLED")
+CLOVER_IMPORT_NEW_ITEMS = _clover_flag("CLOVER_IMPORT_NEW_ITEMS")
 CLOVER_SYNC_INTERVAL_SECONDS = 12 * 60
 CLOVER_API_TOKEN = os.environ.get("CLOVER_API_TOKEN", "").strip()
 CLOVER_MERCHANT_ID = os.environ.get("CLOVER_MERCHANT_ID", "").strip()
@@ -2425,6 +2426,7 @@ def clover_integration() -> CloverIntegration:
         sync_names=CLOVER_SYNC_NAMES,
         create_items=CLOVER_CREATE_ITEMS,
         category_writeback=CLOVER_CATEGORY_WRITEBACK_ENABLED,
+        import_new_items=CLOVER_IMPORT_NEW_ITEMS,
     )
 
 
@@ -2974,7 +2976,9 @@ async def admin_clover_status(admin: dict = Depends(get_admin_user)):
         "syncPrices": integration.sync_prices,
         "syncNames": integration.sync_names,
         "createItems": integration.create_items,
+        "importNewItems": integration.import_new_items,
         "categoryWriteback": integration.category_writeback,
+        "linkCandidates": (config.get("linkCandidates") or [])[:50],
         "brandAliasRows": _brand_alias_rows(await db.brands.find({}, {"_id": 0, "slug": 1, "name": 1, "displayName": 1}).sort("displayName", 1).to_list(500), await integration.brand_aliases()),
         "lastUndo": (config.get("lastUndo") or {}),
         **(await integration.stock_status_rows()),
@@ -3072,9 +3076,9 @@ async def run_clover_webhook_sync(integration: CloverIntegration):
 
 
 @api_router.post("/admin/clover/sync")
-async def admin_clover_sync(admin: dict = Depends(get_admin_user)):
+async def admin_clover_sync(preview: bool = False, admin: dict = Depends(get_admin_user)):
     try:
-        summary = await clover_integration().sync_catalog(source="admin")
+        summary = await clover_integration().sync_catalog(source="admin", preview=preview)
         if summary.get("applied"):
             await notify_restocked_products(summary.get("restockedProductIds", []))
             await refresh_catalog_copies()
@@ -3121,6 +3125,26 @@ async def admin_clover_undo(admin: dict = Depends(get_admin_user)):
         raise HTTPException(status_code=400, detail=clover_error_detail(exc))
     await refresh_catalog_copies()
     return result
+
+
+@api_router.post("/admin/clover/import-new")
+async def admin_clover_import_new(admin: dict = Depends(get_admin_user)):
+    try:
+        result = await clover_integration().import_mapped_items()
+    except CloverError as exc:
+        raise HTTPException(status_code=502, detail=clover_error_detail(exc))
+    if result.get("applied"):
+        await refresh_catalog_copies()
+    return result
+
+
+class CloverUnlinkInput(BaseModel):
+    productId: int = Field(ge=1)
+
+
+@api_router.post("/admin/clover/unlink")
+async def admin_clover_unlink(inp: CloverUnlinkInput, admin: dict = Depends(get_admin_user)):
+    return await clover_integration().unlink_product(inp.productId)
 
 
 @api_router.post("/admin/clover/link")

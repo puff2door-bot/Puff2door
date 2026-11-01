@@ -68,10 +68,10 @@ def test_sync_matches_only_exact_unique_sku_or_barcode_and_updates_stock():
 
         assert matched["cloverItemId"] == "clover-a"
         assert matched["stock"] == 17
-        assert name_only.get("cloverItemId") is None and name_only["stock"] == 3
-        assert summary["autoMatchedItems"] == 1
-        assert summary["unmatchedItems"] == 1
-        assert config["unmatchedItems"][0]["id"] == "clover-b"
+        assert name_only["cloverItemId"] == "clover-b" and name_only["stock"] == 9
+        assert summary["autoMatchedItems"] == 2
+        assert summary["unmatchedItems"] == 0
+        assert config["unmatchedItems"] == []
 
     run(go())
 
