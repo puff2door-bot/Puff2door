@@ -16,12 +16,15 @@ RUN yarn build
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    OMP_NUM_THREADS=1
 WORKDIR /app/backend
 
 COPY backend/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/requirements-photo-processing.txt ./requirements-photo-processing.txt
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-photo-processing.txt
 COPY backend/ ./
+RUN python scripts/install_photo_model.py
 COPY --from=frontend-build /app/frontend/build /app/frontend/build
 
 EXPOSE 10000
