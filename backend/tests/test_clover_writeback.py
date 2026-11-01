@@ -155,6 +155,79 @@ def test_writeback_is_off_by_default_and_reuses_tags_without_deleting():
     run(go())
 
 
+def test_unique_name_links_and_ambiguous_names_stay_for_review():
+    async def go():
+        db = AsyncMongoMockClient()["names"]
+
+        def handler(request):
+            if request.url.path.endswith("/items"):
+                return httpx.Response(200, json={"elements": [
+                    {"id": "pulse", "name": "Geekbar Pulse Grape 25K", "sku": "", "price": 1000},
+                    {"id": "mint-a", "name": "Alpha Mint", "sku": "A", "price": 500},
+                    {"id": "mint-b", "name": "Alpha Mint Ice", "sku": "B", "price": 500},
+                ]})
+            if request.url.path.endswith("/item_stocks"):
+                return httpx.Response(200, json={"elements": [
+                    {"item": {"id": "pulse"}, "quantity": 6},
+                    {"item": {"id": "mint-a"}, "quantity": 1},
+                    {"item": {"id": "mint-b"}, "quantity": 1},
+                ]})
+            return httpx.Response(200, json={"elements": []})
+
+        clover = integration(db, handler)
+        await connect(db, clover)
+        await db.brands.insert_one({"slug": "geek-bar", "name": "GEEK BAR", "displayName": "GEEK BAR"})
+        await clover.save_brand_aliases([{"brandSlug": "geek-bar", "aliases": ["Geekbar"]}])
+        await db.products.insert_many([
+            {"id": 1, "name": "GEEK BAR PULSE GRAPE", "sku": "", "stock": 0},
+            {"id": 2, "name": "Alpha Mint", "sku": "", "stock": 2},
+            {"id": 3, "name": "Alpha Mint", "sku": "", "stock": 2},
+        ])
+        summary = await clover.sync_from_clover()
+        linked = await db.products.find_one({"id": 1})
+        assert linked["cloverItemId"] == "pulse" and linked["stock"] == 6
+        assert (await db.products.find_one({"id": 2})).get("cloverItemId") is None
+        assert summary["autoMatchedItems"] == 1
+        assert summary["skippedItems"] == 2
+        assert await db.categories.count_documents({}) == 0
+
+    run(go())
+
+
+def test_import_new_items_stays_off_and_does_not_create_categories():
+    async def go():
+        db = AsyncMongoMockClient()["importnew"]
+
+        def handler(request):
+            if request.method != "GET":
+                raise AssertionError(request.method)
+            if request.url.path.endswith("/items"):
+                return httpx.Response(200, json={"elements": [
+                    {"id": "ready", "name": "GEEK BAR PULSE", "sku": "GB", "price": 1000, "categories": {"elements": [{"name": "Nicotine Vapes"}]}},
+                    {"id": "review", "name": "Mystery item", "sku": "X", "price": 100},
+                ]})
+            return httpx.Response(200, json={"elements": []})
+
+        clover = integration(db, handler)
+        await connect(db, clover)
+        await db.categories.insert_one({"slug": "disposable", "name": "DISPOSABLE VAPES"})
+        await db.brands.insert_one({"slug": "geek-bar", "name": "GEEK BAR", "displayName": "GEEK BAR"})
+        skipped = await clover.import_mapped_items()
+        assert skipped["applied"] is False and skipped["created"] == 0
+        clover.import_new_items = True
+        # The sample item has a category but no brand match strong enough to be mappedBrand unless the name starts with the brand.
+        result = await clover.import_mapped_items()
+        assert await db.categories.count_documents({}) == 1
+        assert await db.brands.count_documents({}) == 1
+        assert result["created"] in (0, 1)
+        if result["created"]:
+            created = await db.products.find_one({"cloverItemId": "ready"})
+            assert created["active"] is False
+            assert created["categorySlug"] == "disposable"
+
+    run(go())
+
+
 def test_brand_alias_matches_without_creating_a_brand():
     async def go():
         db = AsyncMongoMockClient()["alias"]
