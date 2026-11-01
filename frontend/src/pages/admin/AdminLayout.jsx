@@ -7,6 +7,7 @@ import api from "../../api";
 const nav = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/admin/products", label: "Products", icon: Package },
+  { to: "/admin/inventory-capture", label: "Store Photos", icon: Images },
   { to: "/admin/clover", label: "Clover Inventory", icon: Store },
   { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
   { to: "/admin/operations", label: "Delivery Operations", icon: Truck },
