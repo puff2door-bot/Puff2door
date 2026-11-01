@@ -2383,7 +2383,7 @@ SITE_URL = os.environ.get("SITE_URL", "").strip().rstrip("/") or "https://puff2d
 CLOVER_CLIENT_ID = os.environ.get("CLOVER_CLIENT_ID", "").strip()
 CLOVER_CLIENT_SECRET = os.environ.get("CLOVER_CLIENT_SECRET", "").strip()
 CLOVER_ENV = os.environ.get("CLOVER_ENV", "production").strip().lower()
-CLOVER_REDIRECT_URI = os.environ.get("CLOVER_REDIRECT_URI", "https://api.puff2door.com/api/clover/oauth/callback").strip()
+CLOVER_REDIRECT_URI = os.environ.get("CLOVER_REDIRECT_URI", "https://puff2door.com/api/clover/oauth/callback").strip()
 CLOVER_WEBHOOK_AUTH_CODE = os.environ.get("CLOVER_WEBHOOK_AUTH_CODE", "").strip()
 
 
@@ -4015,12 +4015,13 @@ def replace_legacy_brand_copy(value):
 
 async def migrate_legacy_brand_copy():
     """Update editable storefront copy already saved in MongoDB after the rename."""
+    global _settings_cache
     settings = await db.site_settings.find_one({"key": "store"}, {"_id": 0})
     if settings:
         updated = replace_legacy_brand_copy(settings)
         if updated != settings:
             await db.site_settings.update_one({"key": "store"}, {"$set": updated})
-            invalidate_settings()
+            _settings_cache = {}
 
     home = await db.site_content.find_one({"key": "home"}, {"_id": 0})
     if home:

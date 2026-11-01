@@ -32,7 +32,7 @@ services:
       - key: CLOVER_ENV
         value: production
       - key: CLOVER_REDIRECT_URI
-        value: https://api.puff2door.com/api/clover/oauth/callback
+        value: https://puff2door.com/api/clover/oauth/callback
       - key: CLOVER_WEBHOOK_AUTH_CODE
         sync: false
       - key: SITE_URL

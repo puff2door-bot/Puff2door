@@ -26,7 +26,7 @@ processing charges are separate.
 2. Give the app read and write inventory permissions.
 3. Set the OAuth redirect URL to:
 
-   `https://api.puff2door.com/api/clover/oauth/callback`
+   `https://puff2door.com/api/clover/oauth/callback`
 
 4. In Render, open the `puff2door` API service and add these secret environment
    values:
@@ -39,7 +39,7 @@ processing charges are separate.
 5. Keep these non-secret values:
 
    - `CLOVER_ENV=production`
-   - `CLOVER_REDIRECT_URI=https://api.puff2door.com/api/clover/oauth/callback`
+   - `CLOVER_REDIRECT_URI=https://puff2door.com/api/clover/oauth/callback`
 
 6. After Render restarts, open **Puff2Door Admin → Clover Inventory** and click
    **Connect Clover**. Approve access in Clover.
