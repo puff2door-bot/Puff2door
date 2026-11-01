@@ -6,16 +6,21 @@ processing charges are separate.
 
 ## What the connection does
 
-- Clover is the source of truth for stock quantities.
-- Puff2Door pulls stock when the owner clicks **Sync now** and when Clover sends
-  an inventory webhook.
-- Puff2Door sends the new quantity to Clover after website sales, cancellations,
-  and approved restocks.
-- Products created in Puff2Door are created in Clover when the connection is
-  active. Later name, price, SKU, barcode, visibility, and stock changes are
-  sent to the linked Clover item.
+- Clover is the source of truth for item stock and prices.
+- Automatic pulls stay off until `CLOVER_SYNC_ENABLED=true`. With the flag off,
+  **Preview sync** only reports what would change.
+- When the flag is on, Puff2Door pulls stock and price about every 12 minutes
+  and when Clover sends an inventory webhook. `CLOVER_SYNC_DRY_RUN=true` reports
+  the same plan without writing it.
+- Online orders reduce the linked Clover stock count once. A retry of the same
+  order does not reduce it again. Website edits to names and prices are not
+  sent to Clover.
+- The API merchant id is the id Clover returns during OAuth. It is not the
+  longer merchant number printed on the device, and it is not saved in the app.
 - Existing products match only by a saved Clover item ID or an exact, unique SKU
   or barcode. Product names are never used for automatic matching.
+- Private inventory photos link to a Clover item only when the barcode text
+  matches exactly, including leading zeros. Photos are not published.
 - Unmatched Clover items remain in **Admin → Clover Inventory** for manual review.
 - Imports are hidden drafts until the owner reviews product photos, category,
   copy, and compliance settings.

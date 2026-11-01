@@ -2061,6 +2061,7 @@ async def create_order(inp: OrderInput, request: Request, user: Optional[dict] =
         "statusHistory": {"placed": now_utc()},
     }
     await db.orders.insert_one(order)
+    asyncio.create_task(record_clover_order_stock(order))
     await db.compliance_events.insert_one({
         "id": str(uuid.uuid4()), "orderId": order_id, "orderNumber": order_number,
         "event": "checkout_age_verified", "result": "passed", "minimumAge": compliance_snapshot.get("minimumAge", 21),
@@ -2385,6 +2386,9 @@ CLOVER_CLIENT_SECRET = os.environ.get("CLOVER_CLIENT_SECRET", "").strip()
 CLOVER_ENV = os.environ.get("CLOVER_ENV", "production").strip().lower()
 CLOVER_REDIRECT_URI = os.environ.get("CLOVER_REDIRECT_URI", "https://puff2door.com/api/clover/oauth/callback").strip()
 CLOVER_WEBHOOK_AUTH_CODE = os.environ.get("CLOVER_WEBHOOK_AUTH_CODE", "").strip()
+CLOVER_SYNC_ENABLED = os.environ.get("CLOVER_SYNC_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+CLOVER_SYNC_DRY_RUN = os.environ.get("CLOVER_SYNC_DRY_RUN", "").strip().lower() in {"1", "true", "yes", "on"}
+CLOVER_SYNC_INTERVAL_SECONDS = 12 * 60
 
 
 def clover_integration() -> CloverIntegration:
@@ -2397,15 +2401,21 @@ def clover_integration() -> CloverIntegration:
         redirect_uri=CLOVER_REDIRECT_URI,
         site_url=SITE_URL,
         webhook_auth_code=CLOVER_WEBHOOK_AUTH_CODE,
+        sync_enabled=CLOVER_SYNC_ENABLED,
+        dry_run=CLOVER_SYNC_DRY_RUN,
     )
 
 
 async def push_products_to_clover(product_ids, source: str):
-    integration = clover_integration()
-    if not integration.configured:
-        return
-    for product_id in sorted({int(value) for value in product_ids if value}):
-        await integration.push_product_stock(product_id, source=source)
+    """Website stock is not written back to Clover. Online orders use apply_order_stock."""
+    return
+
+
+async def record_clover_order_stock(order: dict):
+    try:
+        await clover_integration().apply_order_stock(order["id"], order.get("items") or [])
+    except Exception:
+        logger.error("Clover order stock update failed for order %s", order.get("id"))
 
 
 async def notify_restocked_products(product_ids):
@@ -2866,6 +2876,15 @@ async def admin_clover_status(admin: dict = Depends(get_admin_user)):
         "productsNeedingRetry": products_needing_retry,
         "unmatchedItems": config.get("unmatchedItems", []),
         "failedLogCount": failed,
+        "syncEnabled": integration.sync_enabled,
+        "dryRun": integration.dry_run or not integration.sync_enabled,
+        "automaticSync": integration.sync_enabled and not integration.dry_run,
+        "scheduleMinutes": CLOVER_SYNC_INTERVAL_SECONDS // 60,
+        "lastCatalogPlan": config.get("lastCatalogPlan") or {},
+        "failedOrderPushes": await db.clover_stock_adjustments.find(
+            {"status": "failed"},
+            {"_id": 0, "orderId": 1, "productId": 1, "cloverItemId": 1, "qty": 1, "barcode": 1, "error": 1, "createdAt": 1},
+        ).sort("createdAt", -1).to_list(20),
         "webhookUrl": integration.webhook_url,
         "webhookVerificationCode": config.get("webhookVerificationCode", ""),
         "webhookAuthConfigured": bool(CLOVER_WEBHOOK_AUTH_CODE),
@@ -2895,10 +2914,9 @@ async def clover_oauth_callback(code: str = "", merchant_id: str = "", state: st
     try:
         integration = clover_integration()
         await integration.exchange_code(code, merchant_id, state)
-        asyncio.create_task(integration.sync_from_clover(source="initial_connection"))
         return RedirectResponse(f"{SITE_URL}/admin/clover?clover=connected", status_code=303)
     except CloverError as exc:
-        logger.error("Clover authorization failed: %s", exc)
+        logger.error("Clover authorization failed")
         return RedirectResponse(f"{SITE_URL}/admin/clover?clover=error", status_code=303)
 
 
@@ -2933,14 +2951,14 @@ async def clover_webhook(request: Request):
     merchant_id = config.get("merchantId", "")
     events = (payload.get("merchants") or {}).get(merchant_id, []) if merchant_id else []
     inventory_events = [event for event in events if str(event.get("type", "")).startswith("I")]
-    if inventory_events:
+    if inventory_events and integration.sync_enabled:
         asyncio.create_task(run_clover_webhook_sync(integration))
-    return {"ok": True, "accepted": len(inventory_events)}
+    return {"ok": True, "accepted": len(inventory_events), "sync": "scheduled" if integration.sync_enabled else "disabled"}
 
 
 async def run_clover_webhook_sync(integration: CloverIntegration):
     try:
-        summary = await integration.sync_from_clover(source="webhook")
+        summary = await integration.sync_catalog(source="webhook")
         await notify_restocked_products(summary.get("restockedProductIds", []))
     except Exception as exc:
         logger.error("Clover webhook sync failed: %s", exc)
@@ -2949,8 +2967,9 @@ async def run_clover_webhook_sync(integration: CloverIntegration):
 @api_router.post("/admin/clover/sync")
 async def admin_clover_sync(admin: dict = Depends(get_admin_user)):
     try:
-        summary = await clover_integration().sync_from_clover(source="admin")
-        await notify_restocked_products(summary.get("restockedProductIds", []))
+        summary = await clover_integration().sync_catalog(source="admin")
+        if summary.get("applied"):
+            await notify_restocked_products(summary.get("restockedProductIds", []))
         return summary
     except CloverError as exc:
         raise HTTPException(status_code=502, detail=clover_error_detail(exc))
@@ -4074,7 +4093,28 @@ async def create_indexes():
     await db.revoked_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.push_subscriptions.create_index("endpointHash", unique=True)
     await db.push_subscriptions.create_index([("userId", 1), ("updatedAt", -1)])
+    await db.clover_stock_adjustments.create_index("key", unique=True)
     await ensure_inventory_indexes(db)
+
+
+@app.on_event("startup")
+async def clover_catalog_schedule():
+    if not CLOVER_SYNC_ENABLED:
+        logger.info("Clover automatic sync is off")
+        return
+
+    async def loop():
+        await asyncio.sleep(20)
+        while True:
+            try:
+                summary = await clover_integration().sync_catalog(source="schedule")
+                if summary.get("applied"):
+                    await notify_restocked_products(summary.get("restockedProductIds", []))
+            except Exception:
+                logger.error("Clover scheduled sync failed")
+            await asyncio.sleep(CLOVER_SYNC_INTERVAL_SECONDS)
+
+    asyncio.create_task(loop())
 
 
 @app.on_event("startup")
