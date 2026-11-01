@@ -49,6 +49,7 @@ dump.rdb
 # Python
 __pycache__/
 *pyc*
+backend/models/
 venv/
 .venv/
 .venv-audit/

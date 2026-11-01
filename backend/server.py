@@ -3962,7 +3962,7 @@ async def admin_chat_status(conv_id: str, inp: ChatStatusInput, admin: dict = De
 
 
 
-from inventory_capture import create_inventory_capture_router
+from inventory_capture import create_inventory_capture_router, ensure_inventory_indexes
 from inventory_photo_processing import validate_photo
 inventory_photo_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="inventory_photos")
 api_router.include_router(create_inventory_capture_router(db, inventory_photo_bucket, get_admin_user, validate_photo), prefix="/admin")
@@ -4074,6 +4074,7 @@ async def create_indexes():
     await db.revoked_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.push_subscriptions.create_index("endpointHash", unique=True)
     await db.push_subscriptions.create_index([("userId", 1), ("updatedAt", -1)])
+    await ensure_inventory_indexes(db)
 
 
 @app.on_event("startup")

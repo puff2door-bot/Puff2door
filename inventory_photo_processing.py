@@ -7,6 +7,15 @@ from pathlib import Path
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+# Every saved reference uses one square. The item's long side always fills the
+# same inner box, leaving an equal pure-white frame on every side.
+CANVAS_SIZE = 1600
+FRAME_PADDING = 160
+CONTENT_MAX = CANVAS_SIZE - (FRAME_PADDING * 2)
+WHITE = (255, 255, 255)
+# Mask values at or below this are leftover background and are discarded.
+ALPHA_CUTOFF = 20
+
 _session = None
 _lock = threading.Lock()
 MODEL_PATH = Path(os.environ.get('INVENTORY_PHOTO_MODEL', str(Path(__file__).parent / 'models' / 'u2netp.onnx')))
@@ -78,17 +87,53 @@ def remove_background(image):
             raise ProcessingUnavailable('Background removal is unavailable. Your photo has not been saved. Please try again later.') from exc
 
 
+def _discard_background(cutout):
+    """Drop faint mask residue so the original backdrop cannot show through."""
+    image = cutout.convert('RGBA')
+    alpha = image.getchannel('A').point(lambda value: 0 if value <= ALPHA_CUTOFF else value)
+    image.putalpha(alpha)
+    return image
+
+
+def _scale_long_side(subject, target):
+    long_side = max(subject.size)
+    if long_side == target:
+        return subject
+    scaled = [max(1, round(value * target / long_side)) for value in subject.size]
+    long_index = 0 if subject.width >= subject.height else 1
+    scaled[long_index] = target
+    scaled[1 - long_index] = min(target, scaled[1 - long_index])
+    return subject.resize(tuple(scaled), Image.Resampling.LANCZOS)
+
+
+def _paint_white_frame(canvas):
+    """Keep the same pure #FFFFFF margin on every saved photo."""
+    width, height = canvas.size
+    horizontal = Image.new('RGB', (width, FRAME_PADDING), WHITE)
+    vertical = Image.new('RGB', (FRAME_PADDING, height), WHITE)
+    canvas.paste(horizontal, (0, 0))
+    canvas.paste(horizontal, (0, height - FRAME_PADDING))
+    canvas.paste(vertical, (0, 0))
+    canvas.paste(vertical, (width - FRAME_PADDING, 0))
+
+
 def prepare_inventory_photo(raw, validate_photo=None):
     image = load_photo(raw)
-    cutout = remove_background(image)
-    bounds = cutout.getchannel('A').point(lambda value: 255 if value > 20 else 0).getbbox()
+    cutout = _discard_background(remove_background(image))
+    bounds = cutout.getchannel('A').point(lambda value: 255 if value > 0 else 0).getbbox()
     if bounds is None:
         raise ValueError('No clear item was found. Retake the photo with one item and even lighting.')
-    left, top, right, bottom = bounds
-    subject = cutout.crop((max(0, left-4), max(0, top-4), min(cutout.width, right+4), min(cutout.height, bottom+4)))
-    long_side = max(subject.size)
-    subject = subject.resize(tuple(max(1, round(v*1280/long_side)) for v in subject.size), Image.Resampling.LANCZOS)
-    canvas = Image.new('RGB', (1600, 1600), 'white')
-    canvas.paste(subject, ((1600-subject.width)//2, (1600-subject.height)//2), subject)
-    output = io.BytesIO(); canvas.save(output, 'WEBP', quality=95, method=4)
-    return output.getvalue(), long_side < 640
+    subject = cutout.crop(bounds)
+    source_long_side = max(subject.size)
+    subject = _discard_background(_scale_long_side(subject, CONTENT_MAX))
+    canvas = Image.new('RGB', (CANVAS_SIZE, CANVAS_SIZE), WHITE)
+    canvas.paste(
+        subject,
+        ((CANVAS_SIZE - subject.width) // 2, (CANVAS_SIZE - subject.height) // 2),
+        subject.getchannel('A'),
+    )
+    _paint_white_frame(canvas)
+    output = io.BytesIO()
+    # Lossless so the white frame stays exact #FFFFFF instead of a compressed gray.
+    canvas.save(output, 'WEBP', lossless=True, quality=100, method=4)
+    return output.getvalue(), source_long_side < 640
