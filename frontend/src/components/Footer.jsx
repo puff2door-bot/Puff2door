@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Phone, Mail, MapPin, Facebook, Instagram, Twitter } from "lucide-react";
+import { Phone, Mail, MapPin, Clock, Facebook, Instagram, Twitter } from "lucide-react";
 
 const SOCIALS = [
   { name: "Facebook", href: "https://www.facebook.com/puff2doors", Icon: Facebook },
@@ -8,6 +8,7 @@ const SOCIALS = [
   { name: "Twitter", href: "https://twitter.com/puff2doors", Icon: Twitter },
 ];
 import { BRAND } from "../mock";
+import { STORE } from "../seo/config";
 import { useCatalog } from "../context/CatalogContext";
 import AnimatedLogo from "./AnimatedLogo";
 import { useApp } from "../context/AppContext";
@@ -34,8 +35,8 @@ const Footer = () => {
             <span className="font-heading font-700 text-xl text-white">H<span className="p2d-logo-accent text-emerald-500">D</span> Smoke Shop</span>
           </div>
           <p className="text-sm leading-relaxed text-neutral-400">
-            Your one-stop shop for disposable vapes, delta, kratom, glass, papers and
-            accessories — delivered fast and discreet, right to your door.
+            Your Altamonte Springs smoke shop for disposable vapes, delta, kratom, glass, papers and
+            accessories. Walk-ins welcome, or order online for local delivery in ZIP 32714.
           </p>
           <div className="flex gap-3 mt-5">
             {SOCIALS.map(({ name, href, Icon }) => (
@@ -71,7 +72,7 @@ const Footer = () => {
             <li><Link to="/about" className="hover:text-emerald-400 transition-colors">About Us</Link></li>
             <li><Link to="/contact" className="hover:text-emerald-400 transition-colors">Contact</Link></li>
             <li><Link to="/track" className="hover:text-emerald-400 transition-colors">Track Order</Link></li>
-            <li><Link to="/delivery-area" className="hover:text-emerald-400 transition-colors">Orlando Delivery Area</Link></li>
+            <li><Link to="/delivery-area" className="hover:text-emerald-400 transition-colors">Delivery Area (32714)</Link></li>
             <li><Link to="/brands" className="hover:text-emerald-400 transition-colors">Brands</Link></li>
             <li><Link to="/my-account" className="hover:text-emerald-400 transition-colors">My Account</Link></li>
             <li><Link to="/cart" className="hover:text-emerald-400 transition-colors">Cart</Link></li>
@@ -81,9 +82,10 @@ const Footer = () => {
         <div>
           <p className="font-heading text-white text-base tracking-wide mb-4 uppercase">Get In Touch</p>
           <ul className="space-y-3 text-sm">
-            <li className="flex items-start gap-3"><Phone className="h-4 w-4 text-emerald-500 mt-0.5" /> {BRAND.phone}</li>
+            <li className="flex items-start gap-3"><Phone className="h-4 w-4 text-emerald-500 mt-0.5" /> <a href={STORE.phoneHref} className="hover:text-emerald-400 transition-colors">{STORE.phone}</a></li>
             <li className="flex items-start gap-3"><Mail className="h-4 w-4 text-emerald-500 mt-0.5" /> {BRAND.email}</li>
-            <li className="flex items-start gap-3"><MapPin className="h-4 w-4 text-emerald-500 mt-0.5" /> {BRAND.address}</li>
+            <li className="flex items-start gap-3"><MapPin className="h-4 w-4 text-emerald-500 mt-0.5" /> <a href={STORE.directionsUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">{STORE.fullAddress}</a></li>
+            <li className="flex items-start gap-3"><Clock className="h-4 w-4 text-emerald-500 mt-0.5" /> Open {STORE.hoursText}</li>
           </ul>
         </div>
 

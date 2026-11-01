@@ -25,7 +25,7 @@ const tabCats = [
 ];
 
 const baseFeatures = [
-  { icon: Truck, title: "Local Delivery", desc: "Straight to your door in the Orlando area" },
+  { icon: Truck, title: "Local Delivery", desc: "Delivery in ZIP 32714 or shop our SR 434 store" },
   { icon: ShieldCheck, title: "21+ Age Verified", desc: "ID checked on every delivery" },
   { icon: BadgePercent, title: "Best Prices", desc: "Deals on top vape brands" },
 ];
@@ -73,18 +73,12 @@ const Home = () => {
       : { icon: Clock, title: "Scheduled Delivery", desc: "Choose an available delivery window" },
     baseFeatures[2],
   ];
-  const deliveryAreaText = delivery.mode === "selected_zips"
-    ? `${delivery.allowedZipCodes.length} selected ZIP codes in the Orlando area`
-    : `addresses within ${delivery.radiusMiles} miles of ZIP ${delivery.zip}`;
   const homeFaqs = HOME_FAQS.map((faq) => {
-    if (faq.q === "Does HD Smoke Shop offer local delivery?") {
+    if (faq.q === "Where do you deliver?") {
       const feeText = pricing.freeDeliveryMin > 0
         ? `Local delivery is free on orders over $${pricing.freeDeliveryMin}${pricing.deliveryFee > 0 ? `; a $${pricing.deliveryFee} fee applies below that amount` : ""}.`
         : "Local delivery is free.";
-      return { ...faq, a: `Yes. HD Smoke Shop delivers to ${deliveryAreaText}. Use the ZIP checker to confirm your address. ${feeText}` };
-    }
-    if (faq.q === "Does HD Smoke Shop ship orders outside Orlando?") {
-      return { ...faq, a: "HD Smoke Shop currently serves its configured local delivery ZIP codes. Enter your ZIP on the Delivery Area page to check availability before ordering." };
+      return { ...faq, a: `${faq.a} ${feeText}` };
     }
     return faq;
   });
@@ -95,8 +89,8 @@ const Home = () => {
     <section className="home-intro bg-white border-b" data-testid="home-intro">
       <div className="max-w-[1280px] mx-auto px-4 py-8">
         <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full" />
-        <h1 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-700 text-neutral-900 uppercase tracking-tight mb-3">Online Smoke Shop &amp; Vape Delivery</h1>
-        <p className="text-neutral-600 leading-relaxed max-w-3xl">HD Smoke Shop is your online smoke shop for disposable vapes, hemp-derived delta products, glass pipes, kratom and other smoke shop essentials. Browse trusted brands, order online in minutes and get local vape delivery to your door in the Orlando, Florida area — {delivery.mode === "selected_zips" ? `${delivery.allowedZipCodes.length} selected delivery ZIP codes` : `within ${delivery.radiusMiles} miles of ZIP ${delivery.zip}`}. Adults 21+ only.</p>
+        <h1 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-700 text-neutral-900 uppercase tracking-tight mb-3">Altamonte Springs Smoke Shop &amp; Local Delivery</h1>
+        <p className="text-neutral-600 leading-relaxed max-w-3xl">HD Smoke Shop is a smoke shop at 481 N State Rd 434, Suite 1050 in Altamonte Springs, FL, open 10 AM–10 PM daily. Walk-ins are welcome, or order disposable vapes, hemp-derived delta products, glass pipes, kratom and other smoke shop essentials online for local delivery within ZIP 32714. Adults 21+ only, ID required.</p>
       </div>
     </section>
   );
@@ -214,10 +208,10 @@ const Home = () => {
           <div className="border border-neutral-200 rounded-xl p-6 flex gap-4">
             <span className="grid place-items-center h-12 w-12 rounded-full bg-emerald-100 text-emerald-700 shrink-0"><MapPin className="h-6 w-6" aria-hidden="true" /></span>
             <div>
-              <h3 className="font-heading text-lg uppercase mb-2">Vape Delivery in Orlando, FL</h3>
+              <h3 className="font-heading text-lg uppercase mb-2">Altamonte Springs Delivery &amp; Walk-Ins</h3>
               <p className="text-sm text-neutral-600 leading-relaxed">
-                HD Smoke Shop is an online store with local smoke shop delivery — we bring your order to {delivery.mode === "selected_zips" ? `${delivery.allowedZipCodes.length} selected ZIP codes` : `addresses within ${delivery.radiusMiles} miles of ZIP ${delivery.zip}`} in the Orlando area. Check your ZIP code at the top of this page, or see the full list of{" "}
-                <Link to="/delivery-area" className="text-emerald-600 font-semibold hover:underline">Orlando neighborhoods and ZIP codes we deliver to</Link>.
+                Visit our Altamonte Springs store on SR 434 or order for delivery. We deliver to adults 21+ within Altamonte Springs, ZIP 32714 — check your ZIP at the top of this page or see{" "}
+                <Link to="/delivery-area" className="text-emerald-600 font-semibold hover:underline">our delivery area</Link>. Shopping from Longwood, Casselberry, Maitland, Winter Springs or Apopka? Walk-ins are welcome at the store.
               </p>
             </div>
           </div>

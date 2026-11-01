@@ -2,10 +2,37 @@ import { BRAND } from "../mock";
 
 export const SITE_URL = (process.env.REACT_APP_SITE_URL || "https://puff2door.com").replace(/\/$/, "");
 export const SITE_NAME = "HD Smoke Shop";
-export const DEFAULT_TITLE = "Online Smoke Shop & Vape Delivery | HD Smoke Shop";
-export const DEFAULT_DESCRIPTION = "Shop vapes, smoking accessories and smoke shop essentials online at HD Smoke Shop. Convenient ordering, fast delivery and shipping right to your door.";
+export const DEFAULT_TITLE = "HD Smoke Shop Altamonte Springs, FL – Smoke Shop & Delivery";
+export const DEFAULT_DESCRIPTION = "Smoke shop on SR 434 in Altamonte Springs, open 10 AM–10 PM daily. Shop in store or order online for local delivery. 21+ only, ID required.";
 export const DEFAULT_IMAGE = `${SITE_URL}/img/og-image.jpg`;
 export const LOGO_URL = `${SITE_URL}/img/logo.png`;
+
+// Single source of truth for the store's name, address, phone and hours (NAP).
+// Keep these identical to the Google Business Profile.
+export const STORE = {
+  name: "HD Smoke Shop",
+  streetAddress: "481 N State Rd 434, Suite 1050",
+  city: "Altamonte Springs",
+  region: "FL",
+  postalCode: "32714",
+  country: "US",
+  fullAddress: "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714",
+  phone: "(407) 625-6826",
+  phoneHref: "tel:+14076256826",
+  phoneE164: "+1-407-625-6826",
+  hoursText: "10 AM – 10 PM daily",
+  opens: "10:00",
+  closes: "22:00",
+  latitude: 28.667897,
+  longitude: -81.418196,
+  deliveryZip: "32714",
+  deliveryAreaText: "Altamonte Springs, ZIP 32714",
+  mapEmbedUrl: "https://www.google.com/maps?q=HD+Smoke+Shop,+481+N+State+Rd+434+Suite+1050,+Altamonte+Springs,+FL+32714&output=embed",
+  directionsUrl: "https://www.google.com/maps/place/?q=place_id:ChIJKZb4tvlx54gRjJxn6gAuEU4",
+  googleReviewUrl: "https://g.page/r/CYycZ-oALhFOEBM/review",
+  instagram: "https://www.instagram.com/puff2doors",
+  facebook: "https://www.facebook.com/puff2doors",
+};
 
 export const absUrl = (path = "/") => (path.startsWith("http") ? path : `${SITE_URL}${path.startsWith("/") ? path : `/${path}`}`);
 
@@ -17,82 +44,43 @@ export const truncate = (text = "", max = 155) => {
 
 export const titleCase = (s = "") => s.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase()).replace(/\bThc\b/g, "THC").replace(/\bThca\b/g, "THCA");
 
+// Short on-page intro per category. Titles and meta descriptions follow one local pattern (see categorySeo).
 export const CATEGORY_SEO = {
-  disposable: {
-    title: "Disposable Vapes | Shop Online | HD Smoke Shop",
-    description: "Browse disposable vapes online at HD Smoke Shop. Popular brands, high puff counts and a wide range of flavors with convenient local delivery in the Orlando area. 21+ only.",
-    intro: "Shop disposable vapes online from top brands. Order at HD Smoke Shop for convenient delivery to your door in the Orlando area.",
-  },
-  delta: {
-    title: "Delta Disposables | Shop Online | HD Smoke Shop",
-    description: "Shop delta disposable vapes online at HD Smoke Shop. Order hemp-derived delta disposables with convenient local delivery in the Orlando area. Must be 21+ to purchase.",
-    intro: "Hemp-derived delta disposable vapes from trusted brands, ordered online and delivered locally.",
-  },
-  "delta-cartridges": {
-    title: "Delta Cartridges Online | HD Smoke Shop",
-    description: "Order delta vape cartridges online at HD Smoke Shop. Hemp-derived delta carts from leading brands with convenient local delivery in the Orlando area. 21+ only.",
-    intro: "510-thread delta cartridges from leading brands, available for online ordering and local delivery.",
-  },
-  "delta-edibles": {
-    title: "Delta Edibles & Gummies Online | HD Smoke Shop",
-    description: "Shop delta edibles and gummies online at HD Smoke Shop. Hemp-derived edibles from popular brands with convenient local delivery in the Orlando area. Must be 21+.",
-    intro: "Hemp-derived delta gummies and edibles from popular brands, delivered to your door in the Orlando area.",
-  },
-  "delta-smokeables": {
-    title: "Delta Smokeables & THCA Flower Online | HD Smoke Shop",
-    description: "Browse delta smokeables and THCA flower online at HD Smoke Shop. Pre-rolls and flower from trusted brands with convenient local delivery in the Orlando area. 21+ only.",
-    intro: "THCA flower, pre-rolls and other delta smokeables from trusted brands, ordered online for local delivery.",
-  },
-  "vape-accessories": {
-    title: "Vape Accessories | HD Smoke Shop",
-    description: "Shop vape accessories online at HD Smoke Shop. Batteries, chargers and vaping essentials with convenient local delivery in the Orlando area. 21+ only.",
-    intro: "Vape accessories and essentials, ordered online and delivered locally.",
-  },
-  "glass-pipes": {
-    title: "Glass Pipes & Smoking Accessories Online | HD Smoke Shop",
-    description: "Shop glass pipes and smoking accessories online at HD Smoke Shop. Hand pipes, bubblers and glassware with convenient local delivery in the Orlando area. 21+ only.",
-    intro: "Glass hand pipes, bubblers and smoking accessories from your online smoke shop, delivered locally.",
-  },
-  kratom: {
-    title: "Kratom Products Online | HD Smoke Shop",
-    description: "Order kratom and botanical products online at HD Smoke Shop. Capsules, extracts and more with convenient local delivery in the Orlando area. Must be 21+ to purchase.",
-    intro: "Kratom capsules, extracts and botanical products available for online ordering and local delivery.",
-  },
-  "hemp-wraps": { title: "Hemp Wraps Online | HD Smoke Shop", description: "Shop hemp wraps online at HD Smoke Shop with convenient local delivery in the Orlando area. 21+ only.", intro: "Hemp wraps from popular brands, delivered locally." },
-  "paper-cones": { title: "Rolling Papers & Cones Online | HD Smoke Shop", description: "Shop rolling papers and pre-rolled cones online at HD Smoke Shop with convenient local delivery in the Orlando area. 21+ only.", intro: "Rolling papers and pre-rolled cones, ordered online for local delivery." },
-  lighter: { title: "Lighters & Torches Online | HD Smoke Shop", description: "Shop lighters and torches online at HD Smoke Shop with convenient local delivery in the Orlando area. 21+ only.", intro: "Lighters and torch lighters, delivered locally." },
-  "air-freshner": { title: "Air Fresheners Online | HD Smoke Shop", description: "Shop air fresheners and odor eliminators online at HD Smoke Shop with convenient local delivery in the Orlando area.", intro: "Air fresheners and odor eliminators for your space." },
-  "hookah-accessories": { title: "Hookah Accessories Online | HD Smoke Shop", description: "Shop hookah accessories online at HD Smoke Shop with convenient local delivery in the Orlando area. 21+ only.", intro: "Hookah accessories, ordered online for local delivery." },
-  miscellaneous: { title: "Smoke Shop Essentials Online | HD Smoke Shop", description: "Browse smoke shop essentials and miscellaneous products online at HD Smoke Shop with convenient local delivery in the Orlando area. 21+ only.", intro: "Smoke shop essentials and other useful extras." },
+  disposable: { intro: "Shop disposable vapes from top brands. Order online for local delivery in Altamonte Springs (ZIP 32714) or pick them up at our SR 434 store." },
+  delta: { intro: "Hemp-derived delta disposable vapes from trusted brands, available in store or for local delivery in ZIP 32714." },
+  "delta-cartridges": { intro: "510-thread delta cartridges from leading brands, available in store or for local delivery in ZIP 32714." },
+  "delta-edibles": { intro: "Hemp-derived delta gummies and edibles from popular brands, available in store or for local delivery in ZIP 32714." },
+  "delta-smokeables": { intro: "THCA flower, pre-rolls and other delta smokeables from trusted brands, available in store or for local delivery in ZIP 32714." },
+  "vape-accessories": { intro: "Vape accessories and essentials, available in store or for local delivery in ZIP 32714." },
+  "glass-pipes": { intro: "Glass hand pipes, bubblers and smoking accessories. Visit our Altamonte Springs store or order for local delivery." },
+  kratom: { intro: "Kratom capsules, extracts and botanical products, available in store or for local delivery in ZIP 32714." },
+  "hemp-wraps": { intro: "Hemp wraps from popular brands, available in store or for local delivery." },
+  "paper-cones": { intro: "Rolling papers and pre-rolled cones, available in store or for local delivery." },
+  lighter: { intro: "Lighters and torch lighters, available in store or for local delivery." },
+  "air-freshner": { intro: "Air fresheners and odor eliminators for your space." },
+  "hookah-accessories": { intro: "Hookah accessories, available in store or for local delivery." },
+  miscellaneous: { intro: "Smoke shop essentials and other useful extras." },
 };
 
 export const categorySeo = (cat) => {
   if (!cat) return null;
   const name = titleCase(cat.name);
-  return CATEGORY_SEO[cat.slug] || {
-    title: `${name} | Shop Online | HD Smoke Shop`,
-    description: `Shop ${name.toLowerCase()} online at HD Smoke Shop with convenient local delivery in the Orlando area. Must be 21+ to purchase.`,
-    intro: `${name} available for online ordering and local delivery.`,
+  return {
+    title: `${name} – Shop Online or In Store | HD Smoke Shop`,
+    description: truncate(`Shop ${name.toLowerCase()} at HD Smoke Shop in Altamonte Springs. Order online for local delivery or visit our SR 434 store. 21+ only, ID required.`),
+    intro: CATEGORY_SEO[cat.slug]?.intro || `${name} available at our Altamonte Springs store or for local delivery in ZIP 32714.`,
   };
 };
 
 export const brandSeo = (brand) => ({
-  title: `${brand.name} Products Online | HD Smoke Shop`,
-  description: `Shop ${brand.name} vapes and smoke shop products online at HD Smoke Shop. Order ${brand.name} with convenient local delivery in the Orlando area. Must be 21+ to purchase.`,
-  intro: `${brand.name} products available at HD Smoke Shop for online ordering and local delivery.`,
+  title: `${brand.name} – Available at HD Smoke Shop Altamonte Springs`,
+  description: truncate(`Find ${brand.name} at HD Smoke Shop. Check online availability, then order for local delivery or pick up in Altamonte Springs. 21+ only.`),
+  intro: `${brand.name} products available at HD Smoke Shop in Altamonte Springs, in store or for local delivery.`,
 });
 
-const fmtPuffs = (n) => (n >= 1000 ? `${Math.round(n / 1000)}K` : String(n));
-
 export const productSeoDescription = (p) => {
-  const cat = titleCase(p.category || "").replace(/s$/, "");
-  const parts = [`${titleCase(p.name)}${p.brandName ? ` by ${p.brandName}` : ""}`];
-  const specs = [];
-  if (p.puffs) specs.push(`up to ${fmtPuffs(p.puffs)} puffs`);
-  if (p.flavors?.length) specs.push(`${p.flavors.slice(0, 3).join(", ")} flavor${p.flavors.length > 1 ? "s" : ""}`);
-  parts.push(specs.length ? ` – ${cat.toLowerCase()} with ${specs.join(" and ")}.` : ` – ${cat.toLowerCase()} available online.`);
-  parts.push(` $${(p.salePrice && p.salePrice > 0 && p.salePrice < p.price ? p.salePrice : p.price).toFixed(2)} at HD Smoke Shop, Orlando-area delivery. 21+ only.`);
-  return truncate(parts.join(""), 158);
+  const name = titleCase(p.name);
+  return truncate(`${name}${p.brandName ? ` from ${p.brandName}` : ""} at HD Smoke Shop, Altamonte Springs. Check availability and order for local delivery. 21+ only, ID required.`, 158);
 };
 
 export const productSpecs = (p) => {
@@ -106,22 +94,30 @@ export const productSpecs = (p) => {
   return rows;
 };
 
-export const organizationJsonLd = () => ({
+export const storeJsonLd = () => ({
   "@context": "https://schema.org",
-  "@type": "Organization",
-  "@id": `${SITE_URL}/#organization`,
-  name: SITE_NAME,
+  "@type": "Store",
+  "@id": `${SITE_URL}/#store`,
+  name: STORE.name,
   url: SITE_URL,
   logo: LOGO_URL,
   image: DEFAULT_IMAGE,
-  description: "Online smoke shop and vape shop offering online ordering with local delivery in the Orlando, Florida area.",
-  telephone: BRAND.phone,
+  description: "Smoke shop in Altamonte Springs, FL. Walk-ins welcome, plus online ordering with local delivery within ZIP 32714. Adults 21+ only.",
+  telephone: STORE.phoneE164,
   email: BRAND.email,
-  address: { "@type": "PostalAddress", streetAddress: "481 N State Rd 434", addressLocality: "Altamonte Springs", addressRegion: "FL", postalCode: "32714", addressCountry: "US" },
-  areaServed: { "@type": "GeoCircle", geoMidpoint: { "@type": "GeoCoordinates", latitude: 28.3774, longitude: -81.1888 }, geoRadius: "32000" },
-  sameAs: ["https://www.instagram.com/puff2doors/"],
-  contactPoint: { "@type": "ContactPoint", telephone: BRAND.phone, contactType: "customer service", email: BRAND.email, areaServed: "US" },
+  priceRange: "$$",
+  address: { "@type": "PostalAddress", streetAddress: STORE.streetAddress, addressLocality: STORE.city, addressRegion: STORE.region, postalCode: STORE.postalCode, addressCountry: STORE.country },
+  geo: { "@type": "GeoCoordinates", latitude: STORE.latitude, longitude: STORE.longitude },
+  hasMap: STORE.directionsUrl,
+  openingHours: "Mo-Su 10:00-22:00",
+  openingHoursSpecification: [{ "@type": "OpeningHoursSpecification", dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], opens: STORE.opens, closes: STORE.closes }],
+  areaServed: [{ "@type": "Place", name: "Altamonte Springs, FL 32714", address: { "@type": "PostalAddress", postalCode: STORE.deliveryZip, addressLocality: STORE.city, addressRegion: STORE.region, addressCountry: STORE.country } }],
+  audience: { "@type": "PeopleAudience", suggestedMinAge: 21 },
+  sameAs: [STORE.instagram, STORE.facebook],
 });
+
+// Kept for older imports.
+export const organizationJsonLd = storeJsonLd;
 
 export const websiteJsonLd = () => ({
   "@context": "https://schema.org",
@@ -129,7 +125,7 @@ export const websiteJsonLd = () => ({
   "@id": `${SITE_URL}/#website`,
   url: SITE_URL,
   name: SITE_NAME,
-  publisher: { "@id": `${SITE_URL}/#organization` },
+  publisher: { "@id": `${SITE_URL}/#store` },
   potentialAction: { "@type": "SearchAction", target: { "@type": "EntryPoint", urlTemplate: `${SITE_URL}/shop?search={search_term_string}` }, "query-input": "required name=search_term_string" },
 });
 
@@ -156,7 +152,7 @@ export const productJsonLd = (p, price, imgAbs, reviews) => {
       price: price.toFixed(2),
       availability: p.inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
       itemCondition: "https://schema.org/NewCondition",
-      seller: { "@id": `${SITE_URL}/#organization` },
+      seller: { "@id": `${SITE_URL}/#store` },
     },
   };
   if (p.brandName) data.brand = { "@type": "Brand", name: p.brandName };
@@ -170,11 +166,17 @@ export const faqJsonLd = (faqs) => ({
   mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })),
 });
 
+// Local FAQs shown on the home and contact pages (also published as FAQPage structured data).
+export const LOCAL_FAQS = [
+  { q: "What are HD Smoke Shop's hours?", a: "We're open 10 AM to 10 PM, seven days a week." },
+  { q: "Where is HD Smoke Shop, and can I walk in?", a: "Yes, walk-ins are welcome. Visit us at 481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714, in San Sebastian Square on SR 434. Shoppers from Longwood, Casselberry, Maitland, Winter Springs and Apopka are welcome in store." },
+  { q: "Where do you deliver?", a: "We deliver to adults 21+ within Altamonte Springs, ZIP 32714. Order online at puff2door.com and enter your ZIP to confirm. If you're outside 32714, you're welcome to visit the store." },
+  { q: "Do I need to be 21 and show ID?", a: "Yes. Everyone must be 21 or older with a valid, unexpired government-issued photo ID, both in store and at delivery. Orders are never left with anyone under 21." },
+];
+
 export const HOME_FAQS = [
-  { q: "What products does HD Smoke Shop sell?", a: "HD Smoke Shop is an online smoke shop carrying disposable vapes, hemp-derived delta disposables, cartridges, edibles and smokeables, glass pipes and kratom products from well-known brands. Browse the Shop page to see everything currently in stock." },
-  { q: "Does HD Smoke Shop offer local delivery?", a: "Yes. Use the ZIP code checker on the homepage to confirm whether your address is in the current delivery area. Available windows and any delivery fee are shown before payment." },
-  { q: "Does HD Smoke Shop ship orders outside Orlando?", a: "HD Smoke Shop currently serves its configured local delivery area. Enter your ZIP on the Delivery Area page to check availability before ordering." },
-  { q: "Do I need to be 21 or older to order?", a: "Yes. You must be 21 or older to purchase from HD Smoke Shop. Age is confirmed when you enter the site and a valid government-issued ID may be checked at delivery." },
+  ...LOCAL_FAQS,
+  { q: "What products does HD Smoke Shop sell?", a: "HD Smoke Shop carries disposable vapes, hemp-derived delta disposables, cartridges, edibles and smokeables, glass pipes, kratom and other smoke shop essentials from well-known brands. Browse the Shop page to see what's in stock, or stop by the store." },
   { q: "How can I track my order?", a: "After checkout you receive an order number by email. Enter it on the Track Order page to see your order status, from placed to confirmed, out for delivery and delivered." },
   { q: "What payment methods does HD Smoke Shop accept?", a: "The payment methods currently available for your device are shown at checkout. Complete payment through the secure option you select." },
 ];

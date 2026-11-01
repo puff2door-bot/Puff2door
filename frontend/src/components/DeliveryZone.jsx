@@ -2,15 +2,14 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { MapPin, CheckCircle2, XCircle, Search } from "lucide-react";
 import api from "../api";
-import { useCart } from "../context/CartContext";
+import { STORE } from "../seo/config";
 
 export const DeliveryBanner = () => {
-  const { delivery } = useCart();
   return (
     <div data-testid="delivery-banner" className="bg-emerald-700 text-white">
       <p className="max-w-[1280px] mx-auto px-4 py-1.5 flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold tracking-wide text-center">
         <MapPin className="h-3.5 w-3.5 shrink-0" />
-        {delivery.mode === "selected_zips" ? `We deliver to ${delivery.allowedZipCodes.length} selected ZIP codes.` : `We currently deliver within ${delivery.radiusMiles} miles of ${delivery.zip} only.`}
+        {`Walk-ins welcome · Delivery within Altamonte Springs, ZIP ${STORE.deliveryZip}.`}
         <Link to="/delivery-area" data-testid="delivery-banner-link" className="underline underline-offset-2 hover:text-emerald-100 font-medium">See delivery area</Link>
       </p>
     </div>

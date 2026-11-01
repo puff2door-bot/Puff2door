@@ -47,14 +47,14 @@ import MobileBottomNav from "./components/MobileBottomNav";
 import CompareTray from "./components/CompareTray";
 import PwaExperience from "./components/PwaExperience";
 import ServiceWakeBanner from "./components/ServiceWakeBanner";
-import { organizationJsonLd, websiteJsonLd } from "./seo/config";
+import { storeJsonLd, websiteJsonLd } from "./seo/config";
 import { PrivacyPolicy, TermsPage, DeliveryPolicy, RefundPolicy, AgeIdPolicy } from "./pages/LegalPages";
 
 const GSC_TOKEN = (process.env.REACT_APP_GOOGLE_SITE_VERIFICATION || "").trim();
 
 const SiteSeo = () => {
   useEffect(() => {
-    setJsonLd("site", [organizationJsonLd(), websiteJsonLd()]);
+    setJsonLd("site", [storeJsonLd(), websiteJsonLd()]);
     if (GSC_TOKEN && !document.head.querySelector('meta[name="google-site-verification"]')) {
       const m = document.createElement("meta");
       m.name = "google-site-verification";

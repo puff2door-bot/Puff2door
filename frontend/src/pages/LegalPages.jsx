@@ -6,9 +6,9 @@ import { useCart } from "../context/CartContext";
 
 const UPDATED = "October 25, 2026";
 
-const Page = ({ title, description, path, children }) => (
+const Page = ({ title, seoTitle, description, path, children }) => (
   <div className="max-w-4xl mx-auto px-4 py-10 sm:py-14">
-    <Seo title={`${title} | HD Smoke Shop`} description={description} path={path} />
+    <Seo title={seoTitle || `${title} | HD Smoke Shop`} description={description} path={path} />
     <nav aria-label="Breadcrumb" className="mb-5 flex items-center gap-1.5 text-xs text-neutral-500"><Link to="/" className="hover:text-emerald-600">Home</Link><span>/</span><span className="font-medium text-neutral-800">{title}</span></nav>
     <span className="mb-3 block h-1 w-12 rounded-full bg-emerald-600" />
     <h1 className="font-heading text-4xl uppercase tracking-tight text-neutral-900 sm:text-5xl">{title}</h1>
@@ -40,7 +40,7 @@ export const TermsPage = () => (
 
 export const DeliveryPolicy = () => {
   const { delivery } = useCart();
-  const area = delivery.mode === "selected_zips" ? "the ZIP codes currently listed in the delivery checker" : `addresses within the configured ${delivery.radiusMiles}-mile service area`;
+  const area = "addresses in Altamonte Springs, ZIP 32714";
   return <Page title="Delivery Policy" description="HD Smoke Shop delivery areas, windows, age checks and failed-delivery rules." path="/delivery-policy">
     <Section title="Service area and timing"><p>Local delivery is available only to {area}. Enter the delivery ZIP before checkout for the current eligibility result. Delivery windows shown at checkout reflect current hours and capacity. {delivery.sameDayEnabled === true ? "Same-day delivery is offered only while an eligible window remains available before the cutoff." : "Choose the next available delivery window shown at checkout."}</p></Section>
     <Section title="At the door"><p>A person age 21 or older must be present with a valid government-issued photo ID. The name and age information must be readable and the ID must not be expired. Orders cannot be left unattended, in a mailbox, at a door, or with anyone under 21.</p></Section>
@@ -59,7 +59,7 @@ export const RefundPolicy = () => (
 );
 
 export const AgeIdPolicy = () => (
-  <Page title="Age & ID Policy" description="HD Smoke Shop's 21+ purchase and delivery identification requirements." path="/age-and-id-policy">
+  <Page title="Age & ID Policy" seoTitle="Age & ID Policy (21+) – HD Smoke Shop" description="How HD Smoke Shop verifies age in store and at delivery. Valid government photo ID showing 21+ is required for every order." path="/age-and-id-policy">
     <Section title="21+ only"><p>HD Smoke Shop is for adults age 21 and older. Customers must pass the entry age gate, provide a valid date of birth at checkout and present acceptable identification at delivery.</p></Section>
     <Section title="Accepted identification"><p>Bring a valid, unexpired government-issued photo ID that clearly shows your photograph and date of birth, such as a state driver license, state identification card, passport or military ID.</p></Section>
     <Section title="Door verification"><p>The driver checks that the recipient is 21+, the ID appears valid and the person receiving the order matches the ID. Orders cannot be left with anyone under 21 or left unattended.</p></Section>

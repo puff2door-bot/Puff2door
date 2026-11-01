@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Link } from "react-router-dom";
 import { MapPin, Truck, ShieldCheck, Clock, SearchCheck, ShoppingBag, Camera, Star, Video } from "lucide-react";
-import api from "../api";
 import { DeliveryChecker } from "../components/DeliveryZone";
 import { useCart } from "../context/CartContext";
 import { useCatalog } from "../context/CatalogContext";
 import Seo from "../seo/Seo";
-import { breadcrumbJsonLd, faqJsonLd, SITE_URL, titleCase } from "../seo/config";
+import { breadcrumbJsonLd, faqJsonLd, SITE_URL, STORE, titleCase } from "../seo/config";
+import VisitStore from "../components/VisitStore";
 
 // Add a hosted walkthrough URL here when a delivery video is ready.
 const DELIVERY_VIDEO_URL = "";
@@ -17,27 +17,13 @@ const GOOGLE_MAPS_KEY = (process.env.REACT_APP_GOOGLE_MAPS_EMBED_KEY || "").trim
 const DeliveryAreaPage = () => {
   const { delivery, pricing, trust } = useCart();
   const { activeCategories } = useCatalog();
-  const [area, setArea] = useState(null);
-
-  useEffect(() => {
-    api.get("/delivery/area").then(({ data }) => setArea(data)).catch(() => setArea({ areas: [], zipCount: 0 }));
-  }, []);
-
-  const radius = area?.radiusMiles ?? delivery.radiusMiles;
-  const center = area?.centerZip ?? delivery.zip;
-  const selected = (area?.mode || delivery.mode) === "selected_zips";
   const sameDayEnabled = delivery.sameDayEnabled === true;
-  const zoneDescription = selected ? `${area?.zipCount ?? delivery.allowedZipCodes.length} selected ZIP codes in the Orlando, Florida area` : `addresses within ${radius} miles of ZIP ${center} in the Orlando, Florida area`;
-  const mapSrc = area?.centerLat && area?.centerLng ? (() => {
-    const latSpan = Math.max(radius / 69, 0.08);
-    const lngSpan = Math.max(radius / (69 * Math.cos(area.centerLat * Math.PI / 180)), 0.08);
-    const bbox = [area.centerLng - lngSpan, area.centerLat - latSpan, area.centerLng + lngSpan, area.centerLat + latSpan].join(",");
-    return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${area.centerLat}%2C${area.centerLng}`;
-  })() : "";
+  const zoneDescription = STORE.deliveryAreaText;
   const faqs = [
-    { q: "Where does HD Smoke Shop deliver?", a: `HD Smoke Shop delivers to ${zoneDescription}. Enter your ZIP code above to confirm instantly.` },
-    { q: "Is there a delivery fee in Orlando?", a: pricing.freeDeliveryMin <= 0 ? "Local delivery is currently free. Your final total is shown before you pay." : `Local delivery is free on orders over $${pricing.freeDeliveryMin}.${pricing.deliveryFee > 0 ? ` Orders below that carry a $${pricing.deliveryFee} delivery fee.` : ""} Your final total is shown before you pay.` },
-    { q: "Do I need ID for vape delivery?", a: "Yes. You must be 21 or older, and a valid government-issued ID may be checked at delivery. Orders cannot be left with anyone under 21." },
+    { q: "Where does HD Smoke Shop deliver?", a: `We deliver to adults 21+ within ${zoneDescription}. Enter your ZIP code above to confirm. Outside 32714? You're welcome to visit our store at ${STORE.fullAddress}.` },
+    { q: "Can I shop in store instead?", a: `Yes, walk-ins are welcome. We're open ${STORE.hoursText} at ${STORE.fullAddress}. Shoppers from Longwood, Casselberry, Maitland, Winter Springs and Apopka are welcome in store.` },
+    { q: "Is there a delivery fee?", a: pricing.freeDeliveryMin <= 0 ? "Local delivery is currently free. Your final total is shown before you pay." : `Local delivery is free on orders over $${pricing.freeDeliveryMin}.${pricing.deliveryFee > 0 ? ` Orders below that carry a $${pricing.deliveryFee} delivery fee.` : ""} Your final total is shown before you pay.` },
+    { q: "Do I need ID for delivery?", a: "Yes. You must be 21 or older, and a valid government-issued photo ID is checked at the door. Orders cannot be left with anyone under 21." },
     { q: "What can I order for delivery?", a: activeCategories.length ? `Everything in our online smoke shop: ${activeCategories.map((c) => titleCase(c.name).toLowerCase()).join(", ")}.` : "Browse the Shop page to see every product currently available for local delivery." },
   ];
   const jsonLd = [
@@ -46,10 +32,10 @@ const DeliveryAreaPage = () => {
     {
       "@context": "https://schema.org",
       "@type": "Service",
-      name: "Vape & Smoke Shop Delivery in Orlando, FL",
+      name: "Smoke Shop Delivery in Altamonte Springs, FL 32714",
       serviceType: "Local delivery",
-      provider: { "@id": `${SITE_URL}/#organization` },
-      areaServed: (area?.areas || []).map((a) => ({ "@type": "City", name: `${a.city}, ${a.state}` })),
+      provider: { "@id": `${SITE_URL}/#store` },
+      areaServed: { "@type": "Place", name: "Altamonte Springs, FL 32714", address: { "@type": "PostalAddress", postalCode: STORE.deliveryZip, addressLocality: STORE.city, addressRegion: STORE.region, addressCountry: STORE.country } },
       url: `${SITE_URL}/delivery-area`,
     },
   ];
@@ -57,8 +43,8 @@ const DeliveryAreaPage = () => {
   return (
     <div data-testid="delivery-area-page">
       <Seo
-        title="Vape Delivery Orlando, FL | HD Smoke Shop Delivery Area"
-        description={`HD Smoke Shop delivers vapes, delta products, glass and smoke shop essentials to ${zoneDescription}. Check your ZIP code and see every area we serve. 21+ only.`}
+        title="Smoke Shop Delivery in Altamonte Springs 32714 – HD Smoke Shop"
+        description="Local delivery from our SR 434 store within Altamonte Springs, ZIP 32714. Order online at puff2door.com. Adults 21+ only; ID checked at the door."
         path="/delivery-area"
         jsonLd={jsonLd}
       />
@@ -68,10 +54,10 @@ const DeliveryAreaPage = () => {
           <Link to="/" className="hover:text-emerald-600">Home</Link><span>/</span><span className="text-neutral-800 font-medium">Delivery Area</span>
         </nav>
         <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full" />
-        <h1 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-700 text-neutral-900 uppercase tracking-tight mb-3">Vape Delivery in Orlando, FL</h1>
+        <h1 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-700 text-neutral-900 uppercase tracking-tight mb-3">Smoke Shop Delivery in Altamonte Springs, 32714</h1>
         <p className="text-neutral-600 leading-relaxed max-w-3xl mb-10">
-          HD Smoke Shop is an online smoke shop with local vape delivery — not a walk-in store. Order disposable vapes, hemp-derived delta products,
-          glass pipes, kratom and more, and we bring them to your door in {zoneDescription}. {sameDayEnabled ? "Order before the cutoff for same-day local delivery. " : "Choose from the available local delivery windows at checkout. "}
+          Visit our Altamonte Springs store or order for delivery. Walk-ins are welcome at our SR 434 store, open {STORE.hoursText}. Order disposable vapes, hemp-derived delta products,
+          glass pipes, kratom and more online, and we bring them to your door within {zoneDescription}. {sameDayEnabled ? "Order before the cutoff for same-day local delivery. " : "Choose from the available local delivery windows at checkout. "}
           Every order is age-verified (21+){pricing.freeDeliveryMin > 0 ? `, and delivery is free on orders over $${pricing.freeDeliveryMin}` : ", and local delivery is currently free"}.
         </p>
 
@@ -91,28 +77,18 @@ const DeliveryAreaPage = () => {
         <section aria-labelledby="areas-heading" className="mb-12">
           <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full" />
           <h2 id="areas-heading" className="font-heading text-3xl sm:text-4xl font-700 text-neutral-900 uppercase tracking-tight mb-2">Areas We Deliver To</h2>
-          <p className="text-sm text-neutral-500 mb-6">
-            {area ? `${area.zipCount} ZIP codes across ${area.areas.length} cities and communities${selected ? "." : ` within ${radius} miles of ${area.centerCity || "Orlando"} ${center}.`}` : "Loading delivery zone…"}
-            {!selected && " Distances are straight-line from the center of each ZIP code."}
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="delivery-area-list">
-            {(area?.areas || []).map((a) => (
-              <div key={a.city} className="border border-neutral-200 rounded-xl p-5" data-testid={`area-${a.city.toLowerCase().replace(/\s+/g, "-")}`}>
-                <h3 className="font-heading text-lg uppercase flex items-center gap-2 mb-2"><MapPin className="h-4 w-4 text-emerald-600" aria-hidden="true" /> {a.city}, {a.state}</h3>
-                <p className="text-sm text-neutral-600 leading-relaxed">
-                  {a.zips.map((z, i) => (
-                    <span key={z.zip}>{i > 0 && ", "}<span className="font-medium text-neutral-800">{z.zip}</span>{z.distanceMiles != null && <span className="text-neutral-400 text-xs"> ({z.distanceMiles} mi)</span>}</span>
-                  ))}
-                </p>
-              </div>
-            ))}
-          </div>
-          {mapSrc && (
-            <div className="mt-6 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50" data-testid="delivery-map">
-              <iframe title={`HD Smoke Shop delivery area around ${center}`} src={mapSrc} className="w-full h-[360px]" loading="lazy" referrerPolicy="no-referrer" />
-              <p className="px-4 py-3 text-xs text-neutral-500">Map centered on ZIP {center}. Enter your ZIP above for the final {selected ? "selected-ZIP" : `${radius}-mile`} delivery check.</p>
+          <p className="text-sm text-neutral-500 mb-6">We deliver from our SR 434 store to addresses in one ZIP code. Enter your ZIP above for the final check.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6" data-testid="delivery-area-list">
+            <div className="border border-neutral-200 rounded-xl p-5" data-testid="area-altamonte-springs">
+              <h3 className="font-heading text-lg uppercase flex items-center gap-2 mb-2"><MapPin className="h-4 w-4 text-emerald-600" aria-hidden="true" /> Altamonte Springs, FL</h3>
+              <p className="text-sm text-neutral-600 leading-relaxed"><span className="font-medium text-neutral-800">{STORE.deliveryZip}</span> – Altamonte Springs</p>
             </div>
-          )}
+            <div className="border border-neutral-200 rounded-xl p-5 md:col-span-1 lg:col-span-2">
+              <h3 className="font-heading text-lg uppercase mb-2">Outside 32714?</h3>
+              <p className="text-sm text-neutral-600 leading-relaxed">Shoppers from Longwood, Casselberry, Maitland, Winter Springs and Apopka are welcome to visit the store in person — no delivery needed.</p>
+            </div>
+          </div>
+          <div data-testid="delivery-map"><VisitStore /></div>
         </section>
 
         <section aria-labelledby="how-delivery-works" className="mb-12" data-testid="how-delivery-works">
@@ -151,7 +127,7 @@ const DeliveryAreaPage = () => {
 
         <section aria-labelledby="da-faq-heading" className="mb-12">
           <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full" />
-          <h2 id="da-faq-heading" className="font-heading text-3xl sm:text-4xl font-700 text-neutral-900 uppercase tracking-tight mb-6">Orlando Delivery FAQ</h2>
+          <h2 id="da-faq-heading" className="font-heading text-3xl sm:text-4xl font-700 text-neutral-900 uppercase tracking-tight mb-6">Delivery FAQ</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="delivery-faq-list">
             {faqs.map((f, i) => (
               <div key={f.q} className="border border-neutral-200 rounded-xl p-5" data-testid={`delivery-faq-${i}`}>

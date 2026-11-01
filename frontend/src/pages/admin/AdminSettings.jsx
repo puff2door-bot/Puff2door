@@ -20,7 +20,7 @@ const AdminSettings = () => {
   const [busy, setBusy] = useState(false);
   const { toast } = useToast();
 
-  const toForm = (data) => ({ taxPercent: +(data.taxRate * 100).toFixed(3), deliveryFee: data.deliveryFee, freeDeliveryMin: data.freeDeliveryMin, deliveryZip: data.deliveryZip || "32832", deliveryRadiusMiles: data.deliveryRadiusMiles ?? 20, allowedZipCodes: (data.allowedZipCodes || []).join(", "),
+  const toForm = (data) => ({ taxPercent: +(data.taxRate * 100).toFixed(3), deliveryFee: data.deliveryFee, freeDeliveryMin: data.freeDeliveryMin, deliveryZip: data.deliveryZip || "32714", deliveryRadiusMiles: data.deliveryRadiusMiles ?? 20, allowedZipCodes: (data.allowedZipCodes || []).join(", "),
     sameDayEnabled: data.sameDayEnabled ?? true, deliveryCutoff: data.deliveryCutoff || "20:00", deliveryStart: data.deliveryStart || "11:00", deliveryEnd: data.deliveryEnd || "21:00", deliveryDays: data.deliveryDays || [0, 1, 2, 3, 4, 5, 6], homepageLayout: data.homepageLayout || "classic",
     countdownVisible: data.countdownVisible ?? true, countdownHeadlineVisible: data.countdownHeadlineVisible ?? true, countdownHoursVisible: data.countdownHoursVisible ?? true,
     countdownOpenText: data.countdownOpenText ?? "Order within {countdown} for today's local delivery", countdownClosedText: data.countdownClosedText ?? "Today's delivery window has closed. Order now for the next available delivery day.",
