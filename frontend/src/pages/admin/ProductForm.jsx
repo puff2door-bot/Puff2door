@@ -68,6 +68,8 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
   const [f, setF] = useState({ ...emptyProduct, ...initial, price: initial?.price ?? "", salePrice: initial?.salePrice ?? "", puffs: initial?.puffs ?? "",
     allowedStates: (initial?.allowedStates || []).join(", "), blockedStates: (initial?.blockedStates || []).join(", ") });
   const [busy, setBusy] = useState(false);
+  const [confirmCloverPrice, setConfirmCloverPrice] = useState(false);
+  const [createInClover, setCreateInClover] = useState(false);
   const { toast } = useToast();
   const set = (k, v) => setF((prev) => ({ ...prev, [k]: v }));
   const [brandList, setBrandList] = useState([]);
@@ -96,14 +98,18 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
       allowedStates: String(f.allowedStates || "").split(/[\s,]+/).map((v) => v.trim().toUpperCase()).filter(Boolean),
       blockedStates: String(f.blockedStates || "").split(/[\s,]+/).map((v) => v.trim().toUpperCase()).filter(Boolean),
       brandName: f.brand ? f.brandName : "",
+      confirmCloverPrice,
+      createInClover,
     };
     delete payload.id; delete payload.slug; delete payload.inStock; delete payload.rating; delete payload.restockNotified;
     delete payload.cloverItemId; delete payload.cloverLastSyncedAt; delete payload.cloverLastPushedAt; delete payload.cloverSyncError; delete payload.cloverSync;
     try {
       const { data } = isEdit ? await api.put(`/admin/products/${initial.id}`, payload) : await api.post("/admin/products", payload);
       const clover = data.cloverSync || {};
-      if (["failed", "partial"].includes(clover.status)) {
-        toast({ title: "Product saved — Clover needs a retry", description: clover.error || "Open Clover Inventory to retry the sync.", variant: "destructive" });
+      if (clover.status === "needs_confirmation") {
+        toast({ title: "Confirm the Clover price", description: clover.error || "A price change over 50% or to $0 needs confirmation.", variant: "destructive" });
+      } else if (["failed", "partial"].includes(clover.status)) {
+        toast({ title: "Product saved — Clover needs a retry", description: clover.error || clover.priceBlocked || "Open Clover Inventory to retry the sync.", variant: "destructive" });
       } else {
         const cloverText = clover.status === "success" ? (clover.action === "create" ? " Created in Clover." : " Clover updated.") : "";
         toast({ title: isEdit ? "Product updated" : "Product created", description: (data.restockNotified ? `${data.restockNotified} customer(s) notified of restock.` : data.name) + cloverText });
@@ -226,6 +232,12 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
 
         <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
           <input type="checkbox" data-testid="pf-active" className="accent-emerald-600 h-4 w-4" checked={f.active} onChange={(e) => set("active", e.target.checked)} /> Visible in store
+        </label>
+        <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+          <input type="checkbox" data-testid="pf-create-clover" className="accent-emerald-600 h-4 w-4" checked={createInClover} onChange={(e) => setCreateInClover(e.target.checked)} /> Create in Clover if this product is not linked yet
+        </label>
+        <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+          <input type="checkbox" data-testid="pf-confirm-price" className="accent-emerald-600 h-4 w-4" checked={confirmCloverPrice} onChange={(e) => setConfirmCloverPrice(e.target.checked)} /> Confirm a Clover price change over 50% or to $0
         </label>
 
         <div className="flex justify-end gap-3 pt-2">

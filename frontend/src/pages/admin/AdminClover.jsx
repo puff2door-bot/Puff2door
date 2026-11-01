@@ -13,6 +13,7 @@ const AdminClover = () => {
   const [products, setProducts] = useState([]);
   const [choice, setChoice] = useState({});
   const [mapRows, setMapRows] = useState(null);
+  const [aliasRows, setAliasRows] = useState(null);
   const [previewQuery, setPreviewQuery] = useState("");
   const [previewFilter, setPreviewFilter] = useState("all");
   const [previewPage, setPreviewPage] = useState(0);
@@ -37,7 +38,8 @@ const AdminClover = () => {
 
   useEffect(() => {
     if (mapRows === null && status?.categoryMappings) setMapRows(status.categoryMappings);
-  }, [status, mapRows]);
+    if (aliasRows === null && status?.brandAliasRows) setAliasRows(status.brandAliasRows);
+  }, [status, mapRows, aliasRows]);
 
   useEffect(() => {
     const result = searchParams.get("clover");
@@ -94,6 +96,43 @@ const AdminClover = () => {
   };
 
   const importItem = (item) => run(`import-${item.id}`, () => api.post("/admin/clover/import", { cloverItemId: item.id }), "Hidden draft saved for review");
+
+  const saveAliases = async () => {
+    setBusy("aliases");
+    try {
+      await api.put("/admin/clover/brand-aliases", { rows: aliasRows || [] });
+      await load();
+      toast({ title: "Brand aliases saved" });
+    } catch (error) {
+      toast({ title: "Aliases were not saved", description: error?.response?.data?.detail || "Try again.", variant: "destructive" });
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const writeBack = async (confirm) => {
+    const result = await api.post("/admin/clover/category-writeback", { confirm });
+    return result.data;
+  };
+
+  const applyWriteback = async () => {
+    setBusy("writeback");
+    try {
+      const plan = await writeBack(false);
+      const lines = (plan.plan?.changes || []).slice(0, 12).map((row) => `${row.name}: ${row.action} ${row.detail}`);
+      const message = lines.length ? lines.join("\n") : "No category or brand changes to send.";
+      if (!window.confirm(`Apply category and brand tags to Clover?\n\n${message}`)) return;
+      await writeBack(true);
+      await load();
+      toast({ title: plan.reason === "writeback_disabled" ? "Write-back is off" : "Clover categories and tags updated" });
+    } catch (error) {
+      toast({ title: "Clover was not updated", description: error?.response?.data?.detail || "Try again.", variant: "destructive" });
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const undoBatch = () => run("undo", () => api.post("/admin/clover/undo"), "Last Clover batch undone");
 
   const saveMap = async () => {
     setBusy("map");
@@ -199,6 +238,9 @@ const AdminClover = () => {
                 {(Array.isArray(status.lastCatalogPlan.priceChanges) ? status.lastCatalogPlan.priceChanges : []).slice(0, 8).map((row) => (
                   <tr key={`price-${row.productId}-${row.cloverItemId}`} className="border-t"><td className="px-4 py-2">Price</td><td className="px-4 py-2">{row.name || row.cloverItemId}</td><td className="px-4 py-2">{row.from} → {row.to}</td></tr>
                 ))}
+                {(status.lastCatalogPlan.fieldChanges || []).slice(0, 8).map((row, index) => (
+                  <tr key={`field-${row.productId}-${row.field}-${index}`} className="border-t"><td className="px-4 py-2">{row.direction === "website_to_clover" ? "Website → Clover" : row.direction === "clover_to_website" ? "Clover → website" : "Conflict"}</td><td className="px-4 py-2">{row.name}</td><td className="px-4 py-2">{row.field} {String(row.from)} → {String(row.to)}{row.blocked ? ` (${row.blocked})` : ""}</td></tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -243,7 +285,40 @@ const AdminClover = () => {
           ))}
           <button type="button" className="text-xs font-bold text-emerald-700" onClick={() => setMapRows((current) => [...(current || []), { cloverName: "", categorySlug: "" }])}>Add mapping</button>
         </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button type="button" onClick={applyWriteback} disabled={Boolean(busy)} className="rounded-full bg-neutral-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Apply category/brand to Clover</button>
+          <button type="button" onClick={undoBatch} disabled={Boolean(busy) || !status.lastUndo?.id || status.lastUndo?.undone} className="rounded-full border px-4 py-2 text-xs font-bold disabled:opacity-50">Undo last batch</button>
+        </div>
+        {!status.categoryWriteback && <p className="mt-2 text-xs text-amber-800">CLOVER_CATEGORY_WRITEBACK_ENABLED is off. The button previews the plan and does not write.</p>}
       </section>
+
+      <section className="rounded-2xl border p-5 mb-6" data-testid="brand-alias-table">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div><h2 className="font-bold">Brand aliases</h2><p className="text-sm text-neutral-500 mt-1">One row per existing website brand. Aliases match item names. This does not create brands.</p></div>
+          <button type="button" onClick={saveAliases} disabled={Boolean(busy)} className="rounded-full bg-neutral-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Save aliases</button>
+        </div>
+        <div className="mt-4 space-y-2">
+          {(aliasRows || []).map((row, index) => (
+            <div key={row.brandSlug || index} className="grid gap-2 sm:grid-cols-[180px_1fr]">
+              <p className="text-sm font-semibold py-2">{row.name}</p>
+              <input value={(row.aliases || []).join(", ")} onChange={(event) => setAliasRows((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, aliases: event.target.value.split(",").map((part) => part.trim()).filter(Boolean) } : item))} className="rounded-lg border px-3 py-2 text-sm" placeholder="GEEK BAR, Geekbar" />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {(status.lastCatalogPlan?.catalogReport) && (
+        <section className="rounded-2xl border p-5 mb-6" data-testid="clover-catalog-report">
+          <h2 className="font-bold">Unmatched names and possible duplicates</h2>
+          <p className="text-sm text-neutral-500 mt-1">Counts from the last preview. Nothing is merged or deleted.</p>
+          <div className="mt-3 grid gap-4 md:grid-cols-2 text-sm">
+            <div><p className="font-semibold">Unmatched Clover categories</p><ul className="mt-1 space-y-1">{(status.lastCatalogPlan.catalogReport.unmatchedCategories || []).slice(0, 12).map((row) => <li key={row.name}>{row.name} · {row.count}</li>)}</ul></div>
+            <div><p className="font-semibold">Unmatched brand-like names</p><ul className="mt-1 space-y-1">{(status.lastCatalogPlan.catalogReport.unmatchedBrandNames || []).slice(0, 12).map((row) => <li key={row.name}>{row.name} · {row.count}</li>)}</ul></div>
+          </div>
+          {(status.lastCatalogPlan.deletionFlags || []).length > 0 && <p className="mt-3 text-sm">Deletion flags: {status.lastCatalogPlan.deletionFlags.map((row) => `${row.name} (${row.flag})`).join(", ")}</p>}
+          {(status.lastCatalogPlan.conflicts || []).length > 0 && <p className="mt-2 text-sm text-amber-800">Conflicts: {status.lastCatalogPlan.conflicts.map((row) => `${row.name} ${row.field}`).join(", ")}</p>}
+        </section>
+      )}
 
       {(() => {
         const previewItems = status.lastCatalogPlan?.previewItems || status.lastCatalogPlan?.reviewItems || [];

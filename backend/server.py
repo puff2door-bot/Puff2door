@@ -1051,6 +1051,8 @@ class ProductInput(BaseModel):
     localDeliveryOnly: bool = True
     allowedStates: List[str] = []
     blockedStates: List[str] = []
+    confirmCloverPrice: bool = False
+    createInClover: bool = False
 
     @field_validator("sku", "barcode")
     @classmethod
@@ -2495,6 +2497,21 @@ async def build_sitemap() -> str:
             + "\n".join(entries) + "\n</urlset>\n")
 
 
+async def refresh_catalog_copies():
+    """Copy current category and brand names onto products and drop cached lists."""
+    invalidate_categories()
+    invalidate_brands()
+    for category in await get_categories():
+        name = category.get("name") or ""
+        if category.get("slug") and name:
+            await db.products.update_many({"categorySlug": category["slug"], "category": {"$ne": name}}, {"$set": {"category": name}})
+    for slug, brand in (await get_brand_map()).items():
+        name = brand.get("displayName") or brand.get("name") or ""
+        if slug and name:
+            await db.products.update_many({"brand": slug, "brandName": {"$ne": name}}, {"$set": {"brandName": name}})
+    asyncio.create_task(refresh_static_sitemap())
+
+
 async def refresh_static_sitemap():
     """Best-effort: keep frontend/public/sitemap.xml in sync so each deploy ships a current static sitemap."""
     try:
@@ -2789,7 +2806,9 @@ async def ensure_unique_inventory_identifiers(inp: ProductInput, exclude_product
 async def admin_create_product(inp: ProductInput, admin: dict = Depends(get_admin_user)):
     await ensure_unique_inventory_identifiers(inp)
     pid = await next_product_id()
-    doc = inp.dict()
+    confirm_price = bool(inp.confirmCloverPrice)
+    create_in_clover = bool(inp.createInClover)
+    doc = inp.dict(exclude={"confirmCloverPrice", "createInClover"})
     doc.update({
         "id": pid,
         "slug": f"{slugify(inp.name)}-{pid}",
@@ -2803,7 +2822,7 @@ async def admin_create_product(inp: ProductInput, admin: dict = Depends(get_admi
     await db.products.insert_one(doc)
     clover_sync = {"status": "not_connected", "action": "none"}
     try:
-        clover_sync = await clover_integration().sync_product_details(pid, source="admin_product_create")
+        clover_sync = await clover_integration().sync_product_details(pid, source="admin_product_create", confirm_price=confirm_price, create_in_clover=create_in_clover)
     except CloverError as exc:
         clover_sync = {"status": "failed", "action": "create", "error": clover_error_detail(exc)}
     doc = await db.products.find_one({"id": pid}) or doc
@@ -2817,7 +2836,9 @@ async def admin_update_product(product_id: int, inp: ProductInput, admin: dict =
     if not existing:
         raise HTTPException(status_code=404, detail="Product not found")
     await ensure_unique_inventory_identifiers(inp, product_id)
-    doc = inp.dict()
+    confirm_price = bool(inp.confirmCloverPrice)
+    create_in_clover = bool(inp.createInClover)
+    doc = inp.dict(exclude={"confirmCloverPrice", "createInClover"})
     doc["image2"] = inp.image2 or inp.image
     doc["brandName"] = await resolve_brand_name(inp)
     doc["category"] = await resolve_category_name(inp)
@@ -2838,7 +2859,7 @@ async def admin_update_product(product_id: int, inp: ProductInput, admin: dict =
         logger.info("Restock: notified %s subscriber(s) for product %s", notified, product_id)
     clover_sync = {"status": "not_connected", "action": "none"}
     try:
-        clover_sync = await clover_integration().sync_product_details(product_id, source="admin_product_edit")
+        clover_sync = await clover_integration().sync_product_details(product_id, source="admin_product_edit", confirm_price=confirm_price, create_in_clover=create_in_clover)
     except CloverError as exc:
         clover_sync = {"status": "failed", "action": "update", "error": clover_error_detail(exc)}
     updated = await db.products.find_one({"id": product_id}) or updated
@@ -2877,6 +2898,11 @@ class CloverCategoryMapRow(BaseModel):
 
 class CloverCategoryMapInput(BaseModel):
     mappings: List[CloverCategoryMapRow] = Field(default_factory=list, max_length=200)
+
+
+def _brand_alias_rows(brands: list, saved: list) -> list:
+    by_slug = {str(row.get("brandSlug") or ""): list(row.get("aliases") or []) for row in saved}
+    return [{"brandSlug": brand.get("slug"), "name": brand.get("displayName") or brand.get("name") or brand.get("slug"), "aliases": by_slug.get(brand.get("slug"), [])} for brand in brands]
 
 
 def clover_error_detail(exc: Exception) -> str:
@@ -2945,6 +2971,12 @@ async def admin_clover_status(admin: dict = Depends(get_admin_user)):
         "missingSetup": missing,
         "websiteCategories": await db.categories.find({}, {"_id": 0, "slug": 1, "name": 1}).sort("order", 1).to_list(200),
         "categoryMappings": await integration.category_mappings(),
+        "syncPrices": integration.sync_prices,
+        "syncNames": integration.sync_names,
+        "createItems": integration.create_items,
+        "categoryWriteback": integration.category_writeback,
+        "brandAliasRows": _brand_alias_rows(await db.brands.find({}, {"_id": 0, "slug": 1, "name": 1, "displayName": 1}).sort("displayName", 1).to_list(500), await integration.brand_aliases()),
+        "lastUndo": (config.get("lastUndo") or {}),
         **(await integration.stock_status_rows()),
     }
 
@@ -2969,6 +3001,7 @@ async def admin_clover_category_map(inp: CloverCategoryMapInput, admin: dict = D
         saved = await clover_integration().save_category_mappings([row.model_dump() for row in inp.mappings])
     except CloverError as exc:
         raise HTTPException(status_code=400, detail=clover_error_detail(exc))
+    await refresh_catalog_copies()
     return {"mappings": saved}
 
 
@@ -3044,9 +3077,50 @@ async def admin_clover_sync(admin: dict = Depends(get_admin_user)):
         summary = await clover_integration().sync_catalog(source="admin")
         if summary.get("applied"):
             await notify_restocked_products(summary.get("restockedProductIds", []))
+            await refresh_catalog_copies()
         return summary
     except CloverError as exc:
         raise HTTPException(status_code=502, detail=clover_error_detail(exc))
+
+
+class CloverAliasInput(BaseModel):
+    brandSlug: str = ""
+    aliases: List[str] = Field(default_factory=list, max_length=20)
+
+
+class CloverAliasSaveInput(BaseModel):
+    rows: List[CloverAliasInput] = Field(default_factory=list, max_length=200)
+
+
+class CloverWritebackInput(BaseModel):
+    confirm: bool = False
+
+
+@api_router.put("/admin/clover/brand-aliases")
+async def admin_clover_brand_aliases(inp: CloverAliasSaveInput, admin: dict = Depends(get_admin_user)):
+    saved = await clover_integration().save_brand_aliases([row.model_dump() for row in inp.rows])
+    return {"rows": saved}
+
+
+@api_router.post("/admin/clover/category-writeback")
+async def admin_clover_category_writeback(inp: CloverWritebackInput, admin: dict = Depends(get_admin_user)):
+    try:
+        result = await clover_integration().apply_category_writeback(confirm=inp.confirm)
+    except CloverError as exc:
+        raise HTTPException(status_code=502, detail=clover_error_detail(exc))
+    if result.get("applied"):
+        await refresh_catalog_copies()
+    return result
+
+
+@api_router.post("/admin/clover/undo")
+async def admin_clover_undo(admin: dict = Depends(get_admin_user)):
+    try:
+        result = await clover_integration().undo_last_batch()
+    except CloverError as exc:
+        raise HTTPException(status_code=400, detail=clover_error_detail(exc))
+    await refresh_catalog_copies()
+    return result
 
 
 @api_router.post("/admin/clover/link")
