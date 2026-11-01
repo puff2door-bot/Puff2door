@@ -175,17 +175,28 @@ async def test_records_keep_leading_zeros_reject_duplicates_and_stay_private(mon
     app = FastAPI()
     app.include_router(create_inventory_capture_router(db, bucket, admin, processing.validate_photo), prefix='/api/admin')
     await ensure_inventory_indexes(db)
+    await db.categories.insert_one({'id': 'cat-pods', 'slug': 'e-liquids', 'name': 'PODS'})
+    await db.categories.insert_one({'id': 'cat-disp', 'slug': 'disposable', 'name': 'DISPOSABLE VAPES'})
     raw = _png((240, 180), (0, 80, 20))
     barcode = '00012345678901'
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
         client.headers['X-Admin'] = 'yes'
+        rejected = await client.post('/api/admin/inventory-captures', files={'file': ('item.png', raw)}, data={
+            'identifier': barcode, 'category': 'Disposables',
+        })
+        assert rejected.status_code == 422
+        assert 'Free-text' in rejected.json()['detail']
         saved = await client.post('/api/admin/inventory-captures', files={'file': ('item.png', raw)}, data={
             'identifier': barcode, 'name': 'Mint disposable', 'description': 'Cooling mint',
-            'details': 'Display box', 'category': 'Disposables', 'cost': '4.50',
+            'details': 'Display box', 'categorySlug': 'e-liquids', 'cost': '4.50',
             'retailPrice': '12.00', 'quantity': '6', 'notes': 'Back room',
         })
         assert saved.status_code == 200, saved.text
         body = saved.json()
+        assert body['category'] == 'PODS'
+        assert body['categorySlug'] == 'e-liquids'
+        assert body['categoryId'] == 'cat-pods'
+        assert body['brandSlug'] == ''
         assert isinstance(body['barcode'], str) and body['barcode'] == barcode
         assert isinstance(body['identifier'], str) and body['identifier'] == barcode
         assert body['retailPrice'] == '12.00'

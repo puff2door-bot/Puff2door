@@ -3,6 +3,7 @@ import { CheckCircle2, CircleAlert, ExternalLink, Link2, PackagePlus, RefreshCw,
 import { useSearchParams } from "react-router-dom";
 import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
+import SearchableSelect from "../../components/admin/SearchableSelect";
 
 const when = (value) => value ? new Date(value).toLocaleString() : "Never";
 
@@ -179,6 +180,44 @@ const AdminClover = () => {
         </div>
       </section>
 
+      {(Array.isArray(status.lastCatalogPlan?.stockChanges) || (status.lastCatalogPlan?.cloverStockChanges || []).length > 0 || (status.lastCatalogPlan?.priceChanges || []).length > 0) && (
+        <section className="rounded-2xl border overflow-hidden mb-6" data-testid="clover-preview-summary">
+          <div className="p-5 border-b"><h2 className="font-bold">Preview summary</h2><p className="text-sm text-neutral-500 mt-1">Planned changes in both directions. Nothing is written while automatic sync is off.</p></div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500"><tr><th className="px-4 py-2">Direction</th><th className="px-4 py-2">Item</th><th className="px-4 py-2">Change</th></tr></thead>
+              <tbody>
+                {(Array.isArray(status.lastCatalogPlan.stockChanges) ? status.lastCatalogPlan.stockChanges : []).slice(0, 8).map((row) => (
+                  <tr key={`stock-${row.productId}-${row.cloverItemId}`} className="border-t"><td className="px-4 py-2">Clover → website</td><td className="px-4 py-2">{row.name || row.cloverItemId}</td><td className="px-4 py-2">Stock {row.from} → {row.to}</td></tr>
+                ))}
+                {(status.lastCatalogPlan.cloverStockChanges || []).slice(0, 8).map((row) => (
+                  <tr key={`clover-${row.orderId}-${row.cloverItemId}-${row.action}`} className="border-t"><td className="px-4 py-2">Website → Clover</td><td className="px-4 py-2">{row.name || row.cloverItemId}</td><td className="px-4 py-2">{row.action} {row.qty} ({row.status})</td></tr>
+                ))}
+                {(Array.isArray(status.lastCatalogPlan.priceChanges) ? status.lastCatalogPlan.priceChanges : []).slice(0, 8).map((row) => (
+                  <tr key={`price-${row.productId}-${row.cloverItemId}`} className="border-t"><td className="px-4 py-2">Price</td><td className="px-4 py-2">{row.name || row.cloverItemId}</td><td className="px-4 py-2">{row.from} → {row.to}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <section className="rounded-2xl border overflow-hidden mb-6" data-testid="stock-mismatch-view">
+        <div className="p-5 border-b"><h2 className="font-bold">Stock mismatches</h2><p className="text-sm text-neutral-500 mt-1">Website quantity, the last Clover quantity, and when it was updated. A pending row is a website sale Clover has not confirmed yet.</p></div>
+        {(status.stockMismatches || []).length === 0 ? <p className="p-5 text-sm text-neutral-500">No quantity mismatches.</p> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500"><tr><th className="px-4 py-2">Item</th><th className="px-4 py-2">Website</th><th className="px-4 py-2">Clover</th><th className="px-4 py-2">Updated</th><th className="px-4 py-2">State</th></tr></thead>
+              <tbody>
+                {status.stockMismatches.map((row) => (
+                  <tr key={row.productId} className="border-t" data-testid={`stock-mismatch-${row.productId}`}><td className="px-4 py-2">{row.name}</td><td className="px-4 py-2">{row.websiteQty}</td><td className="px-4 py-2">{row.cloverQty}</td><td className="px-4 py-2">{when(row.updatedAt)}</td><td className="px-4 py-2">{row.state}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       <section className="rounded-2xl border p-5 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div><h2 className="font-bold">Clover category mapping</h2><p className="text-sm text-neutral-500 mt-1">Clover category name to an existing website category. Later syncs use this table. It does not create new categories.</p></div>
@@ -188,10 +227,14 @@ const AdminClover = () => {
           {(mapRows || []).map((row, index) => (
             <div key={`${row.cloverName}-${index}`} className="grid gap-2 sm:grid-cols-[1fr_220px_auto]">
               <input value={row.cloverName} onChange={(event) => setMapRows((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, cloverName: event.target.value } : item))} className="rounded-lg border px-3 py-2 text-sm" placeholder="Clover category name" />
-              <select value={row.categorySlug} onChange={(event) => setMapRows((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, categorySlug: event.target.value } : item))} className="rounded-lg border px-3 py-2 text-sm bg-white">
-                <option value="">Website category…</option>
-                {(status.websiteCategories || []).map((category) => <option key={category.slug} value={category.slug}>{category.name}</option>)}
-              </select>
+              <SearchableSelect
+                testId={`clover-map-${index}`}
+                placeholder="Search website categories"
+                buttonClassName="rounded-lg border px-3 py-2 text-sm bg-white w-full text-left"
+                options={(status.websiteCategories || []).map((category) => ({ value: category.slug, label: category.name }))}
+                value={row.categorySlug}
+                onChange={(categorySlug) => setMapRows((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, categorySlug } : item))}
+              />
               <button type="button" className="text-xs font-bold text-red-600" onClick={() => setMapRows((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</button>
             </div>
           ))}

@@ -49,6 +49,13 @@ def public_record(row):
         "description": row.get("description") or "",
         "details": row.get("details") or "",
         "category": row.get("category") or "",
+        "categorySlug": row.get("categorySlug") or "",
+        "categoryId": row.get("categoryId") or "",
+        "categoryMatch": row.get("categoryMatch") or ("matched" if row.get("categorySlug") else ("unmatched" if row.get("category") else "empty")),
+        "brandSlug": row.get("brandSlug") or "",
+        "brandId": row.get("brandId") or "",
+        "brandName": row.get("brandName") or "",
+        "brandMatch": row.get("brandMatch") or ("matched" if row.get("brandSlug") else ("unmatched" if row.get("brandName") else "empty")),
         "cost": row.get("cost"),
         "retailPrice": row.get("retailPrice"),
         "quantity": int(row.get("quantity") or 0),
@@ -179,7 +186,86 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
             return legacy
         return None
 
-    def _fields_from_values(barcode, label, name, description, details, category, cost, retail_price, quantity, notes):
+    async def _catalog():
+        categories = await db.categories.find({}, {"_id": 0, "id": 1, "slug": 1, "name": 1}).to_list(500)
+        brands = await db.brands.find({}, {"_id": 0, "id": 1, "slug": 1, "name": 1, "displayName": 1}).to_list(2000)
+        return categories, brands
+
+    def _match_named(text, rows, name_keys):
+        raw = clean_text(text, 120, "Catalog value")
+        if not raw:
+            return None
+        lowered = raw.lower()
+        for row in rows:
+            slug = str(row.get("slug") or "")
+            if lowered == slug.lower():
+                return row
+            for key in name_keys:
+                if lowered == str(row.get(key) or "").strip().lower():
+                    return row
+        return None
+
+    def _category_fields(raw, categories, required=False):
+        if raw is None or str(raw).strip() == "":
+            if required:
+                raise HTTPException(status_code=422, detail="Pick an existing website category.")
+            return {"category": "", "categorySlug": "", "categoryId": "", "categoryMatch": "empty"}
+        match = _match_named(str(raw), categories, ("name",))
+        if not match:
+            raise HTTPException(status_code=422, detail="Pick an existing website category. Free-text categories are not saved.")
+        return {
+            "category": match.get("name") or match.get("slug") or "",
+            "categorySlug": match.get("slug") or "",
+            "categoryId": match.get("id") or match.get("slug") or "",
+            "categoryMatch": "matched",
+        }
+
+    def _brand_fields(raw, brands):
+        if raw is None or str(raw).strip() == "":
+            return {"brandName": "", "brandSlug": "", "brandId": "", "brandMatch": "empty"}
+        match = _match_named(str(raw), brands, ("displayName", "name"))
+        if not match:
+            raise HTTPException(status_code=422, detail="Pick an existing website brand, or choose None.")
+        return {
+            "brandName": match.get("displayName") or match.get("name") or "",
+            "brandSlug": match.get("slug") or "",
+            "brandId": match.get("id") or match.get("slug") or "",
+            "brandMatch": "matched",
+        }
+
+    def _present_record(row, categories, brands):
+        record = public_record(row)
+        if not record["categorySlug"] and record["category"]:
+            match = None
+            lowered = record["category"].strip().lower()
+            for category in categories:
+                if lowered in {str(category.get("slug") or "").lower(), str(category.get("name") or "").strip().lower()}:
+                    match = category
+                    break
+            if match:
+                record["category"] = match.get("name") or match.get("slug") or ""
+                record["categorySlug"] = match.get("slug") or ""
+                record["categoryId"] = match.get("id") or record["categorySlug"]
+                record["categoryMatch"] = "matched"
+            else:
+                record["categoryMatch"] = "unmatched"
+        if not record["brandSlug"] and record["brandName"]:
+            lowered = record["brandName"].strip().lower()
+            match = next((brand for brand in brands if lowered in {
+                str(brand.get("slug") or "").lower(),
+                str(brand.get("name") or "").strip().lower(),
+                str(brand.get("displayName") or "").strip().lower(),
+            }), None)
+            if match:
+                record["brandName"] = match.get("displayName") or match.get("name") or ""
+                record["brandSlug"] = match.get("slug") or ""
+                record["brandId"] = match.get("id") or record["brandSlug"]
+                record["brandMatch"] = "matched"
+            else:
+                record["brandMatch"] = "unmatched"
+        return record
+
+    def _fields_from_values(barcode, label, name, description, details, category_fields, brand_fields, cost, retail_price, quantity, notes):
         return {
             "barcode": barcode,
             "identifier": barcode,
@@ -187,7 +273,8 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
             "name": clean_text(name, 200, "Name"),
             "description": clean_text(description, 4000, "Description"),
             "details": clean_text(details, 4000, "Details"),
-            "category": clean_text(category, 120, "Category"),
+            **category_fields,
+            **brand_fields,
             "cost": clean_money(cost, "cost"),
             "retailPrice": clean_money(retail_price, "retail price"),
             "quantity": clean_quantity(quantity),
@@ -209,11 +296,13 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
         rows = await db.inventory_captures.find({}).sort("createdAt", -1).to_list(5000)
         buffer = io.StringIO()
         writer = csv.writer(buffer, quoting=csv.QUOTE_ALL, lineterminator="\n")
-        writer.writerow(["barcode", "name", "description", "details", "category", "label", "cost", "retailPrice", "quantity", "notes", "createdAt", "updatedAt"])
+        writer.writerow(["barcode", "name", "description", "details", "category", "categorySlug", "brand", "brandSlug", "label", "cost", "retailPrice", "quantity", "notes", "createdAt", "updatedAt"])
+        categories, brands = await _catalog()
         for row in rows:
-            item = public_record(row)
+            item = _present_record(row, categories, brands)
             writer.writerow([
-                item["barcode"], item["name"], item["description"], item["details"], item["category"],
+                item["barcode"], item["name"], item["description"], item["details"], item["category"], item["categorySlug"],
+                item["brandName"], item["brandSlug"],
                 item["label"], item["cost"] or "", item["retailPrice"] or "", item["quantity"], item["notes"],
                 item["createdAt"] or "", item["updatedAt"] or "",
             ])
@@ -227,7 +316,8 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
     @router.get("")
     async def list_captures(admin=Depends(get_admin)):
         rows = await db.inventory_captures.find({}).sort("createdAt", -1).to_list(200)
-        return {"captures": [public_record(row) for row in rows]}
+        categories, brands = await _catalog()
+        return {"captures": [_present_record(row, categories, brands) for row in rows]}
 
     @router.post("")
     async def capture(
@@ -239,6 +329,9 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
         description: str = Form(""),
         details: str = Form(""),
         category: str = Form(""),
+        categorySlug: str = Form(""),
+        brand: str = Form(""),
+        brandSlug: str = Form(""),
         cost: str = Form(""),
         retailPrice: str = Form(""),
         quantity: str = Form("0"),
@@ -246,7 +339,13 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
         admin=Depends(get_admin),
     ):
         code = clean_barcode(barcode or identifier)
-        fields = _fields_from_values(code, label, name, description, details, category, cost, retailPrice, quantity, notes)
+        categories, brands = await _catalog()
+        fields = _fields_from_values(
+            code, label, name, description, details,
+            _category_fields(categorySlug or category, categories),
+            _brand_fields(brandSlug or brand, brands),
+            cost, retailPrice, quantity, notes,
+        )
         existing = await _existing_barcode(code)
         if existing:
             raise_duplicate(existing)
@@ -275,14 +374,16 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
         except Exception:
             await bucket.delete(blob)
             raise
-        return public_record(record)
+        categories, brands = await _catalog()
+        return _present_record(record, categories, brands)
 
     @router.get("/{capture_id}")
     async def get_capture(capture_id: str, admin=Depends(get_admin)):
         row = await db.inventory_captures.find_one({"id": capture_id})
         if not row:
             raise HTTPException(status_code=404, detail="Inventory record not found")
-        return public_record(row)
+        categories, brands = await _catalog()
+        return _present_record(row, categories, brands)
 
     @router.put("/{capture_id}")
     async def update_capture(capture_id: str, request: Request, admin=Depends(get_admin)):
@@ -295,7 +396,8 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
             raise HTTPException(status_code=422, detail="Record changes must be sent as JSON.") from exc
         if not isinstance(payload, dict):
             raise HTTPException(status_code=422, detail="Record changes must be sent as JSON.")
-        current = public_record(row)
+        categories, brands = await _catalog()
+        current = _present_record(row, categories, brands)
         if "barcode" in payload or "identifier" in payload:
             raw_code = payload["barcode"] if "barcode" in payload else payload["identifier"]
             if "barcode" in payload and "identifier" in payload and payload["barcode"] != payload["identifier"]:
@@ -303,13 +405,28 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
             code = clean_barcode(raw_code)
         else:
             code = current["barcode"]
+        if "categorySlug" in payload or "category" in payload:
+            category_raw = payload.get("categorySlug") if "categorySlug" in payload else payload.get("category")
+            category_fields = _category_fields(category_raw, categories)
+        elif current["categoryMatch"] == "unmatched":
+            category_fields = {"category": current["category"], "categorySlug": "", "categoryId": "", "categoryMatch": "unmatched"}
+        else:
+            category_fields = {"category": current["category"], "categorySlug": current["categorySlug"], "categoryId": current["categoryId"], "categoryMatch": current["categoryMatch"]}
+        if "brandSlug" in payload or "brand" in payload:
+            brand_raw = payload.get("brandSlug") if "brandSlug" in payload else payload.get("brand")
+            brand_fields = _brand_fields(brand_raw, brands)
+        elif current["brandMatch"] == "unmatched":
+            brand_fields = {"brandName": current["brandName"], "brandSlug": "", "brandId": "", "brandMatch": "unmatched"}
+        else:
+            brand_fields = {"brandName": current["brandName"], "brandSlug": current["brandSlug"], "brandId": current["brandId"], "brandMatch": current["brandMatch"]}
         fields = _fields_from_values(
             code,
             payload["label"] if "label" in payload else current["label"],
             payload["name"] if "name" in payload else current["name"],
             payload["description"] if "description" in payload else current["description"],
             payload["details"] if "details" in payload else current["details"],
-            payload["category"] if "category" in payload else current["category"],
+            category_fields,
+            brand_fields,
             payload["cost"] if "cost" in payload else (current["cost"] or ""),
             payload["retailPrice"] if "retailPrice" in payload else (current["retailPrice"] or ""),
             payload["quantity"] if "quantity" in payload else current["quantity"],
@@ -328,7 +445,7 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
                 raise_duplicate(existing)
             raise HTTPException(status_code=409, detail=duplicate_detail({"id": None, "barcode": code}))
         updated = await db.inventory_captures.find_one({"id": capture_id})
-        return public_record(updated)
+        return _present_record(updated, categories, brands)
 
     @router.post("/{capture_id}/photo")
     async def replace_photo(capture_id: str, file: UploadFile = File(...), admin=Depends(get_admin)):
@@ -355,7 +472,8 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
             except Exception:
                 logger.warning("Could not remove the previous private inventory photo for %s", capture_id)
         updated = await db.inventory_captures.find_one({"id": capture_id})
-        return public_record(updated)
+        categories, brands = await _catalog()
+        return _present_record(updated, categories, brands)
 
     @router.get("/{capture_id}/photo")
     async def photo(capture_id: str, admin=Depends(get_admin)):

@@ -96,17 +96,18 @@ const ProductCard = ({ product }) => {
             ${price.toFixed(2)}
             {price !== product.price && <span className="text-sm text-neutral-400 line-through">${product.price.toFixed(2)}</span>}
           </span>
-          <button
-            onClick={handleAdd}
-            disabled={!product.inStock}
-            data-testid={`add-to-cart-${product.id}`}
-            className={`grid place-items-center h-9 w-9 rounded-full transition-all ${
-              !product.inStock ? "bg-neutral-200 text-neutral-400 cursor-not-allowed" : added ? "bg-emerald-600 text-white" : "bg-neutral-900 text-white hover:bg-emerald-600"
-            }`}
-            aria-label="Add to cart"
-          >
-            {added ? <Check className="h-4 w-4" /> : <ShoppingCart className="h-4 w-4" />}
-          </button>
+          {product.inStock ? (
+            <button
+              onClick={handleAdd}
+              data-testid={`add-to-cart-${product.id}`}
+              className={`grid place-items-center h-9 w-9 rounded-full transition-all ${added ? "bg-emerald-600 text-white" : "bg-neutral-900 text-white hover:bg-emerald-600"}`}
+              aria-label="Add to cart"
+            >
+              {added ? <Check className="h-4 w-4" /> : <ShoppingCart className="h-4 w-4" />}
+            </button>
+          ) : (
+            <span data-testid={`out-of-stock-${product.id}`} className="text-[11px] font-bold uppercase tracking-wide text-neutral-500">Out of stock</span>
+          )}
         </div>
       </div>
     </div>

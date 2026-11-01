@@ -1,65 +1,29 @@
 """Map Clover item categories and names onto existing website categories and brands.
 
-This never creates a public category. Unknown slugs are ignored.
+Website category display names come from the categories collection. This module
+stores slugs only. It never creates a public category or brand.
 """
 from __future__ import annotations
 
 import re
 from typing import Iterable, Optional
 
-# Clover category labels the shop is likely to use, paired with a website slug.
-# A row is seeded only when that slug already exists.
+# The 11 Clover categories that exist in the shop. Tobacco has no single
+# website category, so it is not seeded. A row is kept only when the slug exists.
 DEFAULT_CATEGORY_NAMES = (
-    ("Disposable Vapes", "disposable"),
-    ("Disposables", "disposable"),
-    ("Vapes", "disposable"),
-    ("Delta Disposables", "delta"),
-    ("Delta Cartridges", "delta-cartridges"),
-    ("Cartridges", "delta-cartridges"),
-    ("Delta Edibles", "delta-edibles"),
-    ("Edibles", "delta-edibles"),
-    ("Delta Smokeables", "delta-smokeables"),
-    ("Vape Accessories", "vape-accessories"),
-    ("Hemp Wraps", "hemp-wraps"),
-    ("Wraps", "hemp-wraps"),
-    ("E-Liquid", "e-liquids"),
-    ("Papers", "paper-cones"),
-    ("Paper & Cones", "paper-cones"),
-    ("Kratom", "kratom"),
-    ("CBD", "cbd"),
-    ("Glass Pipes", "glass-pipes"),
+    ("Nicotine Vapes", "disposable"),
+    ("THC-P Vapes", "delta"),
+    ("Gummies", "delta-edibles"),
+    ("Flower", "delta-smokeables"),
+    ("Pre-Rolls", "delta-smokeables"),
+    ("Rolling Papers", "paper-cones"),
     ("Glass", "glass-pipes"),
     ("Lighters", "lighter"),
-    ("Air Freshener", "air-freshner"),
-    ("Hookah", "hookah-accessories"),
-    ("Shisha", "hookah-accessories"),
-    ("Cigars", "cigars"),
-    ("Munchies", "munchies"),
-    ("Accessories", "vape-accessories"),
-    ("Miscellaneous", "miscellaneous"),
+    ("Kratom", "kratom"),
+    ("Ash Trays", "miscellaneous"),
 )
 
-# Longer or more specific phrases are listed before broad ones.
-KEYWORD_RULES = (
-    (("shisha", "hookah"), "hookah-accessories"),
-    (("cigar",), "cigars"),
-    (("glass", "bong", "bubbler"), "glass-pipes"),
-    (("hemp wrap", "wraps"), "hemp-wraps"),
-    (("rolling paper", "paper", "cone"), "paper-cones"),
-    (("kratom",), "kratom"),
-    (("cbd",), "cbd"),
-    (("e-liquid", "eliquid", "e liquid", "nic salt"), "e-liquids"),
-    (("gummy", "gummies", "edible"), "delta-edibles"),
-    (("cartridge",), "delta-cartridges"),
-    (("flower", "pre-roll", "preroll", "thca"), "delta-smokeables"),
-    (("accessor",), "vape-accessories"),
-    (("delta",), "delta"),
-    (("disposable",), "disposable"),
-    (("vape",), "disposable"),
-    (("lighter", "torch"), "lighter"),
-    (("air fresh",), "air-freshner"),
-    (("snack", "munchie", "chip"), "munchies"),
-)
+GENERIC_BRANDS = {"PIPE", "TOP", "PINK", "PLASTIC", "HOT", "CRAZY", "ROYAL"}
 
 
 def seed_category_mappings(category_slugs: Iterable[str]) -> list[dict]:
@@ -108,35 +72,151 @@ def clover_category_names(item: dict) -> list[str]:
     return unique
 
 
-def _keyword_slug(item_name: str, allowed: set[str]) -> str:
-    haystack = f" {re.sub(r'[^a-z0-9]+', ' ', (item_name or '').lower()).strip()} "
-    for words, slug in KEYWORD_RULES:
+def _tokens(value: str) -> list[str]:
+    return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).split()
+
+
+def _has_token(tokens: list[str], word: str) -> bool:
+    return word in tokens
+
+
+def _has_phrase(tokens: list[str], phrase: str) -> bool:
+    parts = phrase.split()
+    if not parts:
+        return False
+    for index in range(len(tokens) - len(parts) + 1):
+        if tokens[index:index + len(parts)] == parts:
+            return True
+    return False
+
+
+def _uncategorized_slug(item_name: str, allowed: set[str]) -> str:
+    tokens = _tokens(item_name)
+    if not tokens:
+        return ""
+    # A disposable in the name wins over pod, pods, or refill.
+    if "disposable" in tokens and "disposable" in allowed:
+        return "disposable"
+    pod_hit = any(token in {"pod", "pods", "refill"} for token in tokens) or _has_phrase(tokens, "cartridge pod")
+    if pod_hit and "e-liquids" in allowed:
+        return "e-liquids"
+    rules = (
+        (("shisha", "hookah"), "hookah-accessories"),
+        (("cigar", "swisher", "backwoods", "dutch"), "cigars"),
+        (("kratom",), "kratom"),
+        (("gummy", "gummies"), "delta-edibles"),
+        (("cartridge", "cart"), "delta-cartridges"),
+        (("flower", "preroll"), "delta-smokeables"),
+        (("lighter",), "lighter"),
+        (("bong", "bubbler"), "glass-pipes"),
+    )
+    for words, slug in rules:
         if slug not in allowed:
             continue
-        for word in words:
-            phrase = f" {re.sub(r'[^a-z0-9]+', ' ', word.lower()).strip()} "
-            if phrase.strip() and phrase in haystack:
-                return slug
+        if any(_has_token(tokens, word) or _has_phrase(tokens, word) for word in words):
+            return slug
+    if _has_phrase(tokens, "al fakher") and "hookah-accessories" in allowed:
+        return "hookah-accessories"
+    if _has_phrase(tokens, "king palm") or _has_token(tokens, "blunt") or _has_token(tokens, "wrap"):
+        if "hemp-wraps" in allowed:
+            return "hemp-wraps"
+    if _has_phrase(tokens, "pre roll") and "delta-smokeables" in allowed:
+        return "delta-smokeables"
     return ""
 
 
+def _category_override(label: str, item_name: str, mapped_slug: str, allowed: set[str]) -> tuple[str, str]:
+    """Owner exceptions for three Clover categories. Returns slug, source."""
+    key = label.strip().lower()
+    tokens = _tokens(item_name)
+    if key == "thc-p vapes":
+        if any(token in {"cart", "cartridge"} for token in tokens) and "delta-cartridges" in allowed:
+            return "delta-cartridges", "rule"
+        return mapped_slug, "mapping" if mapped_slug else ""
+    if key == "rolling papers":
+        if (_has_token(tokens, "wrap") or _has_token(tokens, "blunt") or _has_phrase(tokens, "king palm")) and "hemp-wraps" in allowed:
+            return "hemp-wraps", "rule"
+        return mapped_slug, "mapping" if mapped_slug else ""
+    if key == "tobacco":
+        if any(token in {"cigar", "swisher", "backwoods", "game", "dutch"} for token in tokens) or _has_phrase(tokens, "black mild"):
+            return ("cigars", "rule") if "cigars" in allowed else ("", "")
+        if _has_token(tokens, "wrap") and "hemp-wraps" in allowed:
+            return "hemp-wraps", "rule"
+        if (any(token in {"shisha", "hookah"} for token in tokens) or _has_phrase(tokens, "al fakher")) and "hookah-accessories" in allowed:
+            return "hookah-accessories", "rule"
+        return "", ""
+    return mapped_slug, "mapping" if mapped_slug else ""
+
+
+def _brand_tokens(value: str) -> list[str]:
+    return re.sub(r"[^A-Z0-9]+", " ", (value or "").upper()).split()
+
+
 def match_brand(item_name: str, brands: list[dict]) -> Optional[dict]:
-    """Longest whole-word or prefix match against known brand names."""
-    name = " ".join((item_name or "").upper().split())
-    if not name:
+    """Longest whole-word match. Generic brands match only as the leading word."""
+    tokens = _brand_tokens(item_name)
+    if not tokens:
         return None
-    padded = f" {name} "
     best = None
     best_len = 0
     for brand in brands:
-        label = " ".join(str(brand.get("displayName") or brand.get("name") or "").upper().split())
-        if len(label) < 2:
+        parts = _brand_tokens(str(brand.get("displayName") or brand.get("name") or ""))
+        if not parts:
             continue
-        if padded == f" {label} " or padded.startswith(f" {label} ") or f" {label} " in padded:
-            if len(label) > best_len:
-                best = brand
-                best_len = len(label)
+        label = " ".join(parts)
+        generic = label in GENERIC_BRANDS or (len(parts) == 1 and parts[0] in GENERIC_BRANDS)
+        if generic:
+            if tokens[:len(parts)] != parts:
+                continue
+            if parts == ["HOT"] and len(tokens) > 1 and tokens[1] == "PINK":
+                continue
+            if parts == ["PINK"] and tokens[0] == "HOT":
+                continue
+        else:
+            found = any(tokens[index:index + len(parts)] == parts for index in range(len(tokens) - len(parts) + 1))
+            collapsed = "".join(parts)
+            if not found and len(collapsed) >= 4 and any(token == collapsed for token in tokens):
+                found = True
+            if not found:
+                continue
+        if len(label) > best_len:
+            best = brand
+            best_len = len(label)
     return best
+
+
+def brand_report(brands: list[dict]) -> dict:
+    odd = []
+    grouped: dict[str, list[dict]] = {}
+    for brand in brands:
+        parts = _brand_tokens(str(brand.get("displayName") or brand.get("name") or ""))
+        label = " ".join(parts)
+        if not label:
+            continue
+        if label in GENERIC_BRANDS or (len(parts) == 1 and parts[0] in GENERIC_BRANDS):
+            odd.append({
+                "slug": brand.get("slug") or "",
+                "name": brand.get("displayName") or brand.get("name") or "",
+                "reason": "Generic or odd brand. It matches only as the first word, never inside a flavor such as Hot Pink.",
+            })
+        grouped.setdefault("".join(parts), []).append(brand)
+    duplicates = []
+    for rows in grouped.values():
+        if len(rows) > 1:
+            duplicates.append([{"slug": row.get("slug") or "", "name": row.get("displayName") or row.get("name") or ""} for row in rows])
+    names = [( "".join(_brand_tokens(str(row.get("displayName") or row.get("name") or ""))), row) for row in brands]
+    for index, (left, row) in enumerate(names):
+        if len(left) < 4:
+            continue
+        for right, other in names[index + 1:]:
+            if not right or right == left:
+                continue
+            if left in right or right in left:
+                duplicates.append([
+                    {"slug": row.get("slug") or "", "name": row.get("displayName") or row.get("name") or ""},
+                    {"slug": other.get("slug") or "", "name": other.get("displayName") or other.get("name") or ""},
+                ])
+    return {"oddBrands": odd, "possibleDuplicates": duplicates}
 
 
 def classify_item(item: dict, mappings: list[dict], categories: list[dict], brands: list[dict]) -> dict:
@@ -151,14 +231,25 @@ def classify_item(item: dict, mappings: list[dict], categories: list[dict], bran
     labels = clover_category_names(item)
     slug = ""
     source = ""
-    for label in labels:
-        found = by_name.get(label.lower())
-        if found:
-            slug = found
-            source = "mapping"
-            break
-    if not slug:
-        slug = _keyword_slug(str(item.get("name") or ""), allowed)
+    item_name = str(item.get("name") or "")
+    if labels:
+        for label in labels:
+            mapped = by_name.get(label.lower(), "")
+            overridden, override_source = _category_override(label, item_name, mapped, allowed)
+            if overridden:
+                slug = overridden
+                source = override_source or "mapping"
+                break
+            if label.strip().lower() == "tobacco":
+                source = ""
+                slug = ""
+                break
+        if not slug and not any(label.strip().lower() == "tobacco" for label in labels):
+            # A Clover category that is not one of the mapped names stays unmatched.
+            # Keywords are only for items with no category.
+            source = ""
+    else:
+        slug = _uncategorized_slug(item_name, allowed)
         if slug:
             source = "keyword"
     category_name = ""
@@ -167,10 +258,10 @@ def classify_item(item: dict, mappings: list[dict], categories: list[dict], bran
     else:
         slug = ""
         source = ""
-    brand = match_brand(str(item.get("name") or ""), brands)
+    brand = match_brand(item_name, brands)
     brand_slug = (brand or {}).get("slug") or ""
     brand_name = (brand or {}).get("displayName") or (brand or {}).get("name") or ""
-    if source == "mapping":
+    if source in {"mapping", "rule"}:
         confidence = "high"
     elif source == "keyword":
         confidence = "low"

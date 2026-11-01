@@ -78,6 +78,18 @@ def _stock_quantity(stock: dict) -> int:
         return 0
 
 
+def order_should_sync_stock(order: dict) -> bool:
+    """Clover stock changes when a website order is paid or confirmed."""
+    if not isinstance(order, dict):
+        return False
+    if str(order.get("paymentStatus") or "") == "paid":
+        return True
+    if str(order.get("manualStatus") or "") == "confirmed":
+        return True
+    history = order.get("statusHistory") or {}
+    return bool(isinstance(history, dict) and history.get("confirmed"))
+
+
 class CloverError(RuntimeError):
     pass
 
@@ -475,10 +487,17 @@ class CloverIntegration:
                 linked += 1
                 auto_matched += int(auto)
                 old_stock = int(product.get("stock", 0))
+                reported_stock = int(item["stock"])
+                effective_stock, stock_state = await self._resolve_pulled_stock(
+                    item["id"], reported_stock, commit=True, website_stock=old_stock,
+                )
                 changes = {
                     "cloverItemId": item["id"],
                     "cloverLastSyncedAt": utcnow(),
-                    "stock": item["stock"],
+                    "cloverStockSyncedAt": utcnow(),
+                    "cloverReportedStock": reported_stock,
+                    "stockSyncState": stock_state,
+                    "stock": effective_stock,
                     "updatedAt": utcnow(),
                 }
                 if item.get("sku") and not product.get("sku"):
@@ -495,8 +514,8 @@ class CloverIntegration:
                     changes["price"] = item["price"]
                     price_changes += 1
                 await self.db.products.update_one({"id": product["id"]}, {"$set": changes, "$unset": {"cloverSyncError": ""}})
-                updated += int(old_stock != item["stock"])
-                if old_stock == 0 and item["stock"] > 0:
+                updated += int(old_stock != effective_stock)
+                if old_stock == 0 and effective_stock > 0:
                     restocked.append(product["id"])
 
             unmatched = [item for item in remote if item["id"] not in matched_remote]
@@ -611,6 +630,7 @@ class CloverIntegration:
                 key = _match_identifier(item["barcode"])
                 remote_barcode_counts[key] = remote_barcode_counts.get(key, 0) + 1
         stock_changes = []
+        stock_holds = []
         price_changes = []
         matched: set[str] = set()
         for item in remote:
@@ -625,18 +645,46 @@ class CloverIntegration:
             if not product:
                 continue
             matched.add(item["id"])
-            if int(product.get("stock", 0)) != int(item["stock"]):
-                stock_changes.append({"productId": product["id"], "cloverItemId": item["id"], "from": int(product.get("stock", 0)), "to": int(item["stock"])})
+            website_qty = int(product.get("stock", 0))
+            reported_qty = int(item["stock"])
+            effective_qty, stock_state = await self._resolve_pulled_stock(
+                item["id"], reported_qty, commit=False, website_stock=website_qty,
+            )
+            if website_qty != effective_qty:
+                stock_changes.append({
+                    "direction": "clover_to_website",
+                    "productId": product["id"],
+                    "name": product.get("name") or item.get("name") or "",
+                    "cloverItemId": item["id"],
+                    "from": website_qty,
+                    "to": effective_qty,
+                    "cloverQty": reported_qty,
+                    "state": stock_state,
+                })
+            elif stock_state == "pending" and website_qty != reported_qty:
+                stock_holds.append({
+                    "direction": "clover_to_website",
+                    "productId": product["id"],
+                    "name": product.get("name") or item.get("name") or "",
+                    "cloverItemId": item["id"],
+                    "websiteQty": website_qty,
+                    "cloverQty": reported_qty,
+                    "kept": effective_qty,
+                    "state": "pending",
+                })
             if float(product.get("price") or 0) != float(item["price"]):
                 price_changes.append({"productId": product["id"], "cloverItemId": item["id"], "from": product.get("price"), "to": item["price"]})
         captures = await self.db.inventory_captures.find({}).to_list(5000)
         photos = self._photo_plan(remote, captures)
+        outbound = await self._planned_clover_writes()
         return {
             "applied": False,
             "dryRun": (not self.sync_enabled) or self.dry_run,
             "syncEnabled": self.sync_enabled,
             "remoteItems": len(remote),
             "stockChanges": stock_changes,
+            "stockHolds": stock_holds,
+            "cloverStockChanges": outbound,
             "priceChanges": price_changes,
             "unmatchedItems": len(remote) - len(matched),
             **photos,
@@ -672,7 +720,9 @@ class CloverIntegration:
             await self._remember_plan(plan, "dry_run" if self.sync_enabled else "disabled")
             await self.log("inventory_pull", "skipped", source=source, dryRun=True, syncEnabled=self.sync_enabled)
             return plan
+        clover_stock_changes = await self.apply_pending_adjustments()
         summary = await self.sync_from_clover(source, include_prices=True)
+        summary["cloverStockChanges"] = clover_stock_changes
         for link in plan["photoLinks"]:
             await self.db.inventory_captures.update_one({"id": link["captureId"]}, {"$set": {
                 "cloverItemId": link["cloverItemId"],
@@ -689,12 +739,139 @@ class CloverIntegration:
         await self.db.integrations.update_one({"key": "clover"}, {"$set": {"lastCatalogPlan": summary, "lastCatalogPlanAt": utcnow()}})
         return summary
 
-    async def apply_order_stock(self, order_id: str, lines: list[dict]) -> dict:
-        """Reduce Clover stock once per order line. Retries reuse the saved adjustment."""
-        if not self.sync_enabled:
-            return {"applied": False, "reason": "sync_disabled", "adjustments": []}
-        config = await self.config() or {}
-        merchant_id = self._merchant_id(config)
+    async def _resolve_pulled_stock(self, clover_item_id: str, reported: int, commit: bool, website_stock: Optional[int] = None) -> tuple[int, str]:
+        """Ignore a Clover read that still shows the quantity from before a website sale."""
+        rows = await self.db.clover_stock_adjustments.find({
+            "cloverItemId": clover_item_id,
+            "reflected": {"$ne": True},
+            "status": {"$in": ["success", "writing", "pending"]},
+        }).sort("updatedAt", -1).to_list(20)
+        actionable = [
+            row for row in rows
+            if row.get("status") in {"success", "writing"}
+            and row.get("seenQuantity") is not None
+            and row.get("resultingQuantity") is not None
+        ]
+        if not actionable:
+            if rows and website_stock is not None:
+                return int(website_stock), "pending"
+            return int(reported), "matched"
+        seen_values = {int(row["seenQuantity"]) for row in actionable}
+        newest_result = int(actionable[0]["resultingQuantity"])
+        if int(reported) in seen_values:
+            return newest_result, "pending"
+        if commit:
+            await self.db.clover_stock_adjustments.update_many(
+                {
+                    "cloverItemId": clover_item_id,
+                    "reflected": {"$ne": True},
+                    "status": {"$in": ["success", "writing"]},
+                },
+                {"$set": {"reflected": True, "reflectedAt": utcnow(), "status": "success"}},
+            )
+        return int(reported), "matched"
+
+    def _adjustment_key(self, direction: str, order_id: str, clover_item_id: str) -> str:
+        return f"{direction}:{order_id}:{clover_item_id}"
+
+    async def _ensure_planned(self, order_id: str, line: dict, direction: str) -> dict:
+        key = self._adjustment_key(direction, order_id, line["cloverItemId"])
+        existing = await self.db.clover_stock_adjustments.find_one({"key": key})
+        if existing and existing.get("status") == "success":
+            return {**line, "status": "already_recorded", "direction": direction, "resultingQuantity": existing.get("resultingQuantity")}
+        if existing and existing.get("status") == "void":
+            return {**line, "status": "voided", "direction": direction}
+        if not existing:
+            try:
+                await self.db.clover_stock_adjustments.insert_one({
+                    "key": key,
+                    "orderId": order_id,
+                    "productId": line["productId"],
+                    "name": line.get("name") or "",
+                    "cloverItemId": line["cloverItemId"],
+                    "barcode": line.get("barcode") or "",
+                    "qty": line["qty"],
+                    "direction": direction,
+                    "status": "planned",
+                    "reflected": False,
+                    "createdAt": utcnow(),
+                    "updatedAt": utcnow(),
+                })
+            except DuplicateKeyError:
+                existing = await self.db.clover_stock_adjustments.find_one({"key": key})
+                if existing and existing.get("status") == "success":
+                    return {**line, "status": "already_recorded", "direction": direction, "resultingQuantity": existing.get("resultingQuantity")}
+        return {**line, "status": (existing or {}).get("status") or "planned", "direction": direction}
+
+    async def _mutate_item_stock(self, order_id: str, line: dict, direction: str) -> dict:
+        merchant_id = self._merchant_id(await self.config() or {})
+        key = self._adjustment_key(direction, order_id, line["cloverItemId"])
+        existing = await self.db.clover_stock_adjustments.find_one({"key": key})
+        if existing and existing.get("status") == "success":
+            return {**line, "status": "already_recorded", "direction": direction, "resultingQuantity": existing.get("resultingQuantity")}
+        if existing and existing.get("status") == "void":
+            return {**line, "status": "voided", "direction": direction}
+        if not existing:
+            try:
+                await self.db.clover_stock_adjustments.insert_one({
+                    "key": key,
+                    "orderId": order_id,
+                    "productId": line["productId"],
+                    "name": line.get("name") or "",
+                    "cloverItemId": line["cloverItemId"],
+                    "barcode": line.get("barcode") or "",
+                    "qty": line["qty"],
+                    "direction": direction,
+                    "status": "pending",
+                    "reflected": False,
+                    "createdAt": utcnow(),
+                    "updatedAt": utcnow(),
+                })
+            except DuplicateKeyError:
+                existing = await self.db.clover_stock_adjustments.find_one({"key": key})
+                if existing and existing.get("status") == "success":
+                    return {**line, "status": "already_recorded", "direction": direction, "resultingQuantity": existing.get("resultingQuantity")}
+        stored_result = (existing or {}).get("resultingQuantity")
+        stored_seen = (existing or {}).get("seenQuantity")
+        try:
+            current = await self.request("GET", f"/v3/merchants/{merchant_id}/item_stocks/{line['cloverItemId']}")
+            seen_now = _stock_quantity(current if isinstance(current, dict) else {})
+            if stored_result is not None and seen_now == int(stored_result):
+                new_qty = int(stored_result)
+                seen = int(stored_seen) if stored_seen is not None else seen_now
+            else:
+                delta = line["qty"] if direction == "restore" else -line["qty"]
+                seen = seen_now
+                new_qty = max(0, seen_now + delta)
+                await self.db.clover_stock_adjustments.update_one({"key": key}, {"$set": {
+                    "status": "writing", "seenQuantity": seen, "resultingQuantity": new_qty,
+                    "reflected": False, "updatedAt": utcnow(), "error": "",
+                }})
+                await self.request(
+                    "PUT",
+                    f"/v3/merchants/{merchant_id}/item_stocks/{line['cloverItemId']}",
+                    json_body={"quantity": new_qty},
+                )
+            await self.db.clover_stock_adjustments.update_one({"key": key}, {"$set": {
+                "status": "success", "seenQuantity": seen, "resultingQuantity": new_qty,
+                "reflected": False, "updatedAt": utcnow(), "error": "",
+            }})
+            await self.db.products.update_one({"cloverItemId": line["cloverItemId"]}, {"$set": {
+                "cloverReportedStock": new_qty, "cloverStockSyncedAt": utcnow(), "stockSyncState": "pending",
+            }})
+            await self.log(
+                "order_stock", "success", orderId=order_id, productId=line["productId"],
+                cloverItemId=line["cloverItemId"], qty=line["qty"], direction=direction,
+                seenQuantity=seen, resultingQuantity=new_qty,
+            )
+            return {**line, "status": "success", "direction": direction, "resultingQuantity": new_qty, "seenQuantity": seen}
+        except Exception as exc:
+            message = self._redact(str(exc) or "Clover stock update failed")
+            await self.db.clover_stock_adjustments.update_one({"key": key}, {"$set": {"status": "failed", "error": message, "updatedAt": utcnow()}})
+            await self.log("order_stock", "failed", orderId=order_id, productId=line["productId"], cloverItemId=line["cloverItemId"], error=message, direction=direction)
+            return {**line, "status": "failed", "direction": direction, "error": message}
+
+    async def _planned_lines(self, lines: list[dict]) -> list[dict]:
         planned = []
         for line in lines:
             product_id = line.get("productId")
@@ -702,52 +879,156 @@ class CloverIntegration:
             if not product_id or qty <= 0:
                 continue
             product = await self.db.products.find_one({"id": product_id})
-            clover_item_id = _clean_identifier((product or {}).get("cloverItemId"))
-            barcode = exact_barcode((product or {}).get("barcode")) or exact_barcode((product or {}).get("sku"))
-            planned.append({"productId": product_id, "qty": qty, "cloverItemId": clover_item_id, "barcode": barcode})
-        if self.dry_run:
-            return {"applied": False, "dryRun": True, "adjustments": planned}
-        if not merchant_id:
-            return {"applied": False, "reason": "not_connected", "adjustments": planned}
+            planned.append({
+                "productId": product_id,
+                "qty": qty,
+                "cloverItemId": _clean_identifier((product or {}).get("cloverItemId")),
+                "barcode": exact_barcode((product or {}).get("barcode")) or exact_barcode((product or {}).get("sku")),
+                "name": (product or {}).get("name") or line.get("name") or "",
+            })
+        return planned
+
+    async def _planned_clover_writes(self) -> list[dict]:
+        rows = await self.db.clover_stock_adjustments.find(
+            {"status": {"$in": ["planned", "failed", "pending", "writing"]}},
+            {"_id": 0},
+        ).sort("updatedAt", -1).to_list(500)
+        return [{
+            "direction": "website_to_clover",
+            "action": row.get("direction") or "decrement",
+            "orderId": row.get("orderId"),
+            "productId": row.get("productId"),
+            "name": row.get("name") or "",
+            "cloverItemId": row.get("cloverItemId"),
+            "qty": row.get("qty"),
+            "status": row.get("status"),
+            "from": row.get("seenQuantity"),
+            "to": row.get("resultingQuantity"),
+            "error": row.get("error") or "",
+        } for row in rows]
+
+    async def apply_pending_adjustments(self) -> list[dict]:
+        """Retry planned, failed, and in-flight Clover stock writes. Preview leaves them untouched."""
+        if not self.sync_enabled or self.dry_run:
+            return await self._planned_clover_writes()
+        if not self._merchant_id(await self.config() or {}):
+            return []
         await self.db.clover_stock_adjustments.create_index("key", unique=True)
+        rows = await self.db.clover_stock_adjustments.find(
+            {"status": {"$in": ["planned", "failed", "pending", "writing"]}},
+        ).to_list(500)
+        applied = []
+        for row in rows:
+            line = {
+                "productId": row.get("productId"),
+                "cloverItemId": row.get("cloverItemId"),
+                "barcode": row.get("barcode") or "",
+                "qty": int(row.get("qty") or 0),
+                "name": row.get("name") or "",
+            }
+            if not row.get("orderId") or not line["cloverItemId"] or line["qty"] <= 0:
+                continue
+            applied.append(await self._mutate_item_stock(row["orderId"], line, row.get("direction") or "decrement"))
+        return applied
+
+    async def apply_order_stock(self, order_id: str, lines: list[dict]) -> dict:
+        """Reduce Clover stock once per paid or confirmed order line. A retry reuses the same record."""
+        planned = await self._planned_lines(lines)
         adjustments = []
+        linked = []
         for line in planned:
             if not line["cloverItemId"]:
                 await self.log("order_stock", "failed", orderId=order_id, productId=line["productId"], barcode=line["barcode"], error="No Clover item is linked to this product.")
-                adjustments.append({**line, "status": "unmatched"})
+                adjustments.append({**line, "status": "unmatched", "direction": "decrement"})
                 continue
-            key = f"{order_id}:{line['cloverItemId']}"
-            try:
-                await self.db.clover_stock_adjustments.insert_one({
-                    "key": key,
-                    "orderId": order_id,
-                    "productId": line["productId"],
-                    "cloverItemId": line["cloverItemId"],
-                    "barcode": line["barcode"],
-                    "qty": line["qty"],
-                    "status": "pending",
-                    "createdAt": utcnow(),
-                })
-            except DuplicateKeyError:
-                adjustments.append({**line, "status": "already_recorded"})
-                continue
-            try:
-                current = await self.request("GET", f"/v3/merchants/{merchant_id}/item_stocks/{line['cloverItemId']}")
-                new_qty = max(0, _stock_quantity(current if isinstance(current, dict) else {}) - line["qty"])
-                await self.request(
-                    "PUT",
-                    f"/v3/merchants/{merchant_id}/item_stocks/{line['cloverItemId']}",
-                    json_body={"quantity": new_qty},
-                )
-                await self.db.clover_stock_adjustments.update_one({"key": key}, {"$set": {"status": "success", "resultingQuantity": new_qty, "updatedAt": utcnow()}})
-                await self.log("order_stock", "success", orderId=order_id, productId=line["productId"], cloverItemId=line["cloverItemId"], qty=line["qty"])
-                adjustments.append({**line, "status": "success", "resultingQuantity": new_qty})
-            except Exception as exc:
-                message = redact_text(str(exc) or "Clover stock update failed")
-                await self.db.clover_stock_adjustments.update_one({"key": key}, {"$set": {"status": "failed", "error": message, "updatedAt": utcnow()}})
-                await self.log("order_stock", "failed", orderId=order_id, productId=line["productId"], cloverItemId=line["cloverItemId"], error=message)
-                adjustments.append({**line, "status": "failed", "error": message})
+            linked.append(line)
+        if not self.sync_enabled or self.dry_run:
+            for line in linked:
+                adjustments.append(await self._ensure_planned(order_id, line, "decrement"))
+            return {
+                "applied": False,
+                "dryRun": True,
+                "reason": "sync_disabled" if not self.sync_enabled else "dry_run",
+                "adjustments": adjustments,
+            }
+        if not self._merchant_id(await self.config() or {}):
+            return {"applied": False, "reason": "not_connected", "adjustments": adjustments + linked}
+        await self.db.clover_stock_adjustments.create_index("key", unique=True)
+        for line in linked:
+            adjustments.append(await self._mutate_item_stock(order_id, line, "decrement"))
         return {"applied": True, "adjustments": adjustments}
+
+    async def restore_order_stock(self, order_id: str, lines: list[dict]) -> dict:
+        """Put Clover stock back once when a paid order is cancelled or fully refunded."""
+        planned = await self._planned_lines(lines)
+        adjustments = []
+        actionable: list[tuple[dict, bool]] = []
+        for line in planned:
+            if not line["cloverItemId"]:
+                adjustments.append({**line, "status": "unmatched", "direction": "restore"})
+                continue
+            decrement = await self.db.clover_stock_adjustments.find_one({
+                "key": self._adjustment_key("decrement", order_id, line["cloverItemId"]),
+            })
+            if not decrement or decrement.get("status") == "void":
+                adjustments.append({**line, "status": "nothing_to_restore", "direction": "restore"})
+                continue
+            sent = decrement.get("status") in {"success", "writing", "pending"} and decrement.get("seenQuantity") is not None
+            if not sent:
+                await self.db.clover_stock_adjustments.update_one({"key": decrement["key"]}, {"$set": {
+                    "status": "void", "reflected": True, "updatedAt": utcnow(),
+                }})
+                adjustments.append({**line, "status": "voided", "direction": "restore"})
+                continue
+            actionable.append((line, decrement.get("status") != "success"))
+        if not self.sync_enabled or self.dry_run:
+            for line, _finish in actionable:
+                adjustments.append(await self._ensure_planned(order_id, line, "restore"))
+            return {
+                "applied": False,
+                "dryRun": True,
+                "reason": "sync_disabled" if not self.sync_enabled else "dry_run",
+                "adjustments": adjustments,
+            }
+        if not self._merchant_id(await self.config() or {}):
+            return {"applied": False, "reason": "not_connected", "adjustments": adjustments}
+        await self.db.clover_stock_adjustments.create_index("key", unique=True)
+        for line, finish in actionable:
+            if finish:
+                done = await self._mutate_item_stock(order_id, line, "decrement")
+                if done.get("status") not in {"success", "already_recorded"}:
+                    adjustments.append({**line, "status": "failed", "direction": "restore", "error": done.get("error") or "Clover decrement did not finish"})
+                    continue
+            adjustments.append(await self._mutate_item_stock(order_id, line, "restore"))
+        return {"applied": True, "adjustments": adjustments}
+
+    async def stock_status_rows(self) -> dict:
+        products = await self.db.products.find(
+            {"cloverItemId": {"$exists": True, "$ne": ""}},
+            {"_id": 0, "id": 1, "name": 1, "stock": 1, "cloverItemId": 1, "cloverReportedStock": 1, "cloverStockSyncedAt": 1, "cloverLastSyncedAt": 1, "stockSyncState": 1},
+        ).sort("name", 1).to_list(5000)
+        rows = []
+        for product in products:
+            website_qty = int(product.get("stock") or 0)
+            reported = product.get("cloverReportedStock")
+            clover_qty = None if reported is None else int(reported)
+            mismatch = clover_qty is not None and website_qty != clover_qty
+            rows.append({
+                "productId": product.get("id"),
+                "name": product.get("name") or "",
+                "cloverItemId": product.get("cloverItemId"),
+                "websiteQty": website_qty,
+                "cloverQty": clover_qty,
+                "updatedAt": product.get("cloverStockSyncedAt") or product.get("cloverLastSyncedAt"),
+                "state": product.get("stockSyncState") or "unknown",
+                "mismatch": mismatch,
+            })
+        log_rows = await self.db.clover_stock_adjustments.find({}, {"_id": 0}).sort("updatedAt", -1).to_list(50)
+        return {
+            "stockRows": rows,
+            "stockMismatches": [row for row in rows if row["mismatch"]],
+            "orderStockLog": log_rows,
+        }
 
     async def link_product(self, product_id: int, clover_item_id: str) -> dict:
         product = await self.db.products.find_one({"id": product_id})
