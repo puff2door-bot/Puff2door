@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import logging
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -16,6 +17,7 @@ from urllib.parse import urlencode
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
+from pymongo.errors import DuplicateKeyError
 
 
 LOGGER = logging.getLogger(__name__)
@@ -28,6 +30,17 @@ def utcnow() -> datetime:
 
 def _clean_identifier(value: Any) -> str:
     return str(value or "").strip()
+
+
+def exact_barcode(value: Any) -> str:
+    """Keep SKU/barcode text exactly, including leading zeros. Numbers are rejected."""
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
+def redact_text(value: str) -> str:
+    return re.sub(r"(?i)bearer\s+\S+", "bearer [redacted]", value)
 
 
 def _match_identifier(value: Any) -> str:
@@ -80,6 +93,8 @@ class CloverIntegration:
         site_url: str,
         webhook_auth_code: str = "",
         http_client_factory=None,
+        sync_enabled: bool = False,
+        dry_run: bool = False,
     ):
         self.db = db
         self.client_id = client_id.strip()
@@ -88,6 +103,10 @@ class CloverIntegration:
         self.redirect_uri = redirect_uri.strip()
         self.site_url = site_url.rstrip("/")
         self.webhook_auth_code = webhook_auth_code.strip()
+        # Automatic catalog pulls and online-order stock updates stay off until
+        # the server flag is turned on. The API merchant id is never hardcoded.
+        self.sync_enabled = bool(sync_enabled)
+        self.dry_run = bool(dry_run)
         key = base64.urlsafe_b64encode(hashlib.sha256(jwt_secret.encode("utf-8")).digest())
         self.cipher = Fernet(key)
         self.http_client_factory = http_client_factory or (lambda **kwargs: httpx.AsyncClient(**kwargs))
@@ -124,12 +143,19 @@ class CloverIntegration:
         return await self.db.integrations.find_one({"key": "clover"})
 
     async def log(self, action: str, status: str, **details):
+        safe = {}
+        for key, value in details.items():
+            if re.search(r"token|secret|authorization|password", str(key), re.I):
+                continue
+            if isinstance(value, str):
+                value = redact_text(value)
+            safe[key] = value
         await self.db.clover_sync_logs.insert_one({
             "id": hashlib.sha256(f"{utcnow().isoformat()}:{action}".encode()).hexdigest()[:24],
             "action": action,
             "status": status,
             "createdAt": utcnow(),
-            **details,
+            **safe,
         })
 
     async def create_authorization_url(self, admin_id: str) -> str:
@@ -168,7 +194,9 @@ class CloverIntegration:
         doc = {
             "key": "clover",
             "environment": self.environment,
-            "merchantId": merchant_id,
+            # OAuth supplies the API merchant id. The number printed on a
+            # Clover device is a different identifier and is not stored here.
+            "merchantId": _clean_identifier(merchant_id),
             "encryptedAccessToken": self.encrypt(data["access_token"]),
             "encryptedRefreshToken": self.encrypt(data["refresh_token"]),
             "accessTokenExpiration": data.get("access_token_expiration"),
@@ -283,7 +311,7 @@ class CloverIntegration:
             })
         return normalized
 
-    async def sync_from_clover(self, source: str = "manual") -> dict:
+    async def sync_from_clover(self, source: str = "manual", include_prices: bool = False) -> dict:
         started = utcnow()
         try:
             remote = await self.fetch_inventory()
@@ -310,7 +338,7 @@ class CloverIntegration:
                     remote_barcode_counts[key] = remote_barcode_counts.get(key, 0) + 1
 
             matched_remote: set[str] = set()
-            linked = auto_matched = updated = 0
+            linked = auto_matched = updated = price_changes = 0
             restocked: list[int] = []
             for item in remote:
                 product = linked_ids.get(item["id"])
@@ -340,6 +368,9 @@ class CloverIntegration:
                     changes["sku"] = item["sku"]
                 if item.get("barcode") and not product.get("barcode"):
                     changes["barcode"] = item["barcode"]
+                if include_prices and float(product.get("price") or 0) != float(item["price"]):
+                    changes["price"] = item["price"]
+                    price_changes += 1
                 await self.db.products.update_one({"id": product["id"]}, {"$set": changes, "$unset": {"cloverSyncError": ""}})
                 updated += int(old_stock != item["stock"])
                 if old_stock == 0 and item["stock"] > 0:
@@ -352,6 +383,7 @@ class CloverIntegration:
                 "linkedItems": linked,
                 "autoMatchedItems": auto_matched,
                 "stockChanges": updated,
+                "priceChanges": price_changes,
                 "unmatchedItems": len(unmatched),
                 "restockedProductIds": restocked,
             }
@@ -368,8 +400,8 @@ class CloverIntegration:
             await self.log("inventory_pull", "success", durationMs=int((utcnow() - started).total_seconds() * 1000), summary=summary)
             return summary
         except Exception as exc:
-            await self.db.integrations.update_one({"key": "clover"}, {"$set": {"lastSyncAt": utcnow(), "lastSyncStatus": "failed", "lastSyncError": str(exc), "updatedAt": utcnow()}}, upsert=True)
-            await self.log("inventory_pull", "failed", error=str(exc))
+            await self.db.integrations.update_one({"key": "clover"}, {"$set": {"lastSyncAt": utcnow(), "lastSyncStatus": "failed", "lastSyncError": redact_text(str(exc)), "updatedAt": utcnow()}}, upsert=True)
+            await self.log("inventory_pull", "failed", error=redact_text(str(exc)))
             if isinstance(exc, CloverError):
                 raise
             raise CloverError(f"Clover inventory sync failed: {exc}") from exc
@@ -402,82 +434,183 @@ class CloverIntegration:
             LOGGER.error("Could not update Clover stock for product %s: %s", product_id, exc)
             return False
 
-    @staticmethod
-    def _product_payload(product: dict) -> dict:
-        base_price = float(product.get("price") or 0)
-        sale_price = product.get("salePrice")
-        effective_price = min(base_price, float(sale_price)) if sale_price is not None and float(sale_price) >= 0 else base_price
-        payload = {
-            "name": str(product.get("name") or "HD Smoke Shop item")[:255],
-            "price": int(round(effective_price * 100)),
-            "priceType": "FIXED",
-            "available": bool(product.get("active", True)),
-            "hidden": not bool(product.get("active", True)),
-            "defaultTaxRates": True,
-            "isAgeRestricted": int(product.get("minimumAge", 21) or 0) >= 21,
-        }
-        if _clean_identifier(product.get("sku")):
-            payload["sku"] = _clean_identifier(product["sku"])
-        if _clean_identifier(product.get("barcode")):
-            payload["code"] = _clean_identifier(product["barcode"])
-        return payload
-
     async def sync_product_details(self, product_id: int, source: str = "admin") -> dict:
-        """Create or update a Clover item from a HD Smoke Shop admin product."""
-        product = await self.db.products.find_one({"id": product_id})
-        if not product:
-            raise CloverError("HD Smoke Shop product was not found.")
-        config = await self.config()
-        if not config or not config.get("merchantId") or not config.get("encryptedAccessToken"):
-            return {"status": "not_connected", "action": "none"}
-        merchant_id = config["merchantId"]
-        clover_item_id = _clean_identifier(product.get("cloverItemId"))
-        action = "update" if clover_item_id else "create"
-        try:
-            if clover_item_id:
-                item = await self.request(
-                    "POST",
-                    f"/v3/merchants/{merchant_id}/items/{clover_item_id}",
-                    json_body=self._product_payload(product),
-                )
+        """Website item and price edits stay on the website. Clover is read-only for catalog data."""
+        return {
+            "status": "skipped",
+            "action": "none",
+            "reason": "Clover is the source of truth for item names and prices. This website edit was not sent to Clover.",
+        }
+
+    def _photo_plan(self, remote: list[dict], captures: list[dict]) -> dict:
+        by_code: dict[str, list[str]] = {}
+        for item in remote:
+            for raw in (item.get("sku"), item.get("barcode")):
+                code = exact_barcode(raw)
+                if code:
+                    by_code.setdefault(code, [])
+                    if item["id"] not in by_code[code]:
+                        by_code[code].append(item["id"])
+        links = []
+        unmatched = []
+        for capture in captures:
+            code = exact_barcode(capture.get("barcode")) or exact_barcode(capture.get("identifier"))
+            if not code:
+                continue
+            hits = by_code.get(code, [])
+            if len(hits) == 1:
+                links.append({"captureId": capture.get("id"), "barcode": code, "cloverItemId": hits[0]})
+            elif not hits:
+                unmatched.append({"captureId": capture.get("id"), "barcode": code, "reason": "No Clover item has this SKU or barcode."})
             else:
-                item = await self.request(
-                    "POST",
-                    f"/v3/merchants/{merchant_id}/items",
-                    json_body=self._product_payload(product),
-                )
-                clover_item_id = _clean_identifier(item.get("id"))
-                if not clover_item_id:
-                    raise CloverError("Clover created the item without returning its item ID.")
-                await self.db.products.update_one({"id": product_id}, {"$set": {
-                    "cloverItemId": clover_item_id,
-                    "cloverLastSyncedAt": utcnow(),
-                    "updatedAt": utcnow(),
-                }})
-            stock_ok = await self.push_product_stock(product_id, source=source)
-            if stock_ok:
-                await self.db.products.update_one({"id": product_id}, {
-                    "$set": {"cloverLastSyncedAt": utcnow(), "updatedAt": utcnow()},
-                    "$unset": {"cloverSyncError": ""},
+                unmatched.append({"captureId": capture.get("id"), "barcode": code, "reason": "More than one Clover item has this SKU or barcode."})
+        return {"photoLinks": links, "unmatchedPhotoBarcodes": unmatched}
+
+    async def _catalog_plan(self, remote: list[dict]) -> dict:
+        local = await self.db.products.find({}).to_list(10000)
+        linked_ids = {str(product.get("cloverItemId")): product for product in local if product.get("cloverItemId")}
+        local_sku: dict[str, list[dict]] = {}
+        local_barcode: dict[str, list[dict]] = {}
+        for product in local:
+            if _match_identifier(product.get("sku")):
+                local_sku.setdefault(_match_identifier(product.get("sku")), []).append(product)
+            if _match_identifier(product.get("barcode")):
+                local_barcode.setdefault(_match_identifier(product.get("barcode")), []).append(product)
+        remote_sku_counts: dict[str, int] = {}
+        remote_barcode_counts: dict[str, int] = {}
+        for item in remote:
+            if _match_identifier(item.get("sku")):
+                key = _match_identifier(item["sku"])
+                remote_sku_counts[key] = remote_sku_counts.get(key, 0) + 1
+            if _match_identifier(item.get("barcode")):
+                key = _match_identifier(item["barcode"])
+                remote_barcode_counts[key] = remote_barcode_counts.get(key, 0) + 1
+        stock_changes = []
+        price_changes = []
+        matched: set[str] = set()
+        for item in remote:
+            product = linked_ids.get(item["id"])
+            if not product:
+                sku_key = _match_identifier(item.get("sku"))
+                barcode_key = _match_identifier(item.get("barcode"))
+                if sku_key and remote_sku_counts.get(sku_key) == 1 and len(local_sku.get(sku_key, [])) == 1:
+                    product = local_sku[sku_key][0]
+                elif barcode_key and remote_barcode_counts.get(barcode_key) == 1 and len(local_barcode.get(barcode_key, [])) == 1:
+                    product = local_barcode[barcode_key][0]
+            if not product:
+                continue
+            matched.add(item["id"])
+            if int(product.get("stock", 0)) != int(item["stock"]):
+                stock_changes.append({"productId": product["id"], "cloverItemId": item["id"], "from": int(product.get("stock", 0)), "to": int(item["stock"])})
+            if float(product.get("price") or 0) != float(item["price"]):
+                price_changes.append({"productId": product["id"], "cloverItemId": item["id"], "from": product.get("price"), "to": item["price"]})
+        captures = await self.db.inventory_captures.find({}).to_list(5000)
+        photos = self._photo_plan(remote, captures)
+        return {
+            "applied": False,
+            "dryRun": (not self.sync_enabled) or self.dry_run,
+            "syncEnabled": self.sync_enabled,
+            "remoteItems": len(remote),
+            "stockChanges": stock_changes,
+            "priceChanges": price_changes,
+            "unmatchedItems": len(remote) - len(matched),
+            **photos,
+        }
+
+    async def _remember_plan(self, plan: dict, status: str):
+        await self.db.integrations.update_one({"key": "clover"}, {"$set": {
+            "lastCatalogPlan": plan,
+            "lastCatalogPlanAt": utcnow(),
+            "lastSyncStatus": status,
+            "updatedAt": utcnow(),
+        }}, upsert=True)
+
+    async def sync_catalog(self, source: str = "manual") -> dict:
+        """Pull stock and prices from Clover. Writes only when sync is on and this is not a dry run."""
+        remote = await self.fetch_inventory()
+        plan = await self._catalog_plan(remote)
+        plan["source"] = source
+        if not self.sync_enabled or self.dry_run:
+            plan["applied"] = False
+            plan["dryRun"] = True
+            await self._remember_plan(plan, "dry_run" if self.sync_enabled else "disabled")
+            await self.log("inventory_pull", "skipped", source=source, dryRun=True, syncEnabled=self.sync_enabled)
+            return plan
+        summary = await self.sync_from_clover(source, include_prices=True)
+        for link in plan["photoLinks"]:
+            await self.db.inventory_captures.update_one({"id": link["captureId"]}, {"$set": {
+                "cloverItemId": link["cloverItemId"],
+                "cloverLinkedAt": utcnow(),
+            }})
+        summary.update({
+            "applied": True,
+            "dryRun": False,
+            "syncEnabled": True,
+            "photoLinks": plan["photoLinks"],
+            "unmatchedPhotoBarcodes": plan["unmatchedPhotoBarcodes"],
+        })
+        await self.db.integrations.update_one({"key": "clover"}, {"$set": {"lastCatalogPlan": summary, "lastCatalogPlanAt": utcnow()}})
+        return summary
+
+    async def apply_order_stock(self, order_id: str, lines: list[dict]) -> dict:
+        """Reduce Clover stock once per order line. Retries reuse the saved adjustment."""
+        if not self.sync_enabled:
+            return {"applied": False, "reason": "sync_disabled", "adjustments": []}
+        config = await self.config() or {}
+        merchant_id = _clean_identifier(config.get("merchantId"))
+        planned = []
+        for line in lines:
+            product_id = line.get("productId")
+            qty = int(line.get("qty") or 0)
+            if not product_id or qty <= 0:
+                continue
+            product = await self.db.products.find_one({"id": product_id})
+            clover_item_id = _clean_identifier((product or {}).get("cloverItemId"))
+            barcode = exact_barcode((product or {}).get("barcode")) or exact_barcode((product or {}).get("sku"))
+            planned.append({"productId": product_id, "qty": qty, "cloverItemId": clover_item_id, "barcode": barcode})
+        if self.dry_run:
+            return {"applied": False, "dryRun": True, "adjustments": planned}
+        if not merchant_id:
+            return {"applied": False, "reason": "not_connected", "adjustments": planned}
+        await self.db.clover_stock_adjustments.create_index("key", unique=True)
+        adjustments = []
+        for line in planned:
+            if not line["cloverItemId"]:
+                await self.log("order_stock", "failed", orderId=order_id, productId=line["productId"], barcode=line["barcode"], error="No Clover item is linked to this product.")
+                adjustments.append({**line, "status": "unmatched"})
+                continue
+            key = f"{order_id}:{line['cloverItemId']}"
+            try:
+                await self.db.clover_stock_adjustments.insert_one({
+                    "key": key,
+                    "orderId": order_id,
+                    "productId": line["productId"],
+                    "cloverItemId": line["cloverItemId"],
+                    "barcode": line["barcode"],
+                    "qty": line["qty"],
+                    "status": "pending",
+                    "createdAt": utcnow(),
                 })
-            else:
-                await self.db.products.update_one({"id": product_id}, {"$set": {
-                    "cloverLastSyncedAt": utcnow(),
-                    "cloverSyncError": "The product details reached Clover, but its stock quantity needs a retry.",
-                    "updatedAt": utcnow(),
-                }})
-            result = {"status": "success" if stock_ok else "partial", "action": action, "cloverItemId": clover_item_id, "stockUpdated": stock_ok}
-            if not stock_ok:
-                result["error"] = "The product details reached Clover, but its stock quantity needs a retry."
-            await self.log("product_" + action, result["status"], productId=product_id, cloverItemId=clover_item_id, source=source)
-            return result
-        except Exception as exc:
-            message = str(exc) or "Clover product update failed"
-            await self.db.products.update_one({"id": product_id}, {"$set": {"cloverSyncError": message, "updatedAt": utcnow()}})
-            await self.log("product_" + action, "failed", productId=product_id, cloverItemId=clover_item_id, source=source, error=message)
-            if isinstance(exc, CloverError):
-                raise
-            raise CloverError(message) from exc
+            except DuplicateKeyError:
+                adjustments.append({**line, "status": "already_recorded"})
+                continue
+            try:
+                current = await self.request("GET", f"/v3/merchants/{merchant_id}/item_stocks/{line['cloverItemId']}")
+                new_qty = max(0, _stock_quantity(current if isinstance(current, dict) else {}) - line["qty"])
+                await self.request(
+                    "PUT",
+                    f"/v3/merchants/{merchant_id}/item_stocks/{line['cloverItemId']}",
+                    json_body={"quantity": new_qty},
+                )
+                await self.db.clover_stock_adjustments.update_one({"key": key}, {"$set": {"status": "success", "resultingQuantity": new_qty, "updatedAt": utcnow()}})
+                await self.log("order_stock", "success", orderId=order_id, productId=line["productId"], cloverItemId=line["cloverItemId"], qty=line["qty"])
+                adjustments.append({**line, "status": "success", "resultingQuantity": new_qty})
+            except Exception as exc:
+                message = redact_text(str(exc) or "Clover stock update failed")
+                await self.db.clover_stock_adjustments.update_one({"key": key}, {"$set": {"status": "failed", "error": message, "updatedAt": utcnow()}})
+                await self.log("order_stock", "failed", orderId=order_id, productId=line["productId"], cloverItemId=line["cloverItemId"], error=message)
+                adjustments.append({**line, "status": "failed", "error": message})
+        return {"applied": True, "adjustments": adjustments}
 
     async def link_product(self, product_id: int, clover_item_id: str) -> dict:
         product = await self.db.products.find_one({"id": product_id})
