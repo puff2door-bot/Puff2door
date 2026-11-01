@@ -38,6 +38,7 @@ def seed_category_mappings(category_slugs: Iterable[str]) -> list[dict]:
             continue
         seen.add(key)
         rows.append({"cloverName": clover_name, "categorySlug": slug})
+    rows.append({"cloverName": "Tobacco", "categorySlug": "", "keywordSplit": True})
     return rows
 
 
@@ -60,12 +61,41 @@ def _labels(value) -> list[str]:
 
 
 def clover_category_names(item: dict) -> list[str]:
-    names = _labels(item.get("categories")) + _labels(item.get("tags"))
+    """Names from an item payload. Tags are not categories."""
+    return resolve_category_names(item)
+
+
+def resolve_category_names(item: dict, by_id: Optional[dict] = None, by_item: Optional[dict] = None) -> list[str]:
+    """Read Clover category names from expand=categories, or from ids joined to /categories."""
+    by_id = by_id or {}
+    by_item = by_item or {}
+    raw = item.get("categories")
+    elements = []
+    if isinstance(raw, dict):
+        elements = raw.get("elements") or raw.get("items") or []
+    elif isinstance(raw, list):
+        elements = raw
+    names = []
+    for row in elements if isinstance(elements, list) else []:
+        if isinstance(row, str):
+            names.append(row.strip())
+            continue
+        if not isinstance(row, dict):
+            continue
+        nested = row.get("category") if isinstance(row.get("category"), dict) else {}
+        name = str(row.get("name") or nested.get("name") or "").strip()
+        if not name:
+            name = str(by_id.get(str(row.get("id") or nested.get("id") or "")) or "").strip()
+        if name:
+            names.append(name)
+    for name in by_item.get(str(item.get("id") or ""), []):
+        if name:
+            names.append(str(name).strip())
     seen = set()
     unique = []
     for name in names:
         key = name.lower()
-        if key in seen:
+        if not key or key in seen:
             continue
         seen.add(key)
         unique.append(name)
@@ -152,36 +182,43 @@ def _brand_tokens(value: str) -> list[str]:
     return re.sub(r"[^A-Z0-9]+", " ", (value or "").upper()).split()
 
 
-def match_brand(item_name: str, brands: list[dict]) -> Optional[dict]:
+def match_brand(item_name: str, brands: list[dict], aliases: Optional[list[dict]] = None) -> Optional[dict]:
     """Longest whole-word match. Generic brands match only as the leading word."""
     tokens = _brand_tokens(item_name)
     if not tokens:
         return None
+    alias_by_slug: dict[str, list[str]] = {}
+    for row in aliases or []:
+        slug = str(row.get("brandSlug") or "")
+        alias_by_slug.setdefault(slug, []).extend(str(alias) for alias in (row.get("aliases") or []) if str(alias).strip())
     best = None
     best_len = 0
     for brand in brands:
-        parts = _brand_tokens(str(brand.get("displayName") or brand.get("name") or ""))
-        if not parts:
-            continue
-        label = " ".join(parts)
-        generic = label in GENERIC_BRANDS or (len(parts) == 1 and parts[0] in GENERIC_BRANDS)
-        if generic:
-            if tokens[:len(parts)] != parts:
+        labels = [str(brand.get("displayName") or brand.get("name") or "")]
+        labels.extend(alias_by_slug.get(str(brand.get("slug") or ""), []))
+        for label_text in labels:
+            parts = _brand_tokens(label_text)
+            if not parts:
                 continue
-            if parts == ["HOT"] and len(tokens) > 1 and tokens[1] == "PINK":
-                continue
-            if parts == ["PINK"] and tokens[0] == "HOT":
-                continue
-        else:
-            found = any(tokens[index:index + len(parts)] == parts for index in range(len(tokens) - len(parts) + 1))
-            collapsed = "".join(parts)
-            if not found and len(collapsed) >= 4 and any(token == collapsed for token in tokens):
-                found = True
-            if not found:
-                continue
-        if len(label) > best_len:
-            best = brand
-            best_len = len(label)
+            label = " ".join(parts)
+            generic = label in GENERIC_BRANDS or (len(parts) == 1 and parts[0] in GENERIC_BRANDS)
+            if generic:
+                if tokens[:len(parts)] != parts:
+                    continue
+                if parts == ["HOT"] and len(tokens) > 1 and tokens[1] == "PINK":
+                    continue
+                if parts == ["PINK"] and tokens[0] == "HOT":
+                    continue
+            else:
+                found = any(tokens[index:index + len(parts)] == parts for index in range(len(tokens) - len(parts) + 1))
+                collapsed = "".join(parts)
+                if not found and len(collapsed) >= 4 and any(token == collapsed for token in tokens):
+                    found = True
+                if not found:
+                    continue
+            if len(label) > best_len:
+                best = brand
+                best_len = len(label)
     return best
 
 
@@ -219,7 +256,7 @@ def brand_report(brands: list[dict]) -> dict:
     return {"oddBrands": odd, "possibleDuplicates": duplicates}
 
 
-def classify_item(item: dict, mappings: list[dict], categories: list[dict], brands: list[dict]) -> dict:
+def classify_item(item: dict, mappings: list[dict], categories: list[dict], brands: list[dict], aliases: Optional[list[dict]] = None) -> dict:
     by_slug = {str(row.get("slug")): row for row in categories if row.get("slug")}
     allowed = set(by_slug)
     by_name = {}
@@ -231,40 +268,43 @@ def classify_item(item: dict, mappings: list[dict], categories: list[dict], bran
     labels = clover_category_names(item)
     slug = ""
     source = ""
+    conflict = False
     item_name = str(item.get("name") or "")
+    chosen = []
     if labels:
+        # A mapped Clover category wins. Keywords only refine that category
+        # (THC-P cart, rolling-paper wraps, tobacco split). They never replace it.
         for label in labels:
             mapped = by_name.get(label.lower(), "")
             overridden, override_source = _category_override(label, item_name, mapped, allowed)
-            if overridden:
-                slug = overridden
-                source = override_source or "mapping"
-                break
-            if label.strip().lower() == "tobacco":
-                source = ""
-                slug = ""
-                break
-        if not slug and not any(label.strip().lower() == "tobacco" for label in labels):
-            # A Clover category that is not one of the mapped names stays unmatched.
-            # Keywords are only for items with no category.
-            source = ""
+            if label.strip().lower() == "tobacco" or overridden or mapped:
+                chosen.append((overridden or mapped, override_source or ("mapping" if mapped else "")))
+        slugs = {value for value, _origin in chosen if value}
+        if len(slugs) > 1:
+            conflict = True
+        elif len(slugs) == 1:
+            slug = next(iter(slugs))
+            source = next(origin for value, origin in chosen if value == slug) or "mapping"
     else:
         slug = _uncategorized_slug(item_name, allowed)
         if slug:
             source = "keyword"
     category_name = ""
-    if slug and slug in by_slug:
+    if conflict:
+        slug = ""
+        source = ""
+    elif slug and slug in by_slug:
         category_name = by_slug[slug].get("name") or slug
     else:
         slug = ""
         source = ""
-    brand = match_brand(item_name, brands)
+    brand = match_brand(item_name, brands, aliases)
     brand_slug = (brand or {}).get("slug") or ""
     brand_name = (brand or {}).get("displayName") or (brand or {}).get("name") or ""
     if source in {"mapping", "rule"}:
         confidence = "high"
     elif source == "keyword":
-        confidence = "low"
+        confidence = "keyword"
     else:
         confidence = "none"
     return {
@@ -274,5 +314,6 @@ def classify_item(item: dict, mappings: list[dict], categories: list[dict], bran
         "mappedBrandSlug": brand_slug,
         "mappedBrandName": brand_name,
         "confidence": confidence,
-        "needsReview": confidence != "high",
+        "conflict": conflict,
+        "needsReview": conflict or not bool(slug),
     }

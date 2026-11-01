@@ -156,7 +156,8 @@ def test_sync_flag_defaults_off_and_catalog_pull_does_not_write():
         assert plan["priceChanges"][0]["to"] == 25.99
         assert product["stock"] == 2 and product["price"] == 10 and product["salePrice"] == 9
         assert product["name"] == "Website name" and product["minimumAge"] == 21 and product["active"] is True
-        assert calls == ["GET", "GET"]
+        assert calls[:2] == ["GET", "GET"]
+        assert all(method == "GET" for method in calls)
 
     run(go())
 
