@@ -95,6 +95,8 @@ class CloverIntegration:
         http_client_factory=None,
         sync_enabled: bool = False,
         dry_run: bool = False,
+        api_token: str = "",
+        merchant_id: str = "",
     ):
         self.db = db
         self.client_id = client_id.strip()
@@ -107,13 +109,35 @@ class CloverIntegration:
         # the server flag is turned on. The API merchant id is never hardcoded.
         self.sync_enabled = bool(sync_enabled)
         self.dry_run = bool(dry_run)
+        # Merchant API token mode. The token stays in memory for this process.
+        self.api_token = (api_token or "").strip()
+        self.merchant_id = (merchant_id or "").strip()
         key = base64.urlsafe_b64encode(hashlib.sha256(jwt_secret.encode("utf-8")).digest())
         self.cipher = Fernet(key)
         self.http_client_factory = http_client_factory or (lambda **kwargs: httpx.AsyncClient(**kwargs))
 
     @property
+    def merchant_id_valid(self) -> bool:
+        return bool(re.fullmatch(r"[A-Za-z0-9]{13}", self.merchant_id))
+
+    @property
+    def token_mode(self) -> bool:
+        """True only when a dashboard API token and the 13-character API merchant id are both set."""
+        return bool(self.api_token and self.merchant_id_valid)
+
+    @property
     def configured(self) -> bool:
+        if self.token_mode:
+            return True
         return bool(self.client_id and self.client_secret and self.redirect_uri)
+
+    def _redact(self, value: str) -> str:
+        text = redact_text(value)
+        if self.api_token:
+            text = text.replace(self.api_token, "[redacted]")
+        if self.client_secret:
+            text = text.replace(self.client_secret, "[redacted]")
+        return text
 
     @property
     def api_base(self) -> str:
@@ -148,7 +172,7 @@ class CloverIntegration:
             if re.search(r"token|secret|authorization|password", str(key), re.I):
                 continue
             if isinstance(value, str):
-                value = redact_text(value)
+                value = self._redact(value)
             safe[key] = value
         await self.db.clover_sync_logs.insert_one({
             "id": hashlib.sha256(f"{utcnow().isoformat()}:{action}".encode()).hexdigest()[:24],
@@ -264,16 +288,33 @@ class CloverIntegration:
         return data["access_token"], doc
 
     async def request(self, method: str, path: str, *, json_body: Optional[dict] = None, params: Optional[dict] = None, retry_auth: bool = True) -> dict:
-        token, _ = await self.access_token()
+        if self.token_mode:
+            token = self.api_token
+            retry_auth = False
+        else:
+            token, _ = await self.access_token()
         headers = {"Authorization": f"Bearer {token}", "Accept": "application/json", "User-Agent": USER_AGENT}
         async with self.http_client_factory(timeout=30) as client:
             response = await client.request(method, f"{self.api_base}{path}", headers=headers, json=json_body, params=params)
+        if response.status_code in (401, 403) and self.token_mode:
+            raise CloverError("Clover token missing a permission or revoked")
         if response.status_code == 401 and retry_auth:
             token, _ = await self.access_token(force_refresh=True)
             headers["Authorization"] = f"Bearer {token}"
             async with self.http_client_factory(timeout=30) as client:
                 response = await client.request(method, f"{self.api_base}{path}", headers=headers, json=json_body, params=params)
         return self._json_or_error(response, "Clover inventory request failed")
+
+    async def test_connection(self) -> dict:
+        """Confirm the dashboard token. Returns only the merchant name and item count."""
+        if not self.token_mode:
+            if self.api_token or self.merchant_id:
+                raise CloverError("Set both CLOVER_API_TOKEN and the 13-character CLOVER_MERCHANT_ID from the Clover dashboard URL.")
+            raise CloverError("API token mode is not configured.")
+        merchant = await self.request("GET", f"/v3/merchants/{self.merchant_id}")
+        items = await self._paged(f"/v3/merchants/{self.merchant_id}/items")
+        name = merchant.get("name", "") if isinstance(merchant, dict) else ""
+        return {"name": name, "itemCount": len(items)}
 
     async def _paged(self, path: str) -> list[dict]:
         rows: list[dict] = []
@@ -287,11 +328,19 @@ class CloverIntegration:
             offset += len(page)
         return rows
 
+    def _merchant_id(self, config: Optional[dict] = None) -> str:
+        if self.token_mode:
+            return self.merchant_id
+        return _clean_identifier((config or {}).get("merchantId"))
+
     async def fetch_inventory(self) -> list[dict]:
-        doc = await self.config()
-        if not doc or not doc.get("merchantId"):
-            raise CloverError("Clover is not connected.")
-        merchant_id = doc["merchantId"]
+        if self.token_mode:
+            merchant_id = self.merchant_id
+        else:
+            doc = await self.config()
+            if not doc or not doc.get("merchantId"):
+                raise CloverError("Clover is not connected.")
+            merchant_id = doc["merchantId"]
         items = await self._paged(f"/v3/merchants/{merchant_id}/items")
         stocks = await self._paged(f"/v3/merchants/{merchant_id}/item_stocks")
         stock_by_id = {_stock_item_id(stock): _stock_quantity(stock) for stock in stocks if _stock_item_id(stock)}
@@ -400,23 +449,25 @@ class CloverIntegration:
             await self.log("inventory_pull", "success", durationMs=int((utcnow() - started).total_seconds() * 1000), summary=summary)
             return summary
         except Exception as exc:
-            await self.db.integrations.update_one({"key": "clover"}, {"$set": {"lastSyncAt": utcnow(), "lastSyncStatus": "failed", "lastSyncError": redact_text(str(exc)), "updatedAt": utcnow()}}, upsert=True)
-            await self.log("inventory_pull", "failed", error=redact_text(str(exc)))
+            message = self._redact(str(exc))
+            await self.db.integrations.update_one({"key": "clover"}, {"$set": {"lastSyncAt": utcnow(), "lastSyncStatus": "failed", "lastSyncError": message, "updatedAt": utcnow()}}, upsert=True)
+            await self.log("inventory_pull", "failed", error=message)
             if isinstance(exc, CloverError):
                 raise
-            raise CloverError(f"Clover inventory sync failed: {exc}") from exc
+            raise CloverError(f"Clover inventory sync failed: {message}") from exc
 
     async def push_product_stock(self, product_id: int, source: str = "website") -> bool:
         product = await self.db.products.find_one({"id": product_id})
         if not product or not product.get("cloverItemId"):
             return False
         config = await self.config()
-        if not config or not config.get("merchantId"):
+        merchant_id = self._merchant_id(config)
+        if not merchant_id:
             return False
         try:
             await self.request(
                 "PUT",
-                f"/v3/merchants/{config['merchantId']}/item_stocks/{product['cloverItemId']}",
+                f"/v3/merchants/{merchant_id}/item_stocks/{product['cloverItemId']}",
                 json_body={"quantity": int(product.get("stock", 0))},
             )
             await self.db.products.update_one(
@@ -557,7 +608,7 @@ class CloverIntegration:
         if not self.sync_enabled:
             return {"applied": False, "reason": "sync_disabled", "adjustments": []}
         config = await self.config() or {}
-        merchant_id = _clean_identifier(config.get("merchantId"))
+        merchant_id = self._merchant_id(config)
         planned = []
         for line in lines:
             product_id = line.get("productId")
