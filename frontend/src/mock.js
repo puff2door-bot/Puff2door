@@ -6,7 +6,7 @@ export const BRAND = {
   tagline: "Puffs Delivered To You",
   phone: "(407) 625-6826",
   email: "puff2door@gmail.com",
-  address: "481 N State Rd 434, Altamonte Springs, FL 32714",
+  address: "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714",
 };
 
 export const announcements = [

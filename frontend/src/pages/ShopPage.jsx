@@ -84,7 +84,7 @@ const ShopPage = () => {
     ? { ...categorySeo(currentCat), path: `/product-category/${currentCat.slug}` }
     : slug
     ? { title: "Page not found | HD Smoke Shop", description: "This category does not exist.", noindex: true }
-    : { title: "Shop Vape Products Online | HD Smoke Shop", description: "Shop all vape products, delta disposables, cartridges, edibles, glass pipes and smoke shop essentials online at HD Smoke Shop with local delivery in the Orlando area. 21+ only.", intro: "Every product we carry, from disposable vapes to glass and kratom — ordered online, delivered locally in the Orlando area.", path: "/shop" };
+    : { title: "Shop Smoke Shop Accessories Online – HD Smoke Shop", description: "Browse vaporizers, hookah, glass and smoke shop accessories at HD Smoke Shop in Altamonte Springs. Local delivery or in-store pickup. 21+ only.", intro: "Every product we carry, from disposable vapes to glass and kratom — shop online for local delivery in ZIP 32714, or visit our Altamonte Springs store.", path: "/shop" };
   const crumbs = [{ name: "Home", path: "/" }, { name: "Shop", path: "/shop" }];
   if (currentCat) crumbs.push({ name: titleCase(currentCat.name), path: `/product-category/${currentCat.slug}` });
   if (isBrand && currentBrand) crumbs.push({ name: currentBrand.name, path: `/brand/${currentBrand.slug}` });
