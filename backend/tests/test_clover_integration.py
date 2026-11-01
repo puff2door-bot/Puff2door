@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 from mongomock_motor import AsyncMongoMockClient
 
-from clover import CloverIntegration
+from clover import CloverError, CloverIntegration
 
 
 def run(coro):
@@ -309,4 +309,79 @@ def test_oauth_state_is_one_time_and_tokens_are_encrypted_at_rest():
         assert await db.clover_oauth_states.count_documents({}) == 0
 
     run(go())
+
+
+TOKEN = "merchant-dashboard-token"
+MERCHANT = "AB12CD34EF567"
+
+
+def token_integration(db, handler, api_token=TOKEN, merchant_id=MERCHANT):
+    transport = httpx.MockTransport(handler)
+    return CloverIntegration(
+        db,
+        client_id="",
+        client_secret="",
+        jwt_secret="test-secret-that-is-at-least-thirty-two-bytes-long",
+        environment="production",
+        redirect_uri="https://api.example.com/api/clover/oauth/callback",
+        site_url="https://example.com",
+        api_token=api_token,
+        merchant_id=merchant_id,
+        http_client_factory=lambda **kwargs: httpx.AsyncClient(transport=transport, **kwargs),
+    )
+
+
+def test_token_mode_sends_bearer_header_and_does_not_store_the_token():
+    async def go():
+        db = AsyncMongoMockClient()["clover_token_mode"]
+        seen = []
+
+        def handler(request):
+            seen.append((request.method, request.url.path, request.headers.get("Authorization"), request.url.host))
+            if request.url.path == f"/v3/merchants/{MERCHANT}":
+                return httpx.Response(200, json={"id": MERCHANT, "name": "HD Smoke Shop"})
+            if request.url.path.endswith("/items"):
+                return httpx.Response(200, json={"elements": [{"id": "a"}, {"id": "b"}]})
+            raise AssertionError(request.url.path)
+
+        clover = token_integration(db, handler)
+        assert clover.token_mode is True
+        assert clover.api_base == "https://api.clover.com"
+        result = await clover.test_connection()
+
+        assert result == {"name": "HD Smoke Shop", "itemCount": 2}
+        assert seen[0][2] == f"Bearer {TOKEN}"
+        assert seen[1][2] == f"Bearer {TOKEN}"
+        assert seen[0][3] == "api.clover.com"
+        saved = await db.integrations.find({}).to_list(10)
+        assert TOKEN not in json.dumps(saved, default=str)
+
+    run(go())
+
+
+def test_token_mode_401_and_403_name_the_permission_problem():
+    async def go():
+        for status in (401, 403):
+            db = AsyncMongoMockClient()[f"clover_token_{status}"]
+
+            def handler(request, status=status):
+                assert request.headers["Authorization"] == f"Bearer {TOKEN}"
+                return httpx.Response(status, json={"message": "nope"})
+
+            clover = token_integration(db, handler)
+            try:
+                await clover.test_connection()
+            except CloverError as exc:
+                assert str(exc) == "Clover token missing a permission or revoked"
+            else:
+                raise AssertionError(status)
+
+    run(go())
+
+
+def test_oauth_stays_in_use_when_the_api_token_is_absent():
+    db = AsyncMongoMockClient()["clover_oauth_still"]
+    clover = integration(db, lambda request: httpx.Response(500))
+    assert clover.token_mode is False
+    assert clover.configured is True
 

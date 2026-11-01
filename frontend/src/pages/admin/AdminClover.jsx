@@ -63,6 +63,18 @@ const AdminClover = () => {
 
   const sync = () => run("sync", () => api.post("/admin/clover/sync"), status?.automaticSync ? "Inventory synced from Clover" : "Dry run finished. Nothing was changed.");
 
+  const testConnection = async () => {
+    setBusy("test");
+    try {
+      const { data } = await api.post("/admin/clover/test-connection");
+      toast({ title: "Clover token works", description: `${data.name || "Merchant"} · ${data.itemCount} items` });
+    } catch (error) {
+      toast({ title: "Clover connection failed", description: error?.response?.data?.detail || "Try again.", variant: "destructive" });
+    } finally {
+      setBusy("");
+    }
+  };
+
   const link = (item) => {
     const productId = Number(choice[item.id]);
     if (!productId) {
@@ -91,20 +103,21 @@ const AdminClover = () => {
         </div>
         <div className="flex flex-wrap gap-2">
           {status.connected && <button onClick={sync} disabled={Boolean(busy)} className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${busy === "sync" ? "animate-spin" : ""}`} /> {status.automaticSync ? "Sync now" : "Preview sync"}</button>}
-          {!status.connected && <button onClick={connect} disabled={Boolean(busy) || !status.configured} className="inline-flex items-center gap-2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"><ExternalLink className="h-4 w-4" /> Connect Clover</button>}
+          {status.tokenMode && <button onClick={testConnection} disabled={Boolean(busy)} className="inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-bold disabled:opacity-50">Test connection</button>}
+          {!status.connected && !status.tokenMode && <button onClick={connect} disabled={Boolean(busy) || !status.configured} className="inline-flex items-center gap-2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"><ExternalLink className="h-4 w-4" /> Connect Clover</button>}
         </div>
       </div>
 
       <section className={`mb-6 rounded-2xl border p-5 ${status.automaticSync ? "border-emerald-300 bg-emerald-50/60" : "border-amber-300 bg-amber-50"}`}>
         <h2 className="font-bold">{status.automaticSync ? "Automatic sync is on" : "Automatic sync is off"}</h2>
-        <p className="mt-1 text-sm text-neutral-700">{status.automaticSync ? `Clover is checked about every ${status.scheduleMinutes} minutes, and inventory webhooks update stock and prices. Online orders reduce the linked Clover count once.` : "Clover is connected only as far as you have authorized it. Preview sync lists stock, price, and photo matches without changing the website or Clover. Set CLOVER_SYNC_ENABLED on the server when you want those updates to apply."}</p>
+        <p className="mt-1 text-sm text-neutral-700">{status.automaticSync ? `Clover is checked about every ${status.scheduleMinutes} minutes${status.tokenMode ? ". Webhooks need a Clover app, so this connection uses that pull and Sync now." : ", and inventory webhooks update stock and prices."} Online orders reduce the linked Clover count once.` : "Preview sync lists stock, price, and photo matches without changing the website or Clover. Set CLOVER_SYNC_ENABLED on the server when you want those updates to apply."}</p>
         {status.dryRun && status.syncEnabled && <p className="mt-2 text-sm font-semibold text-amber-800">Dry run is on, so scheduled sync reports changes and does not write them.</p>}
         {status.lastCatalogPlan?.dryRun && <p className="mt-2 text-sm">Last preview: {(status.lastCatalogPlan.stockChanges || []).length} stock change(s), {(status.lastCatalogPlan.priceChanges || []).length} price change(s), {(status.lastCatalogPlan.photoLinks || []).length} photo link(s).</p>}
       </section>
 
       {!status.configured && (
         <section className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-neutral-900">
-          <div className="flex gap-3"><CircleAlert className="h-5 w-5 shrink-0 text-amber-600" /><div><h2 className="font-bold">One secure setup step remains</h2><p className="mt-1 text-sm text-neutral-700">Create a private Clover app, then add the App ID and App Secret to Render's secure environment settings. Secrets are never shown or saved in this browser.</p><p className="mt-2 text-xs font-semibold">Missing: {status.missingSetup.join(", ") || "Clover credentials"}</p></div></div>
+          <div className="flex gap-3"><CircleAlert className="h-5 w-5 shrink-0 text-amber-600" /><div><h2 className="font-bold">One secure setup step remains</h2><p className="mt-1 text-sm text-neutral-700">{(status.missingSetup || []).some((item) => item.includes("API")) ? "Add the merchant API token and the 13-character merchant id to the server environment. The token is never shown in this browser." : "Create a private Clover app, then add the App ID and App Secret to Render's secure environment settings. Secrets are never shown or saved in this browser."}</p><p className="mt-2 text-xs font-semibold">Missing: {status.missingSetup.join(", ") || "Clover credentials"}</p></div></div>
         </section>
       )}
 
@@ -118,10 +131,10 @@ const AdminClover = () => {
         <div className="flex flex-col md:flex-row md:items-center gap-4">
           <div className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${status.connected ? "bg-emerald-600 text-white" : "bg-neutral-100 text-neutral-500"}`}><Store className="h-6 w-6" /></div>
           <div className="flex-1">
-            <div className="flex items-center gap-2"><h2 className="font-bold text-lg">{status.connected ? status.merchantName || "Clover store connected" : "Clover is not connected"}</h2>{status.connected && <CheckCircle2 className="h-5 w-5 text-emerald-600" />}</div>
+            <div className="flex items-center gap-2"><h2 className="font-bold text-lg">{status.tokenMode ? "Connected with API token" : status.connected ? status.merchantName || "Clover store connected" : "Clover is not connected"}</h2>{status.connected && <CheckCircle2 className="h-5 w-5 text-emerald-600" />}</div>
             <p className="text-sm text-neutral-600">{status.connected ? `Merchant ${status.merchantId} · ${status.environment}` : "Connect once to authorize secure inventory access."}</p>
           </div>
-          {status.connected && <button onClick={disconnect} disabled={Boolean(busy)} className="inline-flex items-center gap-2 text-xs font-bold text-red-600 hover:underline disabled:opacity-50"><Unplug className="h-4 w-4" /> Disconnect</button>}
+          {status.connected && !status.tokenMode && <button onClick={disconnect} disabled={Boolean(busy)} className="inline-flex items-center gap-2 text-xs font-bold text-red-600 hover:underline disabled:opacity-50"><Unplug className="h-4 w-4" /> Disconnect</button>}
         </div>
       </section>
 
@@ -142,7 +155,7 @@ const AdminClover = () => {
           <p><span className="font-bold text-neutral-900">Webhook URL:</span> <code className="break-all">{status.webhookUrl}</code></p>
           <p><span className="font-bold text-neutral-900">Redirect URL:</span> <code className="break-all">{status.redirectUri}</code></p>
           {status.webhookVerificationCode && <p><span className="font-bold text-neutral-900">Clover verification code:</span> <code>{status.webhookVerificationCode}</code></p>}
-          <p className={status.webhookAuthConfigured ? "text-emerald-700" : "text-amber-700"}>{status.webhookAuthConfigured ? "Webhook authentication is configured." : "Add the Clover webhook auth code before enabling live webhooks."}</p>
+          <p className={status.tokenMode ? "text-neutral-600" : status.webhookAuthConfigured ? "text-emerald-700" : "text-amber-700"}>{status.tokenMode ? "Webhooks need a Clover app. This connection uses the scheduled pull and Sync now." : status.webhookAuthConfigured ? "Webhook authentication is configured." : "Add the Clover webhook auth code before enabling live webhooks."}</p>
         </div>
       </section>
 

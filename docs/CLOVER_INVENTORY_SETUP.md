@@ -4,6 +4,32 @@ This connection uses Clover's API directly. It does not require Zapier, Make,
 or a paid App Market connector. Existing Clover hardware, account, and payment
 processing charges are separate.
 
+## Token mode (recommended)
+
+Use a merchant API token from the regular Clover web dashboard. No Clover developer app or OAuth is required. Webhooks are not available in this mode. Stock and prices update from the scheduled pull (about every 12 minutes while the API process is awake) and from **Sync now** / **Preview sync**.
+
+1. Sign in to [clover.com](https://www.clover.com) as the merchant, for example puff2door@gmail.com.
+2. Open **Account & Setup > API Tokens** and create a token.
+3. Tick these permissions:
+   - **Inventory: Read** — required. The sync reads items and item stocks.
+   - **Inventory: Write** — required. A placed online order reduces item stock with `PUT /v3/merchants/{mId}/item_stocks/{itemId}`.
+   - **Merchant: Read** — required. **Test connection** calls `GET /v3/merchants/{mId}`.
+   - **Orders: Read** — not required. This code does not call the Clover orders API. Online orders adjust item stock only.
+4. Find `CLOVER_MERCHANT_ID` in the dashboard URL: `https://www.clover.com/home/m/<id>`. That id is 13 letters and numbers. It is not the longer merchant number printed on the Clover device.
+5. On the Render `puff2door` API service, set:
+
+   - `CLOVER_API_TOKEN` — the token from step 2. Secret. Never put it in the frontend.
+   - `CLOVER_MERCHANT_ID` — the 13-character id from the dashboard URL.
+   - `CLOVER_ENV=production` — uses `https://api.clover.com`.
+   - `CLOVER_SYNC_ENABLED=false` until a preview looks right.
+   - `CLOVER_SYNC_DRY_RUN=false` unless you want enabled sync to report only.
+
+6. Restart the API. Open **Admin → Clover Inventory**. The page says **Connected with API token** and hides **Connect Clover**. Click **Test connection**. It returns the merchant name and an item count only.
+7. Click **Preview sync** and review a few items. Nothing is written while `CLOVER_SYNC_ENABLED` is false, or while `CLOVER_SYNC_DRY_RUN=true`.
+8. Set `CLOVER_SYNC_ENABLED=true` and restart when the preview is correct.
+
+The token is read from the server environment on each request. It is not stored in MongoDB, not written to logs, and not returned by the admin API.
+
 ## What the connection does
 
 - Clover is the source of truth for item stock and prices.
@@ -15,8 +41,10 @@ processing charges are separate.
 - Online orders reduce the linked Clover stock count once. A retry of the same
   order does not reduce it again. Website edits to names and prices are not
   sent to Clover.
-- The API merchant id is the id Clover returns during OAuth. It is not the
-  longer merchant number printed on the device, and it is not saved in the app.
+- In token mode the API merchant id is `CLOVER_MERCHANT_ID`. In OAuth mode it
+  is the id Clover returns during login. Either way it is the 13-character API
+  id, not the longer number printed on the device. The API token itself is
+  never saved.
 - Existing products match only by a saved Clover item ID or an exact, unique SKU
   or barcode. Product names are never used for automatic matching.
 - Private inventory photos link to a Clover item only when the barcode text
@@ -24,6 +52,10 @@ processing charges are separate.
 - Unmatched Clover items remain in **Admin → Clover Inventory** for manual review.
 - Imports are hidden drafts until the owner reviews product photos, category,
   copy, and compliance settings.
+
+## OAuth app setup (optional)
+
+Use this only if you are not using a merchant API token. Token mode skips this section. Webhook delivery still requires this app.
 
 ## One-time Clover setup
 

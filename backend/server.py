@@ -2389,6 +2389,8 @@ CLOVER_WEBHOOK_AUTH_CODE = os.environ.get("CLOVER_WEBHOOK_AUTH_CODE", "").strip(
 CLOVER_SYNC_ENABLED = os.environ.get("CLOVER_SYNC_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
 CLOVER_SYNC_DRY_RUN = os.environ.get("CLOVER_SYNC_DRY_RUN", "").strip().lower() in {"1", "true", "yes", "on"}
 CLOVER_SYNC_INTERVAL_SECONDS = 12 * 60
+CLOVER_API_TOKEN = os.environ.get("CLOVER_API_TOKEN", "").strip()
+CLOVER_MERCHANT_ID = os.environ.get("CLOVER_MERCHANT_ID", "").strip()
 
 
 def clover_integration() -> CloverIntegration:
@@ -2403,6 +2405,8 @@ def clover_integration() -> CloverIntegration:
         webhook_auth_code=CLOVER_WEBHOOK_AUTH_CODE,
         sync_enabled=CLOVER_SYNC_ENABLED,
         dry_run=CLOVER_SYNC_DRY_RUN,
+        api_token=CLOVER_API_TOKEN,
+        merchant_id=CLOVER_MERCHANT_ID,
     )
 
 
@@ -2852,19 +2856,31 @@ async def admin_clover_status(admin: dict = Depends(get_admin_user)):
     products_needing_retry = await db.products.count_documents({"cloverSyncError": {"$exists": True, "$ne": ""}})
     failed = await db.clover_sync_logs.count_documents({"status": "failed"})
     missing = []
-    if not CLOVER_CLIENT_ID:
-        missing.append("Clover App ID")
-    if not CLOVER_CLIENT_SECRET:
-        missing.append("Clover App Secret")
-    if not CLOVER_REDIRECT_URI:
-        missing.append("Clover redirect URL")
-    if not CLOVER_WEBHOOK_AUTH_CODE:
-        missing.append("Clover webhook auth code")
+    if integration.token_mode:
+        pass
+    elif integration.api_token or integration.merchant_id:
+        if not integration.api_token:
+            missing.append("Clover API token")
+        if not integration.merchant_id:
+            missing.append("Clover API merchant id")
+        elif not integration.merchant_id_valid:
+            missing.append("Clover API merchant id must be the 13-character id from the dashboard URL")
+    else:
+        if not CLOVER_CLIENT_ID:
+            missing.append("Clover App ID")
+        if not CLOVER_CLIENT_SECRET:
+            missing.append("Clover App Secret")
+        if not CLOVER_REDIRECT_URI:
+            missing.append("Clover redirect URL")
+        if not CLOVER_WEBHOOK_AUTH_CODE:
+            missing.append("Clover webhook auth code")
+    merchant_id = integration.merchant_id if integration.token_mode else config.get("merchantId", "")
     return {
         "configured": integration.configured,
-        "connected": bool(config.get("encryptedAccessToken") and config.get("merchantId")),
+        "connected": integration.token_mode or bool(config.get("encryptedAccessToken") and config.get("merchantId")),
+        "tokenMode": integration.token_mode,
         "environment": integration.environment,
-        "merchantId": config.get("merchantId", ""),
+        "merchantId": merchant_id,
         "merchantName": config.get("merchantName", ""),
         "connectedAt": config.get("connectedAt"),
         "lastSyncAt": config.get("lastSyncAt"),
@@ -2905,6 +2921,15 @@ async def admin_clover_connect_url(admin: dict = Depends(get_admin_user)):
         return {"url": await clover_integration().create_authorization_url(admin["id"])}
     except CloverError as exc:
         raise HTTPException(status_code=400, detail=clover_error_detail(exc))
+
+
+@api_router.post("/admin/clover/test-connection")
+async def admin_clover_test_connection(admin: dict = Depends(get_admin_user)):
+    try:
+        result = await clover_integration().test_connection()
+    except CloverError as exc:
+        raise HTTPException(status_code=400, detail=clover_error_detail(exc))
+    return {"name": result.get("name", ""), "itemCount": result.get("itemCount", 0)}
 
 
 @api_router.get("/clover/oauth/callback")
