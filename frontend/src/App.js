@@ -39,6 +39,7 @@ import AdminOperations from "./pages/admin/AdminOperations";
 import AdminCompliance from "./pages/admin/AdminCompliance";
 import AdminAnalytics from "./pages/admin/AdminAnalytics";
 import InventoryCapture from "./pages/admin/InventoryCapture";
+import MissingPhotos from "./pages/admin/MissingPhotos";
 import AdminClover from "./pages/admin/AdminClover";
 import ChatWidget from "./components/chat/ChatWidget";
 import Seo, { setJsonLd } from "./seo/Seo";
@@ -110,6 +111,7 @@ const AppRoutes = () => {
         <Route path="compliance" element={<AdminCompliance />} />
         <Route path="analytics" element={<AdminAnalytics />} />
         <Route path="inventory-capture" element={<InventoryCapture />} />
+        <Route path="missing-photos" element={<MissingPhotos />} />
         <Route path="clover" element={<AdminClover />} />
         <Route path="loyalty" element={<AdminLoyalty />} />
         <Route path="chat" element={<AdminChat />} />
