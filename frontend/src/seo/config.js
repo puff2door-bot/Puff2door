@@ -30,12 +30,9 @@ export const STORE = {
   mapEmbedUrl: "https://www.google.com/maps?q=HD+Smoke+Shop,+481+N+State+Rd+434+Suite+1050,+Altamonte+Springs,+FL+32714&output=embed",
   directionsUrl: "https://www.google.com/maps/place/?q=place_id:ChIJKZb4tvlx54gRjJxn6gAuEU4",
   googleReviewUrl: "https://g.page/r/CYycZ-oALhFOEBM/review",
-  instagram: "https://www.instagram.com/hd.smokeshop/",
+  instagram: "https://www.instagram.com/hdsmokeshop.altamonte/",
   facebook: "https://www.facebook.com/puff2doors",
   tiktok: "https://www.tiktok.com/@hd_smokeshop",
-  yelp: "https://www.yelp.com/biz/hd-smoke-shop-altamonte-springs",
-  mapquest: "https://www.mapquest.com/us/florida/hd-smoke-shop-467534151",
-  yellowPages: "https://www.yellowpages.com/altamonte-springs-fl/bp/hd-smoke-shop-581442087",
 };
 
 export const absUrl = (path = "/") => (path.startsWith("http") ? path : `${SITE_URL}${path.startsWith("/") ? path : `/${path}`}`);
@@ -125,7 +122,7 @@ export const storeJsonLd = () => ({
   openingHoursSpecification: [{ "@type": "OpeningHoursSpecification", dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], opens: STORE.opens, closes: STORE.closes }],
   areaServed: [{ "@type": "Place", name: "Altamonte Springs, FL 32714", address: { "@type": "PostalAddress", postalCode: STORE.deliveryZip, addressLocality: STORE.city, addressRegion: STORE.region, addressCountry: STORE.country } }],
   audience: { "@type": "PeopleAudience", suggestedMinAge: 21 },
-  sameAs: [STORE.instagram, STORE.facebook, STORE.tiktok, STORE.yelp, STORE.mapquest, STORE.yellowPages],
+  sameAs: [STORE.directionsUrl, STORE.instagram, STORE.facebook, STORE.tiktok],
 });
 
 // Kept for older imports.

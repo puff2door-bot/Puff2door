@@ -4,7 +4,7 @@ import { Phone, Mail, MapPin, Clock, Facebook, Instagram, Twitter } from "lucide
 
 const SOCIALS = [
   { name: "Facebook", href: "https://www.facebook.com/puff2doors", Icon: Facebook },
-  { name: "Instagram", href: "https://www.instagram.com/hd.smokeshop/", Icon: Instagram },
+  { name: "Instagram", href: "https://www.instagram.com/hdsmokeshop.altamonte/", Icon: Instagram },
   { name: "Twitter", href: "https://twitter.com/puff2doors", Icon: Twitter },
 ];
 import { BRAND } from "../mock";
