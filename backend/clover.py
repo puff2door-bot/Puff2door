@@ -26,6 +26,12 @@ from pymongo.errors import DuplicateKeyError
 _HIDE_ON_IMPORT = re.compile(r"(urine|fetish|rhino|royal honey|vvip|love power|^\s*(super\s+)?rush\s*$)", re.I)
 
 
+# Removed-in-Clover products are hidden automatically unless more than this many
+# (or this share of linked products) disappear in one sync.
+MISSING_HIDE_MIN = 25
+MISSING_HIDE_SHARE = 0.05
+
+
 def _slug(value: str) -> str:
     text = re.sub(r"[^a-z0-9]+", "-", str(value or "").lower().replace("&", " and ")).strip("-")
     return text[:80] or "item"
@@ -579,11 +585,26 @@ class CloverIntegration:
             if self.sync_enabled and not self.dry_run:
                 await self._push_field_changes(outbound_fields)
             remote_ids = {row["id"] for row in remote}
+            linked_local = [product for product in local if product.get("cloverItemId")]
+            missing_local = [product for product in linked_local if product["cloverItemId"] not in remote_ids]
+            # Hide website products whose Clover item was removed, so they can't be ordered.
+            # Skip when a large share looks missing at once: that is more likely a partial
+            # Clover response than a real clean-up, so those are only flagged.
+            can_hide = bool(remote) and len(missing_local) <= max(MISSING_HIDE_MIN, int(len(linked_local) * MISSING_HIDE_SHARE))
+            hidden_missing = 0
             for product in local:
                 if product.get("cloverItemId") and product["cloverItemId"] not in remote_ids:
-                    await self.db.products.update_one({"id": product["id"]}, {"$set": {"cloverMissing": True, "cloverDeletionFlag": "missing_in_clover"}})
+                    changes = {"cloverMissing": True, "cloverDeletionFlag": "missing_in_clover"}
+                    if can_hide and product.get("active", True):
+                        changes.update({"active": False, "cloverAutoHidden": True})
+                        hidden_missing += 1
+                        await self.log("deletion_flag", "success", productId=product["id"], cloverItemId=product["cloverItemId"], flag="hidden_missing_in_clover")
+                    await self.db.products.update_one({"id": product["id"]}, {"$set": changes})
                 elif product.get("cloverMissing"):
-                    await self.db.products.update_one({"id": product["id"]}, {"$set": {"cloverMissing": False}, "$unset": {"cloverDeletionFlag": ""}})
+                    changes = {"cloverMissing": False}
+                    if product.get("cloverAutoHidden"):
+                        changes["active"] = True
+                    await self.db.products.update_one({"id": product["id"]}, {"$set": changes, "$unset": {"cloverDeletionFlag": "", "cloverAutoHidden": ""}})
             unmatched = [item for item in remote if item["id"] not in matched_remote]
             imported_items = 0
             if self.import_new_items and self.sync_enabled and not self.dry_run:
@@ -602,6 +623,7 @@ class CloverIntegration:
                 "skippedItems": len(unmatched),
                 "linkCandidates": len(link_candidates),
                 "importedItems": imported_items,
+                "hiddenMissingItems": hidden_missing,
                 "restockedProductIds": restocked,
             }
             await self.db.integrations.update_one({"key": "clover"}, {

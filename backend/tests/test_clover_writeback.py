@@ -315,3 +315,43 @@ def test_auto_import_is_off_by_default_and_skips_likely_duplicates():
         assert await db2.products.count_documents({"cloverItemId": "c-1"}) == 0
 
     run(go())
+
+
+def test_items_removed_in_clover_are_hidden_and_come_back():
+    async def go():
+        db = AsyncMongoMockClient()["removed"]
+        state = {"items": [{"id": f"c{i}", "name": f"Item {i}", "price": 100} for i in range(1, 41)]}
+
+        def handler(request):
+            if request.method != "GET":
+                raise AssertionError("no writes expected")
+            if request.url.path.endswith("/items"):
+                return httpx.Response(200, json={"elements": state["items"]})
+            if request.url.path.endswith("/item_stocks"):
+                return httpx.Response(200, json={"elements": [{"item": {"id": row["id"]}, "quantity": 2} for row in state["items"]]})
+            return httpx.Response(200, json={"elements": []})
+
+        clover = integration(db, handler)
+        await connect(db, clover)
+        for i in range(1, 41):
+            await db.products.insert_one({"id": i, "name": f"Item {i}", "price": 1, "stock": 2, "cloverItemId": f"c{i}", "active": True})
+        await db.products.insert_one({"id": 99, "name": "Manual hide", "price": 1, "cloverItemId": "c99", "active": False})
+
+        state["items"] = [row for row in state["items"] if row["id"] != "c40"]
+        summary = await clover.sync_catalog(source="test")
+        assert summary["hiddenMissingItems"] == 1
+        gone = await db.products.find_one({"id": 40})
+        assert gone["active"] is False and gone["cloverAutoHidden"] is True
+
+        state["items"].append({"id": "c40", "name": "Item 40", "price": 100})
+        await clover.sync_catalog(source="test")
+        back = await db.products.find_one({"id": 40})
+        assert back["active"] is True and "cloverAutoHidden" not in back
+        assert (await db.products.find_one({"id": 99}))["active"] is False
+
+        state["items"] = state["items"][:5]
+        partial = await clover.sync_catalog(source="test")
+        assert partial["hiddenMissingItems"] == 0
+        assert (await db.products.find_one({"id": 30}))["active"] is True
+
+    run(go())
