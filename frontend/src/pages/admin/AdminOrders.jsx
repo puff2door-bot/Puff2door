@@ -29,9 +29,23 @@ const AdminOrders = () => {
   const [pickupDrafts, setPickupDrafts] = useState({});
   const { toast } = useToast();
 
+  const [showHidden, setShowHidden] = useState(false);
   useEffect(() => {
-    api.get("/admin/orders").then(({ data }) => setOrders(data.orders)).finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    api.get("/admin/orders", { params: showHidden ? { archived: true } : {} }).then(({ data }) => setOrders(data.orders)).finally(() => setLoading(false));
+  }, [showHidden]);
+
+  // Hiding keeps the order on record but out of Orders, the dashboard and alerts (e.g. test orders).
+  const setHidden = async (o, archived) => {
+    if (archived && !window.confirm(`Hide ${o.orderNumber}? It stays on record and you can unhide it from "Hidden orders".`)) return;
+    try {
+      await api.put(`/admin/orders/${o.id}/archive`, { archived });
+      setOrders((prev) => prev.filter((x) => x.id !== o.id));
+      toast({ title: archived ? "Order hidden" : "Order restored", description: o.orderNumber });
+    } catch (e) {
+      toast({ title: "Update failed", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
+    }
+  };
 
   const setStatus = async (o, status) => {
     if (status === "cancelled" && !window.confirm(`Cancel ${o.orderNumber}? Stock is returned and any rewards points earned on it are reversed.`)) return;
@@ -127,7 +141,9 @@ const AdminOrders = () => {
   return (
     <div data-testid="admin-orders">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-        <h1 className="font-heading text-3xl uppercase tracking-tight">Orders <span className="text-neutral-400 text-xl">({orders.length})</span></h1>
+        <h1 className="font-heading text-3xl uppercase tracking-tight">{showHidden ? "Hidden orders" : "Orders"} <span className="text-neutral-400 text-xl">({orders.length})</span>
+          <button type="button" onClick={() => setShowHidden((v) => !v)} data-testid="orders-toggle-hidden" className="ml-3 align-middle text-xs font-bold normal-case tracking-normal underline text-neutral-500">{showHidden ? "Back to orders" : "Show hidden"}</button>
+        </h1>
         <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
           {[{ key: "all", label: "All" }, { key: "pickup", label: "Pickup" }, { key: "awaiting_payment", label: "Awaiting Payment" }, ...ALL_STATUSES].map((s) => (
             <button key={s.key} onClick={() => setFilter(s.key)} data-testid={`orders-filter-${s.key}`} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-colors ${filter === s.key ? "bg-neutral-900 border-neutral-900 text-white" : "border-neutral-300 text-neutral-600 hover:border-neutral-900"}`}>{s.label}</button>
@@ -176,6 +192,9 @@ const AdminOrders = () => {
                   {SPECIAL_LABELS[o.status] ? <Link to="/admin/operations" className="text-xs font-bold text-red-700 underline">Manage return</Link> : <select data-testid={`order-status-select-${o.orderNumber}`} disabled={o.paymentStatus === "awaiting_payment"} value={o.manualStatus || o.status} onChange={(e) => setStatus(o, e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold outline-none focus:border-emerald-600">
                     {ALL_STATUSES.map((s) => <option key={s.key} value={s.key}>{o.fulfillment === "pickup" ? PICKUP_LABELS[s.key] : s.label}</option>)}
                   </select>}
+                  {(showHidden || ["cancelled", "delivered", "returned"].includes(o.status)) && (
+                    <button type="button" onClick={() => setHidden(o, !showHidden)} data-testid={`order-hide-${o.orderNumber}`} className="text-xs font-bold px-3 py-1.5 rounded-full border border-neutral-300 text-neutral-600 hover:border-neutral-900">{showHidden ? "Unhide" : "Hide"}</button>
+                  )}
                   <Link to={`/order/${o.id}`} target="_blank" className="text-neutral-400 hover:text-emerald-600" aria-label="Open"><ExternalLink className="h-4 w-4" /></Link>
                 </div>
               </div>

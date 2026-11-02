@@ -3530,8 +3530,8 @@ async def admin_migrate_images_revert(admin: dict = Depends(get_admin_user)):
 
 
 @api_router.get("/admin/orders")
-async def admin_list_orders(admin: dict = Depends(get_admin_user)):
-    orders = await db.orders.find({}).sort("createdAt", -1).to_list(1000)
+async def admin_list_orders(archived: bool = False, admin: dict = Depends(get_admin_user)):
+    orders = await db.orders.find({"archived": True} if archived else {"archived": {"$ne": True}}).sort("createdAt", -1).to_list(1000)
     return {"orders": [order_response(o) for o in orders]}
 
 
@@ -3549,7 +3549,7 @@ def _as_datetime(value) -> Optional[datetime]:
 
 async def build_compliance_alerts() -> List[dict]:
     alerts = []
-    orders = await db.orders.find({"paymentStatus": {"$ne": "refunded"}, "$or": [{"manualStatus": {"$nin": ["cancelled", "returned"]}}, {"pickup.refundNeeded": True}]}).sort("createdAt", -1).to_list(2000)
+    orders = await db.orders.find({"paymentStatus": {"$ne": "refunded"}, "archived": {"$ne": True}, "$or": [{"manualStatus": {"$nin": ["cancelled", "returned"]}}, {"pickup.refundNeeded": True}]}).sort("createdAt", -1).to_list(2000)
     for order in orders:
         status = order_response(order)["status"]
         if not order.get("ageVerifiedAt"):
@@ -3648,7 +3648,7 @@ async def admin_analytics(days: int = 30, admin: dict = Depends(get_admin_user))
     days = max(1, min(int(days), 365))
     now = now_utc()
     start = now - timedelta(days=days)
-    orders = await db.orders.find({"createdAt": {"$gte": start}}).sort("createdAt", 1).to_list(10000)
+    orders = await db.orders.find({"archived": {"$ne": True}, "createdAt": {"$gte": start}}).sort("createdAt", 1).to_list(10000)
     paid = [o for o in orders if o.get("paymentStatus", "paid") == "paid" and o.get("manualStatus") != "cancelled"]
     net_revenue = round(sum(float(o.get("total", 0)) - float(o.get("refundedAmount", 0)) for o in paid), 2)
     daily, payments, zips, statuses, products = {}, {}, {}, {}, {}
@@ -3704,6 +3704,22 @@ async def admin_analytics(days: int = 30, admin: dict = Depends(get_admin_user))
         "topZips": [{"zip": k, "orders": v} for k, v in sorted(zips.items(), key=lambda item: item[1], reverse=True)[:10]],
         "topProducts": sorted(products.values(), key=lambda p: p["qty"], reverse=True)[:10],
     }
+
+
+class OrderArchiveInput(BaseModel):
+    archived: bool = True
+
+
+@api_router.put("/admin/orders/{order_id}/archive")
+async def admin_archive_order(order_id: str, inp: OrderArchiveInput, admin: dict = Depends(get_admin_user)):
+    """Hide a finished order (e.g. a test order) from Orders, the dashboard and alerts. Nothing is deleted."""
+    o = await db.orders.find_one({"id": order_id})
+    if not o:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if inp.archived and o.get("manualStatus") not in {"cancelled", "delivered", "returned"}:
+        raise HTTPException(status_code=409, detail="Cancel or complete the order before hiding it.")
+    await db.orders.update_one({"id": order_id}, {"$set": {"archived": inp.archived, "archivedAt": now_utc(), "archivedBy": admin["id"]}})
+    return order_response(await db.orders.find_one({"id": order_id}))
 
 
 @api_router.put("/admin/orders/{order_id}/status")
@@ -4029,7 +4045,7 @@ async def admin_delete_promo(promo_id: str, admin: dict = Depends(get_admin_user
 
 @api_router.get("/admin/stats")
 async def admin_stats(admin: dict = Depends(get_admin_user)):
-    orders = await db.orders.find({}, {"total": 1, "createdAt": 1, "manualStatus": 1, "items": 1, "userId": 1, "paymentStatus": 1, "refundedAmount": 1}).to_list(5000)
+    orders = await db.orders.find({"archived": {"$ne": True}}, {"total": 1, "createdAt": 1, "manualStatus": 1, "items": 1, "userId": 1, "paymentStatus": 1, "refundedAmount": 1}).to_list(5000)
     # Revenue counts money actually received: paid orders, minus refunds, never cancelled or unpaid (Zelle pending) ones.
     revenue = round(sum(float(o.get("total", 0)) - float(o.get("refundedAmount") or 0) for o in orders
                         if o.get("paymentStatus") == "paid" and o.get("manualStatus") != "cancelled"), 2)
@@ -4556,6 +4572,33 @@ async def expire_uncollected_pickups() -> int:
     return count
 
 
+ZELLE_UNPAID_HOURS = 24
+
+
+async def expire_unpaid_zelle_orders() -> int:
+    """Cancel Zelle orders still unpaid after ZELLE_UNPAID_HOURS so their stock isn't held forever."""
+    cutoff = now_utc() - timedelta(hours=ZELLE_UNPAID_HOURS)
+    count = 0
+    rows = await db.orders.find({"paymentMethod": "zelle", "paymentStatus": "awaiting_payment", "createdAt": {"$lt": cutoff},
+                                 "manualStatus": {"$nin": ["cancelled", "returned"]}}).to_list(200)
+    for o in rows:
+        now = now_utc()
+        updates = {"manualStatus": "cancelled", "statusUpdatedAt": now, "statusUpdatedBy": "zelle_expiry", "zelleExpiredAt": now}
+        if not o.get("stockReleased"):
+            await release_stock(o["items"])
+            updates["stockReleased"] = True
+            await restore_clover_order_stock(o)
+        await db.orders.update_one({"id": o["id"]}, {"$set": updates})
+        updated = await db.orders.find_one({"id": o["id"]})
+        await loyalty_reverse_for_order(updated, None, None)
+        asyncio.create_task(send_order_push(updated, "cancelled"))
+        asyncio.create_task(emails.send_zelle_expired(updated, ZELLE_UNPAID_HOURS))
+        count += 1
+    if count:
+        logger.info("Cancelled %s unpaid Zelle order(s)", count)
+    return count
+
+
 @app.on_event("startup")
 async def pickup_expiry_schedule():
     async def loop():
@@ -4565,6 +4608,10 @@ async def pickup_expiry_schedule():
                 await expire_uncollected_pickups()
             except Exception as exc:
                 logger.error("Pickup expiry check failed: %s", exc)
+            try:
+                await expire_unpaid_zelle_orders()
+            except Exception as exc:
+                logger.error("Zelle expiry check failed: %s", exc)
             await asyncio.sleep(900)
 
     asyncio.create_task(loop())
