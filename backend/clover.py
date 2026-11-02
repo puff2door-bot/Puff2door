@@ -427,8 +427,10 @@ class CloverIntegration:
 
     async def _website_catalog(self) -> tuple[list[dict], list[dict]]:
         categories = await self.db.categories.find({}, {"_id": 0, "slug": 1, "name": 1}).to_list(500)
-        brands = await self.db.brands.find({}, {"_id": 0, "slug": 1, "name": 1, "displayName": 1}).to_list(2000)
-        if not brands:
+        # Only active brands are matched: a brand hidden in Brand Management (for example a
+        # fake one such as "ASH" or "WATER") must never be put back on products by a sync.
+        brands = await self.db.brands.find({"active": {"$ne": False}}, {"_id": 0, "slug": 1, "name": 1, "displayName": 1}).to_list(2000)
+        if not brands and not await self.db.brands.count_documents({}):
             seen = set()
             brands = []
             async for product in self.db.products.find({}, {"brand": 1, "brandName": 1}):

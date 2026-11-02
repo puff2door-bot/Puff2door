@@ -355,3 +355,34 @@ def test_items_removed_in_clover_are_hidden_and_come_back():
         assert (await db.products.find_one({"id": 30}))["active"] is True
 
     run(go())
+
+
+def test_sync_never_assigns_a_hidden_brand():
+    async def go():
+        db = AsyncMongoMockClient()["hidden_brand"]
+        items = [{"id": "c1", "name": "Water Pipe 7inch", "price": 5000}, {"id": "c2", "name": "Geek Bar Pulse Lime", "price": 2000}]
+
+        def handler(request):
+            if request.method != "GET":
+                raise AssertionError("no writes expected")
+            if request.url.path.endswith("/items"):
+                return httpx.Response(200, json={"elements": items})
+            if request.url.path.endswith("/item_stocks"):
+                return httpx.Response(200, json={"elements": []})
+            return httpx.Response(200, json={"elements": []})
+
+        clover = integration(db, handler)
+        await connect(db, clover)
+        await db.brands.insert_many([
+            {"slug": "water", "name": "WATER", "displayName": "WATER", "active": False},
+            {"slug": "geek-bar", "name": "GEEK BAR", "displayName": "GEEK BAR", "active": True},
+        ])
+        await db.products.insert_many([
+            {"id": 1, "name": "Water Pipe 7inch", "price": 50, "stock": 0, "cloverItemId": "c1", "brand": "", "brandName": "", "active": True},
+            {"id": 2, "name": "Geek Bar Pulse Lime", "price": 20, "stock": 0, "cloverItemId": "c2", "brand": "", "brandName": "", "active": True},
+        ])
+        await clover.sync_catalog(source="test")
+        assert (await db.products.find_one({"id": 1}))["brand"] == ""
+        assert (await db.products.find_one({"id": 2}))["brand"] == "geek-bar"
+
+    run(go())
