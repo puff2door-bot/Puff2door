@@ -200,7 +200,7 @@ export default function InventoryCapture() {
           ({ data } = await api.post(`${root}/${editing}/photo`, body));
         }
         setRows((current) => current.map((row) => (row.id === data.id ? data : row)));
-        setSaved(`Updated ${barcode}. The private record is saved.`);
+        setSaved(data.publishedProductId ? `Updated ${barcode}. Photo is on the website for ${data.publishedProductName}.` : `Updated ${barcode}. ${data.publishNote || "The record is saved."}`);
       } else {
         const body = new FormData();
         body.append("file", processed, "inventory-white.webp");
@@ -208,7 +208,7 @@ export default function InventoryCapture() {
         body.append("identifier", barcode);
         ({ data } = await api.post(root, body));
         setRows((current) => [data, ...current].slice(0, 200));
-        setSaved(`Saved ${barcode}. Ready for the next item.`);
+        setSaved(data.publishedProductId ? `Saved ${barcode}. Photo is on the website for ${data.publishedProductName}. Ready for the next item.` : `Saved ${barcode}. ${data.publishNote || "Ready for the next item."}`);
       }
       resetForm();
     } catch (err) {
@@ -242,7 +242,7 @@ export default function InventoryCapture() {
   return <section className="space-y-5">
     <div>
       <h2 className="font-heading text-2xl">{editing ? "Edit private inventory record" : "Store photo capture"}</h2>
-      <p className="text-sm text-neutral-500 mt-2">Private inventory records for the shop. Enter or scan a barcode, photograph one item, then approve the white-background photo before it is saved.</p>
+      <p className="text-sm text-neutral-500 mt-2">Enter or scan a barcode, photograph one item, then approve the white-background photo. When the barcode matches a website product, the photo becomes that product's picture on the website.</p>
     </div>
     <form onSubmit={save} className="rounded-2xl border p-5 space-y-4 bg-white">
       <label className="block text-sm font-bold">Barcode or SKU
