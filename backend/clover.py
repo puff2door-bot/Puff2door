@@ -27,6 +27,8 @@ from pymongo.errors import DuplicateKeyError
 # Removed-in-Clover products are hidden automatically unless more than this many
 # (or this share of linked products) disappear in one sync.
 MISSING_HIDE_MIN = 25
+# A website stock edit bigger than this (and more than 3x the old count) needs confirmation.
+STOCK_EDIT_CONFIRM_MIN = 50
 MISSING_HIDE_SHARE = 0.05
 
 
@@ -1445,6 +1447,34 @@ class CloverIntegration:
                 continue
             applied.append(await self._mutate_item_stock(row["orderId"], line, row.get("direction") or "decrement"))
         return applied
+
+    async def push_stock_edit(self, product_id: int, old_stock: int, new_stock: int, confirm: bool = False) -> dict:
+        """Send a stock number typed on the website to Clover as a change (+/-), not a
+        replacement, so a register sale made meanwhile is kept. Large jumps need confirm."""
+        product = await self.db.products.find_one({"id": product_id})
+        clover_id = _clean_identifier((product or {}).get("cloverItemId"))
+        if not product or not clover_id:
+            return {"status": "skipped", "reason": "This product is not linked to Clover."}
+        delta = int(new_stock) - int(old_stock)
+        if delta == 0:
+            return {"status": "skipped", "reason": "Stock did not change."}
+        if not self.sync_enabled or self.dry_run:
+            return {"status": "planned", "reason": "Clover sync is off. Nothing was sent."}
+        if not self._merchant_id(await self.config() or {}):
+            return {"status": "not_connected"}
+        if abs(delta) > max(STOCK_EDIT_CONFIRM_MIN, int(old_stock) * 3) and not confirm:
+            return {"status": "needs_confirmation", "delta": delta,
+                    "error": f"Stock change of {delta:+d} is unusually large, so Clover was not changed. Tick the confirm box and save again, or fix the number. The next sync will reset the website to Clover's count."}
+        await self.db.clover_stock_adjustments.create_index("key", unique=True)
+        line = {
+            "productId": product_id,
+            "cloverItemId": clover_id,
+            "barcode": exact_barcode(product.get("barcode")) or exact_barcode(product.get("sku")),
+            "qty": abs(delta),
+            "name": product.get("name") or "",
+        }
+        result = await self._mutate_item_stock(f"edit-{product_id}-{secrets.token_hex(6)}", line, "restore" if delta > 0 else "decrement")
+        return {**result, "delta": delta}
 
     async def apply_order_stock(self, order_id: str, lines: list[dict]) -> dict:
         """Reduce Clover stock once per paid or confirmed order line. A retry reuses the same record."""

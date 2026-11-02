@@ -386,3 +386,30 @@ def test_sync_never_assigns_a_hidden_brand():
         assert (await db.products.find_one({"id": 2}))["brand"] == "geek-bar"
 
     run(go())
+
+
+def test_website_stock_edit_sends_the_change_to_clover():
+    async def go():
+        db = AsyncMongoMockClient()["stock_edit"]
+        clover_qty = {"q": 4}
+        writes = []
+
+        def handler(request):
+            if request.url.path.endswith("/item_stocks/c1"):
+                if request.method == "GET":
+                    return httpx.Response(200, json={"quantity": clover_qty["q"]})
+                body = json.loads(request.content or b"{}")
+                writes.append(body["quantity"])
+                clover_qty["q"] = body["quantity"]
+                return httpx.Response(200, json={})
+            return httpx.Response(200, json={"elements": []})
+
+        clover = integration(db, handler)
+        await connect(db, clover)
+        await db.products.insert_one({"id": 1, "name": "Item", "price": 10, "stock": 8, "cloverItemId": "c1"})
+        result = await clover.push_stock_edit(1, 5, 8)
+        assert result["status"] == "success" and clover_qty["q"] == 7
+        blocked = await clover.push_stock_edit(1, 2, 500)
+        assert blocked["status"] == "needs_confirmation" and writes == [7]
+
+    run(go())
