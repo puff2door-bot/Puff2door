@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Camera, CheckCircle2, Trash2, Upload } from "lucide-react";
 import api from "../../api";
 import SearchableSelect from "../../components/admin/SearchableSelect";
@@ -261,7 +262,10 @@ export default function InventoryCapture() {
 
   return <section className="space-y-5">
     <div>
-      <h2 className="font-heading text-2xl">{editing ? "Edit private inventory record" : "Store photo capture"}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-heading text-2xl">{editing ? "Edit private inventory record" : "Store photo capture"}</h2>
+        <Link to="/admin/missing-photos" data-testid="go-missing-photos" className="rounded-full px-4 py-2 font-bold text-sm bg-emerald-600 text-white flex items-center gap-1"><Camera className="w-4 h-4" />Missing photos</Link>
+      </div>
       <p className="text-sm text-neutral-500 mt-2">Enter or scan a barcode, photograph one item, then approve the white-background photo. When the barcode matches a website product, the photo becomes that product's picture on the website.</p>
     </div>
     <form onSubmit={save} className="rounded-2xl border p-5 space-y-4 bg-white">
