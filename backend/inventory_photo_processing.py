@@ -117,12 +117,46 @@ def _paint_white_frame(canvas):
     canvas.paste(vertical, (width - FRAME_PADDING, 0))
 
 
+# A cut-out that keeps less than this share of the photo lost the item, not just the
+# background. Then the whole photo is used instead of a blank white square.
+MIN_SUBJECT_SHARE = 0.02
+
+
+def _is_prepared(image):
+    """True for a photo this module already produced: a 1600 square with a pure-white frame.
+    The save step receives the approved preview, so it must not be cut out a second time."""
+    if image.size != (CANVAS_SIZE, CANVAS_SIZE):
+        return False
+    rgb = image.convert('RGB')
+    edge = FRAME_PADDING - 8
+    for box in ((0, 0, CANVAS_SIZE, edge), (0, CANVAS_SIZE - edge, CANVAS_SIZE, CANVAS_SIZE),
+                (0, 0, edge, CANVAS_SIZE), (CANVAS_SIZE - edge, 0, CANVAS_SIZE, CANVAS_SIZE)):
+        low, _high = zip(*rgb.crop(box).getextrema())
+        if min(low) < 250:
+            return False
+    return True
+
+
+def _encode(canvas):
+    output = io.BytesIO()
+    # Lossless so the white frame stays exact #FFFFFF instead of a compressed gray.
+    canvas.save(output, 'WEBP', lossless=True, quality=100, method=4)
+    return output.getvalue()
+
+
 def prepare_inventory_photo(raw, validate_photo=None):
     image = load_photo(raw)
+    if _is_prepared(image):
+        return _encode(image.convert('RGB')), False
     cutout = _discard_background(remove_background(image))
-    bounds = cutout.getchannel('A').point(lambda value: 255 if value > 0 else 0).getbbox()
-    if bounds is None:
-        raise ValueError('No clear item was found. Retake the photo with one item and even lighting.')
+    alpha = cutout.getchannel('A').point(lambda value: 255 if value > 0 else 0)
+    bounds = alpha.getbbox()
+    kept = (alpha.histogram()[255] / float(alpha.width * alpha.height)) if bounds else 0.0
+    if bounds is None or kept < MIN_SUBJECT_SHARE:
+        # The cut-out removed the item itself. Keep the full photo rather than save a blank.
+        cutout = image.copy()
+        cutout.putalpha(255)
+        bounds = (0, 0, image.width, image.height)
     subject = cutout.crop(bounds)
     source_long_side = max(subject.size)
     subject = _discard_background(_scale_long_side(subject, CONTENT_MAX))
@@ -133,7 +167,4 @@ def prepare_inventory_photo(raw, validate_photo=None):
         subject.getchannel('A'),
     )
     _paint_white_frame(canvas)
-    output = io.BytesIO()
-    # Lossless so the white frame stays exact #FFFFFF instead of a compressed gray.
-    canvas.save(output, 'WEBP', lossless=True, quality=100, method=4)
-    return output.getvalue(), source_long_side < 640
+    return _encode(canvas), source_long_side < 640
