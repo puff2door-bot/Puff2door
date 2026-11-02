@@ -255,7 +255,7 @@ DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99
                     "countdownHoursText": "Same-day cutoff is {cutoff} ET. No deliveries after {end} or before {start}.",
                     "countdownExtraLines": [],
                     "deliverySlotCapacity": 8, "deliveryDriverCount": 1, "ordersPerDriverPerWindow": 8, "defaultEtaMinutes": 45,
-                    "googleReviewUrl": ""}
+                    "googleReviewUrl": "", "hideOutOfStock": True}
 STORE_TZ = ZoneInfo("America/New_York")
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 DELIVERY_SLOTS = [("12:00", "14:00"), ("16:00", "18:00"), ("18:00", "20:00")]
@@ -554,6 +554,7 @@ class StoreSettingsInput(BaseModel):
     ordersPerDriverPerWindow: int = Field(default=8, ge=1, le=100)
     defaultEtaMinutes: int = Field(default=45, ge=5, le=480)
     googleReviewUrl: str = Field(default="", max_length=500)
+    hideOutOfStock: bool = True
 
     @field_validator("homepageLayout")
     @classmethod
@@ -2133,7 +2134,12 @@ async def create_order_issue(order_id: str, inp: OrderIssueInput, request: Reque
 # ---- Products (public) ----
 @api_router.get("/products")
 async def list_products():
-    prods = await db.products.find({"active": True}).sort("id", 1).to_list(2000)
+    query: dict = {"active": True}
+    if (await get_settings()).get("hideOutOfStock", True):
+        # Out-of-stock products drop off the shop and come back automatically when restocked.
+        # Their product pages stay reachable so links and restock alerts keep working.
+        query["stock"] = {"$gt": 0}
+    prods = await db.products.find(query).sort("id", 1).to_list(2000)
     return {"products": [product_out(p) for p in prods]}
 
 

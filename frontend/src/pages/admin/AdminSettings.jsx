@@ -27,7 +27,7 @@ const AdminSettings = () => {
     countdownClosedDayText: data.countdownClosedDayText ?? "No local delivery today. Order now for the next available delivery day ({next}).", countdownPausedText: data.countdownPausedText ?? "Local delivery is currently paused. Please check back soon.",
     countdownHoursText: data.countdownHoursText ?? "Same-day cutoff is {cutoff} ET. No deliveries after {end} or before {start}.", countdownExtraLines: data.countdownExtraLines || [],
     deliverySlotCapacity: data.deliverySlotCapacity ?? 8, deliveryDriverCount: data.deliveryDriverCount ?? 1, ordersPerDriverPerWindow: data.ordersPerDriverPerWindow ?? 8, defaultEtaMinutes: data.defaultEtaMinutes ?? 45,
-    googleReviewUrl: data.googleReviewUrl || "" });
+    googleReviewUrl: data.googleReviewUrl || "", hideOutOfStock: data.hideOutOfStock ?? true });
 
   useEffect(() => {
     api.get("/admin/settings").then(({ data }) => setF(toForm(data)));
@@ -40,7 +40,7 @@ const AdminSettings = () => {
       const { data } = await api.put("/admin/settings", { taxRate: Number(f.taxPercent) / 100, deliveryFee: Number(f.deliveryFee), freeDeliveryMin: Number(f.freeDeliveryMin), deliveryZip: f.deliveryZip, deliveryRadiusMiles: Number(f.deliveryRadiusMiles), allowedZipCodes: f.allowedZipCodes.split(/[\s,]+/).map((z) => z.trim()).filter(Boolean),
         sameDayEnabled: Boolean(f.sameDayEnabled), deliveryCutoff: f.deliveryCutoff, deliveryStart: f.deliveryStart, deliveryEnd: f.deliveryEnd, deliveryDays: f.deliveryDays, homepageLayout: f.homepageLayout,
         countdownVisible: Boolean(f.countdownVisible), countdownHeadlineVisible: Boolean(f.countdownHeadlineVisible), countdownHoursVisible: Boolean(f.countdownHoursVisible), countdownOpenText: f.countdownOpenText, countdownClosedText: f.countdownClosedText, countdownClosedDayText: f.countdownClosedDayText, countdownPausedText: f.countdownPausedText, countdownHoursText: f.countdownHoursText, countdownExtraLines: f.countdownExtraLines,
-        deliverySlotCapacity: Number(f.deliverySlotCapacity), deliveryDriverCount: Number(f.deliveryDriverCount), ordersPerDriverPerWindow: Number(f.ordersPerDriverPerWindow), defaultEtaMinutes: Number(f.defaultEtaMinutes), googleReviewUrl: f.googleReviewUrl.trim() });
+        deliverySlotCapacity: Number(f.deliverySlotCapacity), deliveryDriverCount: Number(f.deliveryDriverCount), ordersPerDriverPerWindow: Number(f.ordersPerDriverPerWindow), defaultEtaMinutes: Number(f.defaultEtaMinutes), googleReviewUrl: f.googleReviewUrl.trim(), hideOutOfStock: Boolean(f.hideOutOfStock) });
       setF(toForm(data));
       toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
     } catch (err) {
@@ -171,6 +171,13 @@ const AdminSettings = () => {
           <div><label className="block text-xs font-bold text-neutral-600 mb-1">Default live ETA (minutes)</label><input required type="number" min="5" max="480" step="5" data-testid="settings-default-eta" className={inputCls} value={f.defaultEtaMinutes} onChange={(e) => setF({ ...f, defaultEtaMinutes: e.target.value })} /></div>
         </div>
         <p className="mt-3 text-xs font-semibold text-emerald-700">Effective capacity: {Math.min(Number(f.deliverySlotCapacity) || 1, (Number(f.deliveryDriverCount) || 1) * (Number(f.ordersPerDriverPerWindow) || 1))} orders per delivery window.</p>
+      </div>
+
+      <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-hide-out-of-stock">
+        <label className="flex items-center justify-between gap-4 cursor-pointer">
+          <span><span className="block text-sm font-bold text-neutral-900">Hide out-of-stock products</span><span className="block text-xs text-neutral-500 mt-1">Products at 0 stock drop off the shop, categories and brands, and come back on their own when Clover shows stock again.</span></span>
+          <input type="checkbox" data-testid="settings-hide-oos" className="accent-emerald-600 h-4 w-4 shrink-0" checked={f.hideOutOfStock} onChange={(e) => setF({ ...f, hideOutOfStock: e.target.checked })} />
+        </label>
       </div>
 
       <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-google-reviews">
