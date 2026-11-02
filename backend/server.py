@@ -4197,6 +4197,18 @@ async def admin_chat_status(conv_id: str, inp: ChatStatusInput, admin: dict = De
 from inventory_capture import create_inventory_capture_router, ensure_inventory_indexes
 from inventory_photo_processing import validate_photo
 inventory_photo_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="inventory_photos")
+def _mostly_white(data: bytes) -> bool:
+    """True when less than 1% of the picture is anything but white (an empty cut-out)."""
+    try:
+        from PIL import Image
+        from io import BytesIO
+        im = Image.open(BytesIO(data)).convert("L").resize((200, 200))
+        dark = sum(im.histogram()[:235])
+        return dark < 400
+    except Exception:
+        return False
+
+
 async def publish_store_photo(capture: dict, data: bytes, admin_id: str) -> dict:
     """Use a store photo as the website picture of the one product with the same SKU or barcode."""
     code = str(capture.get("barcode") or capture.get("identifier") or "").strip()
@@ -4211,6 +4223,8 @@ async def publish_store_photo(capture: dict, data: bytes, admin_id: str) -> dict
     if len(matches) > 1:
         return {"note": f"More than one website product uses {code}, so the photo was not added. Fix the duplicate barcode in Clover."}
     product = matches[0]
+    if _mostly_white(data):
+        return {"note": "The saved photo is almost all white, so it was not put on the website. Retake it with the item filling more of the frame."}
     url = await store_image(data, "webp", f"store-photo-{code}.webp", admin_id)
     await db.products.update_one({"id": product["id"]}, {"$set": {"image": url, "image2": url, "storePhotoCaptureId": capture.get("id")}})
     return {"productId": product["id"], "productName": product.get("name") or ""}
