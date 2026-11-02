@@ -594,7 +594,11 @@ class CloverIntegration:
             # Hide website products whose Clover item was removed, so they can't be ordered.
             # Skip when a large share looks missing at once: that is more likely a partial
             # Clover response than a real clean-up, so those are only flagged.
-            can_hide = bool(remote) and len(missing_local) <= max(MISSING_HIDE_MIN, int(len(linked_local) * MISSING_HIDE_SHARE))
+            # Only products still showing count toward the guard: ones already hidden after an
+            # earlier Clover clean-up would otherwise trip it forever and block every later removal.
+            active_linked = [product for product in linked_local if product.get("active", True)]
+            missing_active = [product for product in missing_local if product.get("active", True)]
+            can_hide = bool(remote) and len(missing_active) <= max(MISSING_HIDE_MIN, int(len(active_linked) * MISSING_HIDE_SHARE))
             hidden_missing = 0
             for product in local:
                 if product.get("cloverItemId") and product["cloverItemId"] not in remote_ids:
