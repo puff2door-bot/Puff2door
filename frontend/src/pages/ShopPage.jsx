@@ -177,17 +177,21 @@ const ShopPage = () => {
           )}
 
           {totalPages > 1 && (
-            <div className="flex justify-center gap-2 mt-10">
-              {Array.from({ length: totalPages }).map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => { setPage(i + 1); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-                  className={`h-10 w-10 rounded-lg font-semibold text-sm transition-colors ${page === i + 1 ? "bg-emerald-600 text-white" : "border border-neutral-300 text-neutral-700 hover:border-emerald-600"}`}
-                >
-                  {i + 1}
-                </button>
-              ))}
-            </div>
+            <nav aria-label="Pages" className="flex flex-wrap justify-center items-center gap-2 mt-10" data-testid="shop-pagination">
+              {/* First, last and the pages around the current one, so it fits a phone screen. */}
+              {(() => {
+                const go = (n) => { setPage(n); window.scrollTo({ top: 0, behavior: "smooth" }); };
+                const shown = [...new Set([1, page - 1, page, page + 1, totalPages])].filter((n) => n >= 1 && n <= totalPages).sort((a, b) => a - b);
+                const cls = (active) => `h-10 min-w-[2.5rem] px-3 rounded-lg font-semibold text-sm transition-colors ${active ? "bg-emerald-600 text-white" : "border border-neutral-300 text-neutral-700 hover:border-emerald-600"} disabled:opacity-40`;
+                const out = [<button key="prev" type="button" disabled={page === 1} onClick={() => go(page - 1)} className={cls(false)} aria-label="Previous page">‹</button>];
+                shown.forEach((n, idx) => {
+                  if (idx && n - shown[idx - 1] > 1) out.push(<span key={`gap-${n}`} className="px-1 text-neutral-400">…</span>);
+                  out.push(<button key={n} type="button" onClick={() => go(n)} aria-current={page === n ? "page" : undefined} className={cls(page === n)}>{n}</button>);
+                });
+                out.push(<button key="next" type="button" disabled={page === totalPages} onClick={() => go(page + 1)} className={cls(false)} aria-label="Next page">›</button>);
+                return out;
+              })()}
+            </nav>
           )}
         </div>
       </div>
