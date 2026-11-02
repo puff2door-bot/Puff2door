@@ -80,7 +80,7 @@ const MissingPhotos = () => {
     <section className="space-y-5" data-testid="missing-photos">
       <div>
         <h2 className="font-heading text-2xl">Missing photos</h2>
-        <p className="text-sm text-neutral-500 mt-1">Products on the website that still show a placeholder. Tap <b>Take photo</b>, check the white-background preview, then <b>Use this photo</b>. It goes on the website right away. Tip: hold the phone straight above or in front of the item, fill most of the screen with it, and use good light. Tilted items are straightened automatically.</p>
+        <p className="text-sm text-neutral-500 mt-1">Products on the website that still show a placeholder. Tap <b>Take photo</b>, check the white-background preview, then <b>Use this photo</b>. It goes on the website right away. Tip: hold the phone straight above or in front of the item, fill most of the screen with it, and use soft light. Turn the flash off and keep bright lights from shining straight onto shiny or rainbow-foil boxes: glare on the box is part of the photo and cannot be removed. Tilted items are straightened automatically.</p>
       </div>
       <div className="flex flex-wrap gap-3 items-center">
         <label className="flex-1 min-w-[200px] relative">
