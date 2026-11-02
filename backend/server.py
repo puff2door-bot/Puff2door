@@ -4389,6 +4389,12 @@ if FRONTEND_BUILD_DIR.exists():
     # headers when the portable build serves localized catalog assets.
     mimetypes.add_type("image/webp", ".webp")
 
+    @app.get("/sitemap.xml", include_in_schema=False)
+    async def root_sitemap_xml():
+        # Search engines read /sitemap.xml (robots.txt points here). Serve the live
+        # catalog instead of the static file baked into the build at deploy time.
+        return Response(content=await build_sitemap(), media_type="application/xml; charset=utf-8", headers={"Cache-Control": "public, max-age=3600"})
+
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_frontend(full_path: str):
         candidate = (FRONTEND_BUILD_DIR / full_path).resolve()

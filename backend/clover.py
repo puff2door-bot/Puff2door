@@ -22,8 +22,6 @@ import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from pymongo.errors import DuplicateKeyError
 
-# New Clover items whose names match these are imported hidden for an admin to review.
-_HIDE_ON_IMPORT = re.compile(r"(urine|fetish|rhino|royal honey|vvip|love power|^\s*(super\s+)?rush\s*$)", re.I)
 
 
 # Removed-in-Clover products are hidden automatically unless more than this many
@@ -920,7 +918,7 @@ class CloverIntegration:
             name = str(item.get("name") or "").strip() or "Clover item"
             price = float(item.get("price") or 0)
             category_slug = item.get("mappedCategorySlug") or ""
-            live = bool(category_slug) and price > 0 and not item.get("needsReview") and not _HIDE_ON_IMPORT.search(name)
+            live = bool(category_slug) and price > 0 and not item.get("needsReview")
             image = placeholders.get(category_slug, "")
             doc = {
                 "name": name,

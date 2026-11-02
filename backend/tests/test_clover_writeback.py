@@ -286,7 +286,7 @@ def test_new_clover_items_import_with_category_brand_and_placeholder():
         assert geek["id"] == 6 and geek["slug"] == "geek-bar-pulse-lime-ice-6"
         assert (await db.products.find_one({"cloverItemId": "new-2"}))["active"] is False
         assert (await db.products.find_one({"cloverItemId": "new-3"}))["active"] is False
-        assert (await db.products.find_one({"cloverItemId": "new-4"}))["active"] is False
+        assert (await db.products.find_one({"cloverItemId": "new-4"}))["active"] is True
         assert await clover.category_placeholders() == {"disposable": "/api/files/ph/disposable.png"}
 
         again = await clover.sync_catalog(source="test")
