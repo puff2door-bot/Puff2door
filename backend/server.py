@@ -1214,6 +1214,7 @@ def product_out(p: dict) -> dict:
         "cloverLastSyncedAt": p.get("cloverLastSyncedAt").isoformat() if isinstance(p.get("cloverLastSyncedAt"), datetime) else p.get("cloverLastSyncedAt"),
         "cloverLastPushedAt": p.get("cloverLastPushedAt").isoformat() if isinstance(p.get("cloverLastPushedAt"), datetime) else p.get("cloverLastPushedAt"),
         "cloverSyncError": p.get("cloverSyncError", ""),
+        "cloverCategory": p.get("cloverCategory", ""),
         "rating": p.get("rating", 4.5),
         "stock": stock,
         "inStock": stock > 0,
