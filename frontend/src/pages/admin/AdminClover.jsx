@@ -82,7 +82,7 @@ const AdminClover = () => {
       const { data } = await api.post(`/admin/clover/sync${preview ? "?preview=true" : ""}`);
       const text = preview
         ? `Preview: ${data.plannedLinks?.length || 0} would link automatically, ${data.linkCandidates?.length || 0} need confirmation. Nothing was written.`
-        : `Linked ${data.linkedItems || 0}. Stock updated ${data.stockChanges || 0}. Skipped ${data.skippedItems || data.unmatchedItems || 0}.`;
+        : `Linked ${data.linkedItems || 0}. New from Clover ${data.importedItems || 0}. Stock updated ${data.stockChanges || 0}. Skipped ${data.skippedItems || data.unmatchedItems || 0}.`;
       setSyncResult(text);
       await load();
       toast({ title: preview ? "Preview finished" : "Inventory synced from Clover", description: text });
