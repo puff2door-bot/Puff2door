@@ -4235,6 +4235,27 @@ async def publish_store_photo(capture: dict, data: bytes, admin_id: str) -> dict
     return {"productId": product["id"], "productName": product.get("name") or ""}
 
 
+async def delete_store_photo_product(capture: dict, product_id: int, admin_id: str) -> dict:
+    """Delete the product a store photo is on: first the Clover item, then the website product.
+    product_id must be the product this photo was published to (a deliberate confirmation)."""
+    product = await db.products.find_one({"storePhotoCaptureId": capture.get("id")})
+    if not product and capture.get("publishedProductId"):
+        product = await db.products.find_one({"id": capture["publishedProductId"]})
+    if not product or int(product["id"]) != int(product_id):
+        raise HTTPException(status_code=409, detail="That product is no longer linked to this photo. Nothing was deleted; refresh and try again.")
+    clover_deleted = False
+    if product.get("cloverItemId"):
+        try:
+            await clover_integration().delete_clover_item(product["cloverItemId"], product_id=product["id"])
+            clover_deleted = True
+        except CloverError as exc:
+            raise HTTPException(status_code=502, detail=f"Clover did not delete the item, so nothing was deleted: {clover_error_detail(exc)}")
+    await db.products.delete_one({"id": product["id"]})
+    logger.info("Product %s (%s) deleted everywhere by %s from Store Photos", product["id"], product.get("name"), admin_id)
+    asyncio.create_task(refresh_static_sitemap())
+    return {"productName": product.get("name") or "", "cloverDeleted": clover_deleted}
+
+
 async def unpublish_store_photo(capture: dict) -> dict:
     """Undo publish_store_photo when its record is deleted: restore the previous picture."""
     product = await db.products.find_one({"storePhotoCaptureId": capture.get("id")})
@@ -4250,7 +4271,7 @@ async def unpublish_store_photo(capture: dict) -> dict:
     return {"productId": product["id"], "productName": product.get("name") or ""}
 
 
-api_router.include_router(create_inventory_capture_router(db, inventory_photo_bucket, get_admin_user, validate_photo, publish=publish_store_photo, unpublish=unpublish_store_photo), prefix="/admin")
+api_router.include_router(create_inventory_capture_router(db, inventory_photo_bucket, get_admin_user, validate_photo, publish=publish_store_photo, unpublish=unpublish_store_photo, delete_product=delete_store_photo_product), prefix="/admin")
 app.include_router(api_router)
 
 

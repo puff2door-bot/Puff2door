@@ -227,13 +227,19 @@ export default function InventoryCapture() {
 
   const remove = async (row) => {
     const label = row.name || row.barcode || "this item";
-    if (!window.confirm(`Delete the store photo for ${label}? The website product gets its previous picture back. This cannot be undone.`)) return;
+    if (!window.confirm(`Delete the store photo for ${label}? This cannot be undone.`)) return;
+    let deleteProduct = 0;
+    if (row.publishedProductId && window.confirm(`Also permanently delete the product "${row.publishedProductName || label}" from the WEBSITE and from your CLOVER register?\n\nOK = delete it everywhere.\nCancel = delete only the photo (the product stays for sale with its previous picture).`)) {
+      deleteProduct = row.publishedProductId;
+    }
     setError("");
     try {
-      const { data } = await api.delete(`${root}/${row.id}`);
+      const { data } = await api.delete(`${root}/${row.id}`, { params: deleteProduct ? { deleteProduct } : {} });
       setRows((current) => current.filter((item) => item.id !== row.id));
       if (editing === row.id) resetForm();
-      setSaved(data.productRestored ? `Deleted. ${data.productRestored} has its previous picture back.` : "Deleted.");
+      setSaved(data.productDeleted
+        ? `Deleted the photo and ${data.productDeleted} from the website${data.cloverDeleted ? " and Clover" : ""}.`
+        : (data.productRestored ? `Deleted. ${data.productRestored} has its previous picture back.` : "Deleted."));
     } catch (err) {
       setError(errorText(err, "The store photo could not be deleted. Try again."));
     }
