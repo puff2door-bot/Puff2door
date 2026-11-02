@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Camera, CheckCircle2, Upload } from "lucide-react";
+import { Camera, CheckCircle2, Trash2, Upload } from "lucide-react";
 import api from "../../api";
 import SearchableSelect from "../../components/admin/SearchableSelect";
 import { resolveBrand, resolveCategory } from "../../components/admin/catalogChoices";
@@ -225,6 +225,20 @@ export default function InventoryCapture() {
     }
   };
 
+  const remove = async (row) => {
+    const label = row.name || row.barcode || "this item";
+    if (!window.confirm(`Delete the store photo for ${label}? The website product gets its previous picture back. This cannot be undone.`)) return;
+    setError("");
+    try {
+      const { data } = await api.delete(`${root}/${row.id}`);
+      setRows((current) => current.filter((item) => item.id !== row.id));
+      if (editing === row.id) resetForm();
+      setSaved(data.productRestored ? `Deleted. ${data.productRestored} has its previous picture back.` : "Deleted.");
+    } catch (err) {
+      setError(errorText(err, "The store photo could not be deleted. Try again."));
+    }
+  };
+
   const download = async () => {
     try {
       const { data } = await api.get(`${root}/export.csv`, { responseType: "blob" });
@@ -297,7 +311,7 @@ export default function InventoryCapture() {
           <input data-testid="inventory-quantity" type="text" inputMode="numeric" disabled={busy} value={form.quantity} onChange={setField("quantity")} className={field} placeholder="0" />
         </label>
       </div>
-      <p className="text-xs text-neutral-500">Category and brand come from the website lists, including names such as PODS. This form cannot create a category or brand. Retail price and cost stay on this private record. Saving them does not publish a product, change the website price, or sync to Clover.</p>
+      <p className="text-xs text-neutral-500">Category and brand come from the website lists, including names such as PODS. This form cannot create a category or brand. Retail price and cost stay on this record. Saving does not change the website price or Clover.</p>
       <label className="block text-sm font-bold">Notes
         <textarea maxLength={4000} disabled={busy} value={form.notes} onChange={setField("notes")} className={`${field} min-h-20`} />
       </label>
@@ -319,7 +333,7 @@ export default function InventoryCapture() {
       {!duplicate && error && <p role="alert" data-testid="inventory-error" className="text-sm text-red-700">{error}</p>}
       {saved && <p role="status" data-testid="inventory-success" className="text-sm text-emerald-700 flex gap-2"><CheckCircle2 className="w-5 h-5" />{saved}</p>}
     </form>
-    <p className="text-xs text-neutral-500">Saved to internal inventory only. Website listings, Clover items, prices and stock are unchanged.</p>
+    <p className="text-xs text-neutral-500">The photo also becomes the website picture of the product with the same barcode. Clover items, prices and stock are unchanged.</p>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h3 className="font-bold">Recent records</h3>
       <button type="button" className={`${button} border`} onClick={download}>Export CSV</button>
@@ -334,7 +348,10 @@ export default function InventoryCapture() {
         {row.description && <p className="text-sm break-words text-neutral-600">{row.description}</p>}
         <p className="text-xs text-neutral-500">{row.createdAt ? new Date(row.createdAt).toLocaleString() : ""}</p>
       </div>
-      <button type="button" className={`${button} border shrink-0`} onClick={() => startEdit(row)}>Edit record</button>
+      <div className="flex flex-col gap-2 shrink-0">
+        <button type="button" className={`${button} border`} onClick={() => startEdit(row)}>Edit record</button>
+        <button type="button" data-testid={`inventory-delete-${row.id}`} className={`${button} border border-red-200 text-red-700 flex items-center gap-1 justify-center`} onClick={() => remove(row)}><Trash2 className="w-4 h-4" />Delete</button>
+      </div>
     </article>)}
   </section>;
 }

@@ -160,7 +160,7 @@ async def ensure_inventory_indexes(db):
         logger.warning("Private inventory id index was not created: %s", exc)
 
 
-def create_inventory_capture_router(db, bucket, get_admin, prepare_photo, publish=None):
+def create_inventory_capture_router(db, bucket, get_admin, prepare_photo, publish=None, unpublish=None):
     router = APIRouter(prefix="/inventory-captures", dependencies=[Depends(get_admin)])
 
     async def _publish(capture_id, admin_id):
@@ -513,6 +513,26 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo, publis
         updated = await db.inventory_captures.find_one({"id": capture_id})
         categories, brands = await _catalog()
         return _present_record(updated, categories, brands)
+
+    @router.delete("/{capture_id}")
+    async def delete_capture(capture_id: str, admin=Depends(get_admin)):
+        """Delete a store photo record and its photo. The website product gets its previous picture back."""
+        row = await db.inventory_captures.find_one({"id": capture_id})
+        if not row:
+            raise HTTPException(status_code=404, detail="Inventory record not found")
+        restored = None
+        if unpublish is not None:
+            try:
+                restored = await unpublish(row)
+            except Exception as exc:
+                logger.warning("Website picture for store photo %s could not be restored: %s", capture_id, exc)
+        await db.inventory_captures.delete_one({"id": capture_id})
+        if row.get("blobId"):
+            try:
+                await bucket.delete(row["blobId"])
+            except Exception:
+                logger.warning("Could not remove the stored photo for %s", capture_id)
+        return {"deleted": True, "id": capture_id, "productRestored": (restored or {}).get("productName") or ""}
 
     @router.get("/{capture_id}/photo")
     async def photo(capture_id: str, admin=Depends(get_admin)):
