@@ -59,8 +59,8 @@ export const CatalogProvider = ({ children }) => {
       if (p.categorySlug) { catCounts[p.categorySlug] = (catCounts[p.categorySlug] || 0) + 1; catNames[p.categorySlug] = p.category; }
       if (p.brand) { brandCounts[p.brand] = (brandCounts[p.brand] || 0) + 1; brandNames[p.brand] = p.brandName; }
     });
-    // List every category that has products on the website, even when they are all sold out right now.
-    const knownCats = categoryRecords.filter((c) => catCounts[c.slug] || c.productCount > 0).map((c) => ({ slug: c.slug, name: c.name, count: catCounts[c.slug] || 0 }));
+    // List every active category the owner created, even an empty or sold-out one.
+    const knownCats = categoryRecords.filter((c) => c.active !== false).map((c) => ({ slug: c.slug, name: c.name, count: catCounts[c.slug] || 0 }));
     const extraCats = Object.keys(catCounts).filter((s) => !categoryRecords.some((c) => c.slug === s)).sort().map((s) => ({ slug: s, name: (catNames[s] || s).toUpperCase(), count: catCounts[s] }));
     const activeCategories = [...knownCats, ...extraCats];
     const brandRecord = (slug) => brandRecords.find((r) => r.slug === slug);
