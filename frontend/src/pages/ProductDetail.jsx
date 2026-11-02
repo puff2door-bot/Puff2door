@@ -18,7 +18,20 @@ import { rememberViewed } from "../lib/customerExperience";
 const ProductDetail = () => {
   const { slug } = useParams();
   const { getProductBySlug, getProductsByCategory, getPrice, isOnDeal, loading } = useCatalog();
-  const product = getProductBySlug(slug);
+  // Sold-out products are hidden from the shop list but keep their page (restock emails,
+  // Google, old links), so load one directly when it isn't in the list.
+  const [direct, setDirect] = useState({ slug: "", product: null, done: false });
+  const listed = getProductBySlug(slug);
+  useEffect(() => {
+    if (loading || listed || direct.slug === slug) return;
+    let live = true;
+    setDirect({ slug, product: null, done: false });
+    api.get(`/products/${slug}`)
+      .then(({ data }) => { if (live) setDirect({ slug, product: data, done: true }); })
+      .catch(() => { if (live) setDirect({ slug, product: null, done: true }); });
+    return () => { live = false; };
+  }, [slug, listed, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  const product = listed || (direct.slug === slug ? direct.product : null);
   const { addItem } = useCart();
   const { has, toggle, items: wishItems, setNotify } = useWishlist();
   const { user } = useApp();
@@ -32,7 +45,7 @@ const ProductDetail = () => {
   const [alertEmail, setAlertEmail] = useState(user?.email || "");
   const [alertBusy, setAlertBusy] = useState(false);
 
-  if (loading) return <div className="max-w-[1280px] mx-auto px-4 py-24 text-center text-neutral-500">Loading...</div>;
+  if (loading || (!listed && !(direct.slug === slug && direct.done))) return <div className="max-w-[1280px] mx-auto px-4 py-24 text-center text-neutral-500">Loading...</div>;
 
   if (!product) {
     return (

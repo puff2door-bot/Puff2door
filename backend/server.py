@@ -4029,15 +4029,15 @@ async def admin_delete_promo(promo_id: str, admin: dict = Depends(get_admin_user
 
 @api_router.get("/admin/stats")
 async def admin_stats(admin: dict = Depends(get_admin_user)):
-    orders = await db.orders.find({}, {"total": 1, "createdAt": 1, "manualStatus": 1, "items": 1, "userId": 1}).to_list(5000)
-    revenue = round(sum(o.get("total", 0) for o in orders), 2)
-    today = now_utc().date()
+    orders = await db.orders.find({}, {"total": 1, "createdAt": 1, "manualStatus": 1, "items": 1, "userId": 1, "paymentStatus": 1, "refundedAmount": 1}).to_list(5000)
+    # Revenue counts money actually received: paid orders, minus refunds, never cancelled or unpaid (Zelle pending) ones.
+    revenue = round(sum(float(o.get("total", 0)) - float(o.get("refundedAmount") or 0) for o in orders
+                        if o.get("paymentStatus") == "paid" and o.get("manualStatus") != "cancelled"), 2)
+    today = datetime.now(STORE_TZ).date()
     today_orders = 0
     for o in orders:
-        c = o.get("createdAt")
-        if isinstance(c, str):
-            c = datetime.fromisoformat(c)
-        if c and c.date() == today:
+        c = _as_datetime(o.get("createdAt"))
+        if c and c.astimezone(STORE_TZ).date() == today:
             today_orders += 1
     products = await db.products.find({"active": True}, {"stock": 1, "name": 1, "id": 1, "slug": 1}).to_list(5000)
     low_stock = [{"id": p["id"], "name": p["name"], "stock": int(p.get("stock", 0))} for p in products if int(p.get("stock", 0)) <= 5]
