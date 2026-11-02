@@ -5,12 +5,12 @@ import threading
 import warnings
 from pathlib import Path
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageFilter, ImageOps, UnidentifiedImageError
 
 # Every saved reference uses one square. The item's long side always fills the
 # same inner box, leaving an equal pure-white frame on every side.
 CANVAS_SIZE = 1600
-FRAME_PADDING = 160
+FRAME_PADDING = 40  # thin even margin so the item fills ~95% of the photo
 CONTENT_MAX = CANVAS_SIZE - (FRAME_PADDING * 2)
 WHITE = (255, 255, 255)
 # Mask values at or below this are leftover background and are discarded.
@@ -137,6 +137,18 @@ def _is_prepared(image):
     return True
 
 
+def _subject_bounds(cutout):
+    """Tight box around the item itself. Faint halo and stray specks left by the cut-out
+    used to stretch the box, which shrank the item and left wide white margins."""
+    solid = cutout.getchannel('A').point(lambda value: 255 if value >= 128 else 0)
+    core = solid.filter(ImageFilter.MinFilter(7)).getbbox()
+    if core is None:
+        return solid.getbbox()
+    pad = 6
+    return (max(0, core[0] - pad), max(0, core[1] - pad),
+            min(cutout.width, core[2] + pad), min(cutout.height, core[3] + pad))
+
+
 def _encode(canvas):
     output = io.BytesIO()
     # Lossless so the white frame stays exact #FFFFFF instead of a compressed gray.
@@ -150,7 +162,7 @@ def prepare_inventory_photo(raw, validate_photo=None):
         return _encode(image.convert('RGB')), False
     cutout = _discard_background(remove_background(image))
     alpha = cutout.getchannel('A').point(lambda value: 255 if value > 0 else 0)
-    bounds = alpha.getbbox()
+    bounds = _subject_bounds(cutout)
     kept = (alpha.histogram()[255] / float(alpha.width * alpha.height)) if bounds else 0.0
     if bounds is None or kept < MIN_SUBJECT_SHARE:
         # The cut-out removed the item itself. Keep the full photo rather than save a blank.
