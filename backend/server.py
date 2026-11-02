@@ -2466,7 +2466,7 @@ async def notify_restocked_products(product_ids):
             {"$set": {"notified": True, "notifiedAt": now_utc()}},
         )
 
-SITEMAP_STATIC = ["/", "/shop", "/brands", "/delivery-area", "/about", "/contact", "/privacy-policy", "/terms", "/delivery-policy", "/refund-policy", "/age-and-id-policy"]
+SITEMAP_STATIC = ["/", "/shop", "/brands", "/delivery-area", "/about", "/contact", "/faq", "/privacy-policy", "/terms", "/delivery-policy", "/refund-policy", "/age-and-id-policy"]
 SITEMAP_FILE = ROOT_DIR.parent / "frontend" / "public" / "sitemap.xml"
 
 
