@@ -15,7 +15,7 @@ CONTENT_MAX = CANVAS_SIZE - (FRAME_PADDING * 2)
 WHITE = (255, 255, 255)
 # Mask values at or below this are leftover background and are discarded.
 ALPHA_CUTOFF = 20
-LOAD_MAX = 3000
+LOAD_MAX = 2600
 # Tilt correction: largest angle tried, and the smallest tilt worth fixing.
 MAX_TILT = 15.0
 MIN_TILT = 0.75
@@ -254,17 +254,18 @@ def _box_edges(alpha):
 
 
 def _rectangle_mask(size, edges):
-    """Anti-aliased rectangle with slightly rounded corners, like a real box."""
+    """Rectangle with slightly rounded corners, like a real box; edges softened by one pixel.
+    Drawn at the photo's own size: a supersampled copy ran the small server out of memory."""
     from PIL import ImageDraw
-    ss = 4
-    big = Image.new('L', (size[0] * ss, size[1] * ss), 0)
-    left, top, right, bottom = (v * ss for v in edges)
+    mask = Image.new('L', size, 0)
+    left, top, right, bottom = edges
     radius = 0.012 * min(right - left, bottom - top)
-    ImageDraw.Draw(big).rounded_rectangle((left, top, right - 1, bottom - 1), radius=radius, fill=255)
-    return big.resize(size, Image.Resampling.BOX)
+    ImageDraw.Draw(mask).rounded_rectangle((left, top, right - 1, bottom - 1), radius=radius, fill=255)
+    return mask.filter(ImageFilter.GaussianBlur(0.8))
 
 
 WORK_SIZE = 1000
+CROP_MAX = 2000
 
 
 def _steepen(alpha):
@@ -296,6 +297,9 @@ def prepare_inventory_photo(raw, validate_photo=None):
         region = tuple(int(round(v / factor)) for v in region_small)
         region = (region[0], region[1], min(image.width, region[2]), min(image.height, region[3]))
         subject = image.crop(region).convert('RGB')
+        # The saved item is at most 1520px; more detail than ~2000px only costs memory.
+        if max(subject.size) > CROP_MAX:
+            subject.thumbnail((CROP_MAX, CROP_MAX), Image.Resampling.LANCZOS)
         mask = cut_small.getchannel('A').crop(region_small).resize(subject.size, Image.Resampling.BICUBIC)
         subject.putalpha(_steepen(mask))
         if angle:
