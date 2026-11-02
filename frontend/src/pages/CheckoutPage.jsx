@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { CreditCard, Lock, ChevronRight, ShieldCheck, MapPin, CheckCircle2, XCircle, Heart, Clock3, RefreshCw } from "lucide-react";
+import { CreditCard, Lock, ChevronRight, ShieldCheck, MapPin, CheckCircle2, XCircle, Heart, Clock3, RefreshCw, Truck, Store } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { useApp } from "../context/AppContext";
 import { useCatalog } from "../context/CatalogContext";
@@ -16,6 +16,9 @@ import ZelleInstructions from "../components/checkout/ZelleInstructions";
 import RewardsPanel from "../components/checkout/RewardsPanel";
 import DeliveryCountdown, { useDeliveryWindow } from "../components/DeliveryCountdown";
 
+// A pickup order is collected at the store, so the store is its address.
+const STORE_ADDRESS = { address: "481 N State Rd 434, Suite 1050", city: "Altamonte Springs", state: "FL", zip: "32714" };
+
 const CheckoutPage = () => {
   const { items, subtotal, clearCart, removeItem, toServerItem, pricing, delivery, promo, totals, redeemPoints } = useCart();
   const { user } = useApp();
@@ -25,11 +28,23 @@ const CheckoutPage = () => {
   const [busy, setBusy] = useState(false);
   const [placed, setPlaced] = useState(false);
 
-  const { shipping, tax, discount, reward, total: totalBeforeTip } = totals;
+  const [pickupConfig, setPickupConfig] = useState(null);
+  const [fulfillment, setFulfillment] = useState("delivery");
+  const isPickup = fulfillment === "pickup";
+  useEffect(() => {
+    api.get("/settings").then(({ data }) => setPickupConfig(data.pickup || null)).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (isPickup && !pickupConfig?.pickupEnabled) setFulfillment("delivery");
+  }, [isPickup, pickupConfig]);
+  const { shipping: deliveryShipping, tax, discount, reward, total: deliveryTotalBeforeTip } = totals;
+  // Store pickup never pays the delivery fee and has no driver tip.
+  const shipping = isPickup ? 0 : deliveryShipping;
+  const totalBeforeTip = isPickup ? Math.round((deliveryTotalBeforeTip - deliveryShipping) * 100) / 100 : deliveryTotalBeforeTip;
   const [tipChoice, setTipChoice] = useState("none");
   const [customTip, setCustomTip] = useState("");
   const tipBase = Math.max(subtotal - discount - reward, 0);
-  const tip = tipChoice === "custom"
+  const tip = isPickup ? 0 : tipChoice === "custom"
     ? Math.min(Math.max(Math.round((Number(customTip) || 0) * 100) / 100, 0), 500)
     : tipChoice === "none" ? 0 : Math.round(tipBase * Number(tipChoice)) / 100;
   const total = Math.round((totalBeforeTip + tip) * 100) / 100;
@@ -116,7 +131,8 @@ const CheckoutPage = () => {
     setBusy(true);
     try {
       setPaymentError("");
-      const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: form, dateOfBirth: form.dateOfBirth, ageAttestationAccepted, deliveryWindowId, paymentMethod: method, promoCode: promo?.code || "", redeemPoints: user ? redeemRef.current : 0, tip, expectSameDay: sameDayRef.current, ...extra });
+      const shippingInfo = isPickup ? { ...form, ...STORE_ADDRESS } : form;
+      const { data } = await api.post("/orders", { items: itemsRef.current.map(toServerItem), shipping: shippingInfo, dateOfBirth: form.dateOfBirth, ageAttestationAccepted, deliveryWindowId: isPickup ? "" : deliveryWindowId, fulfillment, paymentMethod: method, promoCode: promo?.code || "", redeemPoints: user ? redeemRef.current : 0, tip, expectSameDay: isPickup ? false : sameDayRef.current, ...extra });
       ecommerce.purchase(data);
       setPlaced(true);
       clearCart();
@@ -136,12 +152,19 @@ const CheckoutPage = () => {
       throw err;
     } finally { setBusy(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, ageAttestationAccepted, deliveryWindowId, method, promo, tip, toServerItem, clearCart, navigate, toast, user]);
+  }, [form, ageAttestationAccepted, deliveryWindowId, fulfillment, isPickup, method, promo, tip, toServerItem, clearCart, navigate, toast, user]);
 
   const validateShipping = () => {
     if (!formRef.current?.reportValidity()) {
-      toast({ title: "Missing delivery details", description: "Please fill in all delivery fields first.", variant: "destructive" });
+      toast({ title: isPickup ? "Missing details" : "Missing delivery details", description: isPickup ? "Please fill in your name, contact details and date of birth first." : "Please fill in all delivery fields first.", variant: "destructive" });
       return false;
+    }
+    if (isPickup) {
+      if (!ageAttestationAccepted) {
+        toast({ title: "Age confirmation required", description: "Confirm that you are 21+ and will show a matching government-issued photo ID at pickup.", variant: "destructive" });
+        return false;
+      }
+      return true;
     }
     if (!zoneRef.current?.eligible) {
       toast({ title: "Outside delivery area", description: zoneRef.current?.message || `Sorry, we only deliver within ${delivery.radiusMiles} miles of ${delivery.zip}.`, variant: "destructive" });
@@ -190,7 +213,7 @@ const CheckoutPage = () => {
   const paypalCreate = async () => {
     if (stockIssues.length) throw new Error(stockIssues.map((s) => s.message).join(" "));
     try {
-      const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "", zip: form.zip, state: form.state, redeemPoints: user ? redeemRef.current : 0, tip, dateOfBirth: form.dateOfBirth, ageAttestationAccepted, deliveryWindowId });
+      const { data } = await api.post("/payments/paypal/create-order", { items: itemsRef.current.map(toServerItem), promoCode: promo?.code || "", zip: isPickup ? STORE_ADDRESS.zip : form.zip, state: isPickup ? STORE_ADDRESS.state : form.state, redeemPoints: user ? redeemRef.current : 0, tip, dateOfBirth: form.dateOfBirth, ageAttestationAccepted, deliveryWindowId: isPickup ? "" : deliveryWindowId, fulfillment });
       return data.id;
     } catch (err) {
       const detail = err?.response?.data?.detail;
@@ -206,7 +229,7 @@ const CheckoutPage = () => {
   };
   const methods = payConfig ? enabledMethods(payConfig) : [];
   const buttonDriven = method === "paypal" || method === "apple_pay" || method === "cash_app";
-  const outOfZone = Boolean(zone && !zone.eligible);
+  const outOfZone = !isPickup && Boolean(zone && !zone.eligible);
   const blocked = outOfZone || stockIssues.length > 0;
 
   const inputCls = "w-full border border-neutral-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-600 transition-colors";
@@ -228,19 +251,41 @@ const CheckoutPage = () => {
         <div className="space-y-8">
           {/* Shipping */}
           <section>
-            <h2 className="font-heading text-xl uppercase tracking-wide mb-4">Delivery Details</h2>
+            {pickupConfig?.pickupEnabled && (
+              <div className="grid grid-cols-2 gap-2 mb-6" data-testid="checkout-fulfillment" role="radiogroup" aria-label="Delivery or pickup">
+                {[["delivery", "Delivery", Truck, "Brought to your door"], ["pickup", "Store pickup", Store, "Free · collect at the store"]].map(([key, label, Icon, sub]) => (
+                  <button key={key} type="button" role="radio" aria-checked={fulfillment === key} data-testid={`fulfillment-${key}`} onClick={() => setFulfillment(key)}
+                    className={`rounded-xl border-2 px-4 py-3 text-left transition-colors ${fulfillment === key ? "border-emerald-600 bg-emerald-50" : "border-neutral-200 hover:border-emerald-400"}`}>
+                    <span className="flex items-center gap-2 font-bold text-sm"><Icon className="h-4 w-4 text-emerald-600" />{label}</span>
+                    <span className="block text-xs text-neutral-500 mt-0.5">{sub}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <h2 className="font-heading text-xl uppercase tracking-wide mb-4">{isPickup ? "Pickup Details" : "Delivery Details"}</h2>
+            {isPickup && (
+              <div data-testid="checkout-pickup-info" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 space-y-1">
+                <p className="font-bold flex items-center gap-2"><Store className="h-4 w-4" /> Pick up at HD Smoke Shop</p>
+                <p>{pickupConfig?.pickupAddress}</p>
+                {pickupConfig?.pickupHoursText && <p className="text-xs">{pickupConfig.pickupHoursText}</p>}
+                <p className="text-xs">{pickupConfig?.pickupReadyMinutes ? `Usually ready in about ${pickupConfig.pickupReadyMinutes} minutes. ` : ""}We'll email you when it's ready.</p>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div><label className="block text-sm font-medium mb-1.5">First Name *</label><input required data-testid="checkout-firstName" className={inputCls} value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} /></div>
               <div><label className="block text-sm font-medium mb-1.5">Last Name *</label><input required data-testid="checkout-lastName" className={inputCls} value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} /></div>
               <div><label className="block text-sm font-medium mb-1.5">Email *</label><input required data-testid="checkout-email" type="email" className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
               <div><label className="block text-sm font-medium mb-1.5">Phone *</label><input required data-testid="checkout-phone" className={inputCls} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+              {!isPickup && <>
               <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">Street Address *</label><input required data-testid="checkout-address" className={inputCls} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
               <div><label className="block text-sm font-medium mb-1.5">City *</label><input required data-testid="checkout-city" className={inputCls} value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></div>
               <div><label className="block text-sm font-medium mb-1.5">State *</label><select required data-testid="checkout-state" className={inputCls} value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })}><option value="">Select...</option>{usStates.map((s) => (<option key={s} value={s}>{s}</option>))}</select></div>
               <div><label className="block text-sm font-medium mb-1.5">ZIP *</label><input required data-testid="checkout-zip" inputMode="numeric" className={`${inputCls} ${outOfZone ? "border-red-400" : zone?.eligible ? "border-emerald-500" : ""}`} value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value.replace(/\D/g, "").slice(0, 5) })} /></div>
+              </>}
               <div><label className="block text-sm font-medium mb-1.5">Date of Birth *</label><input required type="date" max={maxDob} data-testid="checkout-dob" className={inputCls} value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} /></div>
             </div>
-            <p className="mt-3 text-xs text-neutral-600 flex items-start gap-1.5"><ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" /> You must be 21+. A valid government-issued photo ID is checked at the door, and orders cannot be left with anyone under 21.</p>
+            <p className="mt-3 text-xs text-neutral-600 flex items-start gap-1.5"><ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" /> {isPickup ? "You must be 21+. Bring a valid government-issued photo ID that matches the name on the order; staff check it before handing over your order." : "You must be 21+. A valid government-issued photo ID is checked at the door, and orders cannot be left with anyone under 21."}</p>
+            {!isPickup && <>
             <p className="mt-3 text-xs text-neutral-500 flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-emerald-600" /> {delivery.mode === "selected_zips" ? `We deliver to ${delivery.allowedZipCodes.length} selected ZIP codes.` : `We deliver within ${delivery.radiusMiles} miles of ${delivery.zip} only.`}</p>
             {zone && (
               <div data-testid="checkout-zone-status" className={`mt-2 flex items-start gap-2 rounded-lg px-4 py-3 text-sm font-semibold ${zone.eligible ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
@@ -264,6 +309,7 @@ const CheckoutPage = () => {
                 ) : <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">No delivery windows are currently available. Please contact us.</p>}
               </div>
             )}
+            </>}
           </section>
 
           <RewardsPanel />
@@ -272,13 +318,13 @@ const CheckoutPage = () => {
             <h2 className="font-heading text-xl uppercase tracking-wide mb-2 flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-emerald-600" /> Age &amp; ID confirmation</h2>
             <label className="flex items-start gap-3 cursor-pointer text-sm text-neutral-800">
               <input type="checkbox" checked={ageAttestationAccepted} onChange={(e) => setAgeAttestationAccepted(e.target.checked)} className="mt-0.5 h-5 w-5 accent-emerald-600 shrink-0" data-testid="checkout-age-attestation-checkbox" />
-              <span>I confirm I am 21 or older, the date of birth above is accurate, and I will present a valid, unexpired government-issued photo ID matching this order when it is delivered.</span>
+              <span>I confirm I am 21 or older, the date of birth above is accurate, and I will present a valid, unexpired government-issued photo ID matching this order {isPickup ? "when I pick it up" : "when it is delivered"}.</span>
             </label>
-            <p className="mt-3 text-xs text-neutral-600">The driver records only the verification result and basic audit details. HD Smoke Shop does not ask the driver to upload or retain a complete ID image.</p>
+            <p className="mt-3 text-xs text-neutral-600">{isPickup ? "Staff" : "The driver"} records only the verification result and basic audit details. HD Smoke Shop does not ask {isPickup ? "staff" : "the driver"} to upload or retain a complete ID image.</p>
           </section>
 
           {/* Driver tip */}
-          <section className="border border-neutral-200 rounded-xl p-5" data-testid="checkout-tip-section">
+          {!isPickup && <section className="border border-neutral-200 rounded-xl p-5" data-testid="checkout-tip-section">
             <h2 className="font-heading text-xl uppercase tracking-wide mb-1 flex items-center gap-2"><Heart className="h-5 w-5 text-emerald-600" /> Tip Your Driver</h2>
             <p className="text-xs text-neutral-500 mb-4">100% of your tip goes to your delivery driver.</p>
             <div className="grid grid-cols-4 gap-2">
@@ -325,7 +371,7 @@ const CheckoutPage = () => {
               </div>
             </div>
             {tip > 0 && <p className="mt-3 text-sm font-semibold text-emerald-700" data-testid="checkout-tip-selected">Tip: ${tip.toFixed(2)}</p>}
-          </section>
+          </section>}
 
           {/* Payment */}
           <section>
@@ -409,7 +455,7 @@ const CheckoutPage = () => {
               <div className="flex justify-between"><span className="text-neutral-500">Subtotal</span><span className="font-semibold">${subtotal.toFixed(2)}</span></div>
               {discount > 0 && <div className="flex justify-between text-emerald-600" data-testid="checkout-discount"><span>Discount ({promo.code})</span><span className="font-semibold">-${discount.toFixed(2)}</span></div>}
               {reward > 0 && <div className="flex justify-between text-emerald-600" data-testid="checkout-reward"><span>Rewards ({redeemPoints.toLocaleString()} pts)</span><span className="font-semibold">-${reward.toFixed(2)}</span></div>}
-              <div className="flex justify-between"><span className="text-neutral-500">Delivery</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
+              <div className="flex justify-between"><span className="text-neutral-500">{isPickup ? "Store pickup" : "Delivery"}</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
               <div className="flex justify-between" data-testid="checkout-tax"><span className="text-neutral-500">{pricing.taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>
               {tip > 0 && <div className="flex justify-between" data-testid="checkout-tip"><span className="text-neutral-500">Driver tip</span><span className="font-semibold">${tip.toFixed(2)}</span></div>}
             </div>
