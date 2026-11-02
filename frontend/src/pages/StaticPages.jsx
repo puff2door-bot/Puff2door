@@ -112,7 +112,7 @@ const FAQ_SECTIONS = [
       { q: "Where is HD Smoke Shop?", a: "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714. Walk-ins are always welcome." },
       { q: "What are your hours?", a: "10 AM to 10 PM every day, including holidays." },
       { q: "Is there parking?", a: "Yes, free parking is available in the plaza right outside the store." },
-      { q: "How can I contact you?", a: "Call (407) 625-6826, use the Contact page, or message us on Instagram at @hdsmokeshop.altamonte." },
+      { q: "How can I contact you?", a: "Call (407) 625-6826, use the Contact page, or message us on Instagram at @hd.smokeshop." },
     ],
   },
   {

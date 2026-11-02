@@ -30,8 +30,12 @@ export const STORE = {
   mapEmbedUrl: "https://www.google.com/maps?q=HD+Smoke+Shop,+481+N+State+Rd+434+Suite+1050,+Altamonte+Springs,+FL+32714&output=embed",
   directionsUrl: "https://www.google.com/maps/place/?q=place_id:ChIJKZb4tvlx54gRjJxn6gAuEU4",
   googleReviewUrl: "https://g.page/r/CYycZ-oALhFOEBM/review",
-  instagram: "https://www.instagram.com/hdsmokeshop.altamonte/",
+  instagram: "https://www.instagram.com/hd.smokeshop/",
   facebook: "https://www.facebook.com/puff2doors",
+  tiktok: "https://www.tiktok.com/@hd_smokeshop",
+  yelp: "https://www.yelp.com/biz/hd-smoke-shop-altamonte-springs",
+  mapquest: "https://www.mapquest.com/us/florida/hd-smoke-shop-467534151",
+  yellowPages: "https://www.yellowpages.com/altamonte-springs-fl/bp/hd-smoke-shop-581442087",
 };
 
 export const absUrl = (path = "/") => (path.startsWith("http") ? path : `${SITE_URL}${path.startsWith("/") ? path : `/${path}`}`);
@@ -99,12 +103,20 @@ export const storeJsonLd = () => ({
   "@type": "Store",
   "@id": `${SITE_URL}/#store`,
   name: STORE.name,
+  alternateName: ["Puff2door", "Puff2Door"],
   url: SITE_URL,
   logo: LOGO_URL,
   image: DEFAULT_IMAGE,
   description: "Smoke shop in Altamonte Springs, FL. Walk-ins welcome, plus online ordering with local delivery within ZIP 32714. Adults 21+ only.",
   telephone: STORE.phoneE164,
   email: BRAND.email,
+  contactPoint: {
+    "@type": "ContactPoint",
+    telephone: STORE.phoneE164,
+    contactType: "customer service",
+    areaServed: "US-FL",
+    availableLanguage: "English",
+  },
   priceRange: "$$",
   address: { "@type": "PostalAddress", streetAddress: STORE.streetAddress, addressLocality: STORE.city, addressRegion: STORE.region, postalCode: STORE.postalCode, addressCountry: STORE.country },
   geo: { "@type": "GeoCoordinates", latitude: STORE.latitude, longitude: STORE.longitude },
@@ -113,7 +125,7 @@ export const storeJsonLd = () => ({
   openingHoursSpecification: [{ "@type": "OpeningHoursSpecification", dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], opens: STORE.opens, closes: STORE.closes }],
   areaServed: [{ "@type": "Place", name: "Altamonte Springs, FL 32714", address: { "@type": "PostalAddress", postalCode: STORE.deliveryZip, addressLocality: STORE.city, addressRegion: STORE.region, addressCountry: STORE.country } }],
   audience: { "@type": "PeopleAudience", suggestedMinAge: 21 },
-  sameAs: [STORE.instagram, STORE.facebook],
+  sameAs: [STORE.instagram, STORE.facebook, STORE.tiktok, STORE.yelp, STORE.mapquest, STORE.yellowPages],
 });
 
 // Kept for older imports.

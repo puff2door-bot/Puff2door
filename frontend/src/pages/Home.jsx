@@ -14,6 +14,7 @@ import api, { imgUrl } from "../api";
 import Seo from "../seo/Seo";
 import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, HOME_FAQS, faqJsonLd, titleCase } from "../seo/config";
 import PersonalizedShelf from "../components/PersonalizedShelf";
+import VisitStore from "../components/VisitStore";
 import { useToast } from "../hooks/use-toast";
 
 const tabCats = [
@@ -227,6 +228,11 @@ const Home = () => {
           </div>
         </div>
       </section>
+
+      {/* Local store proof */}
+      <div className="max-w-[1280px] mx-auto px-4 pt-14">
+        <VisitStore heading="Visit HD Smoke Shop in Altamonte Springs" />
+      </div>
 
       {/* FAQ */}
       <section className="max-w-[1280px] mx-auto px-4 pt-14" data-testid="home-faq">
