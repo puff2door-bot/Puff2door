@@ -4226,11 +4226,31 @@ async def publish_store_photo(capture: dict, data: bytes, admin_id: str) -> dict
     if _mostly_white(data):
         return {"note": "The saved photo is almost all white, so it was not put on the website. Retake it with the item filling more of the frame."}
     url = await store_image(data, "webp", f"store-photo-{code}.webp", admin_id)
-    await db.products.update_one({"id": product["id"]}, {"$set": {"image": url, "image2": url, "storePhotoCaptureId": capture.get("id")}})
+    changes = {"image": url, "image2": url, "storePhotoCaptureId": capture.get("id")}
+    current = await db.products.find_one({"id": product["id"]}, {"image": 1, "storePhotoCaptureId": 1})
+    if current and current.get("storePhotoCaptureId") != capture.get("id"):
+        # Remember the picture this store photo replaced, so deleting the photo can put it back.
+        changes["storePhotoPreviousImage"] = current.get("image") or ""
+    await db.products.update_one({"id": product["id"]}, {"$set": changes})
     return {"productId": product["id"], "productName": product.get("name") or ""}
 
 
-api_router.include_router(create_inventory_capture_router(db, inventory_photo_bucket, get_admin_user, validate_photo, publish=publish_store_photo), prefix="/admin")
+async def unpublish_store_photo(capture: dict) -> dict:
+    """Undo publish_store_photo when its record is deleted: restore the previous picture."""
+    product = await db.products.find_one({"storePhotoCaptureId": capture.get("id")})
+    if not product:
+        return {}
+    image = product.get("storePhotoPreviousImage") or ""
+    if not image:
+        image = (await clover_integration().category_placeholders()).get(product.get("categorySlug") or "", "")
+    await db.products.update_one({"id": product["id"]}, {
+        "$set": {"image": image, "image2": image},
+        "$unset": {"storePhotoCaptureId": "", "storePhotoPreviousImage": ""},
+    })
+    return {"productId": product["id"], "productName": product.get("name") or ""}
+
+
+api_router.include_router(create_inventory_capture_router(db, inventory_photo_bucket, get_admin_user, validate_photo, publish=publish_store_photo, unpublish=unpublish_store_photo), prefix="/admin")
 app.include_router(api_router)
 
 
