@@ -144,14 +144,22 @@ def _is_prepared(image):
 
 def _subject_bounds(cutout):
     """Tight box around the item itself. Faint halo and stray specks left by the cut-out
-    used to stretch the box, which shrank the item and left wide white margins."""
-    solid = cutout.getchannel('A').point(lambda value: 255 if value >= 128 else 0)
-    core = solid.filter(ImageFilter.MinFilter(7)).getbbox()
+    used to stretch the box, which shrank the item and left wide white margins.
+    Worked out on a small copy of the mask so it stays fast on the hosting plan."""
+    alpha = cutout.getchannel('A')
+    scale = min(1.0, 700.0 / max(alpha.size))
+    if scale < 1.0:
+        alpha = alpha.resize((max(1, round(alpha.width * scale)), max(1, round(alpha.height * scale))), Image.Resampling.BILINEAR)
+    solid = alpha.point(lambda value: 255 if value >= 128 else 0)
+    core = solid.filter(ImageFilter.MinFilter(5)).getbbox() or solid.getbbox()
     if core is None:
-        return solid.getbbox()
-    pad = 6
-    return (max(0, core[0] - pad), max(0, core[1] - pad),
-            min(cutout.width, core[2] + pad), min(cutout.height, core[3] + pad))
+        return None
+    pad = 3
+    left, top, right, bottom = (max(0, core[0] - pad), max(0, core[1] - pad),
+                                min(solid.width, core[2] + pad), min(solid.height, core[3] + pad))
+    width, height = cutout.size
+    return (max(0, int(left / scale)), max(0, int(top / scale)),
+            min(width, int(round(right / scale))), min(height, int(round(bottom / scale))))
 
 
 def _harden_edges(cutout):
@@ -168,7 +176,7 @@ def _tilt_angle(cutout):
     """Angle that makes the item stand straight: the rotation giving the smallest upright box.
     Round items look the same at every angle, so nothing is changed for them."""
     alpha = cutout.getchannel('A').point(lambda v: 255 if v >= 128 else 0)
-    scale = 400.0 / max(alpha.size)
+    scale = 800.0 / max(alpha.size)
     small = alpha.resize((max(1, round(alpha.width * scale)), max(1, round(alpha.height * scale))), Image.Resampling.NEAREST)
 
     def area(angle):
@@ -185,20 +193,15 @@ def _tilt_angle(cutout):
         if value < best_area:
             best_angle, best_area = angle, value
         angle += 0.5
-    for fine in (best_angle - 0.25, best_angle + 0.25):
+    coarse = best_angle
+    for step in range(-4, 5):
+        fine = coarse + step * 0.1
         value = area(fine)
         if value < best_area:
             best_angle, best_area = fine, value
     if abs(best_angle) < MIN_TILT or best_area > base * 0.98:
         return 0.0
     return best_angle
-
-
-def _straighten(cutout):
-    angle = _tilt_angle(cutout)
-    if not angle:
-        return cutout
-    return cutout.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True, fillcolor=(255, 255, 255, 0))
 
 
 def _sharpen(subject):
@@ -216,23 +219,45 @@ def _encode(canvas):
     return output.getvalue()
 
 
+WORK_SIZE = 1000
+
+
+def _steepen(alpha):
+    return alpha.point(lambda v: 0 if v < 70 else 255 if v > 185 else int((v - 70) * 255 / 115))
+
+
 def prepare_inventory_photo(raw, validate_photo=None):
     image = load_photo(raw)
     if _is_prepared(image):
         return _encode(image.convert('RGB')), False
-    cutout = _harden_edges(_discard_background(remove_background(image)))
-    alpha = cutout.getchannel('A').point(lambda value: 255 if value > 0 else 0)
-    bounds = _subject_bounds(cutout)
-    kept = (alpha.histogram()[255] / float(alpha.width * alpha.height)) if bounds else 0.0
-    if bounds is None or kept < MIN_SUBJECT_SHARE:
+    # Find the item on a small copy (fast), then cut it from the full-resolution photo (sharp).
+    factor = min(1.0, WORK_SIZE / float(max(image.size)))
+    small = image if factor == 1.0 else image.resize(
+        (max(1, round(image.width * factor)), max(1, round(image.height * factor))), Image.Resampling.LANCZOS)
+    cut_small = _harden_edges(_discard_background(remove_background(small)))
+    alpha_small = cut_small.getchannel('A').point(lambda value: 255 if value > 0 else 0)
+    bounds_small = _subject_bounds(cut_small)
+    kept = (alpha_small.histogram()[255] / float(alpha_small.width * alpha_small.height)) if bounds_small else 0.0
+    if bounds_small is None or kept < MIN_SUBJECT_SHARE:
         # The cut-out removed the item itself. Keep the full photo rather than save a blank.
-        cutout = image.copy()
-        cutout.putalpha(255)
-        bounds = (0, 0, image.width, image.height)
+        subject = image.copy()
+        subject.putalpha(255)
     else:
-        cutout = _straighten(cutout)
-        bounds = _subject_bounds(cutout) or bounds
-    subject = cutout.crop(bounds)
+        angle = _tilt_angle(cut_small)
+        # Room around the item so straightening never clips a corner.
+        margin = int(max(bounds_small[2] - bounds_small[0], bounds_small[3] - bounds_small[1]) * 0.08) + 4
+        region_small = (max(0, bounds_small[0] - margin), max(0, bounds_small[1] - margin),
+                        min(small.width, bounds_small[2] + margin), min(small.height, bounds_small[3] + margin))
+        region = tuple(int(round(v / factor)) for v in region_small)
+        region = (region[0], region[1], min(image.width, region[2]), min(image.height, region[3]))
+        subject = image.crop(region).convert('RGB')
+        mask = cut_small.getchannel('A').crop(region_small).resize(subject.size, Image.Resampling.BICUBIC)
+        subject.putalpha(_steepen(mask))
+        if angle:
+            subject = subject.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True, fillcolor=(255, 255, 255, 0))
+        tight = _subject_bounds(subject)
+        if tight:
+            subject = subject.crop(tight)
     source_long_side = max(subject.size)
     subject = _sharpen(_discard_background(_scale_long_side(subject, CONTENT_MAX)))
     canvas = Image.new('RGB', (CANVAS_SIZE, CANVAS_SIZE), WHITE)
