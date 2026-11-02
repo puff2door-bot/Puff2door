@@ -10,6 +10,7 @@ const MissingPhotos = () => {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [inStockOnly, setInStockOnly] = useState(true);
+  const [retake, setRetake] = useState(false);
   const [active, setActive] = useState(null);
   const [preview, setPreview] = useState(null);
   const [prepared, setPrepared] = useState(null);
@@ -28,11 +29,11 @@ const MissingPhotos = () => {
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
     return products
-      .filter((p) => p.active && (!p.image || placeholderSet.has(p.image)))
+      .filter((p) => p.active && (retake ? (p.image && !placeholderSet.has(p.image)) : (!p.image || placeholderSet.has(p.image))))
       .filter((p) => !inStockOnly || p.stock > 0)
       .filter((p) => !q || `${p.name} ${p.brandName || ""} ${p.barcode || ""}`.toLowerCase().includes(q))
       .sort((a, b) => (b.stock > 0) - (a.stock > 0) || a.name.localeCompare(b.name));
-  }, [products, placeholderSet, query, inStockOnly]);
+  }, [products, placeholderSet, query, inStockOnly, retake]);
 
   const start = (product) => {
     setActive(product); setPreview(null); setPrepared(null); setError("");
@@ -79,7 +80,7 @@ const MissingPhotos = () => {
     <section className="space-y-5" data-testid="missing-photos">
       <div>
         <h2 className="font-heading text-2xl">Missing photos</h2>
-        <p className="text-sm text-neutral-500 mt-1">Products on the website that still show a placeholder. Tap <b>Take photo</b>, check the white-background preview, then <b>Use this photo</b>. It goes on the website right away.</p>
+        <p className="text-sm text-neutral-500 mt-1">Products on the website that still show a placeholder. Tap <b>Take photo</b>, check the white-background preview, then <b>Use this photo</b>. It goes on the website right away. Tip: hold the phone straight above or in front of the item, fill most of the screen with it, and use good light. Tilted items are straightened automatically.</p>
       </div>
       <div className="flex flex-wrap gap-3 items-center">
         <label className="flex-1 min-w-[200px] relative">
@@ -87,8 +88,9 @@ const MissingPhotos = () => {
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, brand or barcode" className="w-full border rounded-xl pl-9 pr-3 py-3 text-sm" />
         </label>
         <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" className="accent-emerald-600 h-4 w-4" checked={inStockOnly} onChange={(e) => setInStockOnly(e.target.checked)} /> In stock only</label>
+        <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" className="accent-emerald-600 h-4 w-4" checked={retake} onChange={(e) => setRetake(e.target.checked)} data-testid="retake-toggle" /> Redo items that already have a photo</label>
       </div>
-      <p className="text-sm font-semibold">{loading ? "Loading…" : `${list.length} product${list.length === 1 ? "" : "s"} need a photo`}</p>
+      <p className="text-sm font-semibold">{loading ? "Loading…" : retake ? `${list.length} product${list.length === 1 ? "" : "s"} with a photo` : `${list.length} product${list.length === 1 ? "" : "s"} need a photo`}</p>
       {done.length > 0 && <p role="status" className="text-sm text-emerald-700 flex gap-2"><CheckCircle2 className="w-5 h-5 shrink-0" />Photo added: {done.join(", ")}</p>}
       <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="hidden" onChange={chosen} />
       {active && (
@@ -114,7 +116,7 @@ const MissingPhotos = () => {
               <p className="font-bold text-sm break-words">{p.name}</p>
               <p className="text-xs text-neutral-500">{[p.category, p.brandName, p.barcode].filter(Boolean).join(" · ")} · Stock {p.stock}</p>
             </div>
-            <button type="button" disabled={Boolean(busy)} onClick={() => start(p)} data-testid={`missing-photo-${p.id}`} className="rounded-full px-4 py-2 font-bold text-sm bg-neutral-900 text-white flex items-center gap-1 shrink-0 disabled:opacity-50"><Camera className="w-4 h-4" />Take photo</button>
+            <button type="button" disabled={Boolean(busy)} onClick={() => start(p)} data-testid={`missing-photo-${p.id}`} className="rounded-full px-4 py-2 font-bold text-sm bg-neutral-900 text-white flex items-center gap-1 shrink-0 disabled:opacity-50"><Camera className="w-4 h-4" />{retake ? "Retake" : "Take photo"}</button>
           </article>
         ))}
       </div>

@@ -15,6 +15,10 @@ CONTENT_MAX = CANVAS_SIZE - (FRAME_PADDING * 2)
 WHITE = (255, 255, 255)
 # Mask values at or below this are leftover background and are discarded.
 ALPHA_CUTOFF = 20
+LOAD_MAX = 3000
+# Tilt correction: largest angle tried, and the smallest tilt worth fixing.
+MAX_TILT = 15.0
+MIN_TILT = 0.75
 
 _session = None
 _lock = threading.Lock()
@@ -36,9 +40,10 @@ def load_photo(raw):
                     raise ValueError('Use a photo of 24 megapixels or smaller.')
                 if getattr(source, 'is_animated', False):
                     raise ValueError('Choose a still photo.')
-                # Decode JPEGs at reduced resolution to fit the small hosting plan.
-                source.draft('RGB', (1600, 1600))
-                source.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+                # Decode at up to 3000px: the item is usually a fraction of the frame, and cropping
+                # it from a 1600px photo then enlarging it made the saved picture soft.
+                source.draft('RGB', (LOAD_MAX, LOAD_MAX))
+                source.thumbnail((LOAD_MAX, LOAD_MAX), Image.Resampling.LANCZOS)
                 ImageOps.exif_transpose(source, in_place=True)
                 return source.convert('RGBA')
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
@@ -149,6 +154,61 @@ def _subject_bounds(cutout):
             min(cutout.width, core[2] + pad), min(cutout.height, core[3] + pad))
 
 
+def _harden_edges(cutout):
+    """The mask is predicted at 320px and enlarged, so its edges are a soft blur.
+    Steepen it so the item has a crisp outline instead of a fuzzy halo."""
+    alpha = cutout.getchannel('A').point(lambda v: 0 if v < 70 else 255 if v > 185 else int((v - 70) * 255 / 115))
+    alpha = alpha.filter(ImageFilter.MedianFilter(3))
+    result = cutout.copy()
+    result.putalpha(alpha)
+    return result
+
+
+def _tilt_angle(cutout):
+    """Angle that makes the item stand straight: the rotation giving the smallest upright box.
+    Round items look the same at every angle, so nothing is changed for them."""
+    alpha = cutout.getchannel('A').point(lambda v: 255 if v >= 128 else 0)
+    scale = 400.0 / max(alpha.size)
+    small = alpha.resize((max(1, round(alpha.width * scale)), max(1, round(alpha.height * scale))), Image.Resampling.NEAREST)
+
+    def area(angle):
+        box = small.rotate(angle, resample=Image.Resampling.NEAREST, expand=True).getbbox()
+        return (box[2] - box[0]) * (box[3] - box[1]) if box else 0
+
+    base = area(0)
+    if not base:
+        return 0.0
+    best_angle, best_area = 0.0, base
+    angle = -MAX_TILT
+    while angle <= MAX_TILT + 1e-9:
+        value = area(angle)
+        if value < best_area:
+            best_angle, best_area = angle, value
+        angle += 0.5
+    for fine in (best_angle - 0.25, best_angle + 0.25):
+        value = area(fine)
+        if value < best_area:
+            best_angle, best_area = fine, value
+    if abs(best_angle) < MIN_TILT or best_area > base * 0.98:
+        return 0.0
+    return best_angle
+
+
+def _straighten(cutout):
+    angle = _tilt_angle(cutout)
+    if not angle:
+        return cutout
+    return cutout.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True, fillcolor=(255, 255, 255, 0))
+
+
+def _sharpen(subject):
+    """Light sharpening after resizing so box text stays readable."""
+    alpha = subject.getchannel('A')
+    rgb = subject.convert('RGB').filter(ImageFilter.UnsharpMask(radius=1.6, percent=70, threshold=2))
+    rgb.putalpha(alpha)
+    return rgb
+
+
 def _encode(canvas):
     output = io.BytesIO()
     # Lossless so the white frame stays exact #FFFFFF instead of a compressed gray.
@@ -160,7 +220,7 @@ def prepare_inventory_photo(raw, validate_photo=None):
     image = load_photo(raw)
     if _is_prepared(image):
         return _encode(image.convert('RGB')), False
-    cutout = _discard_background(remove_background(image))
+    cutout = _harden_edges(_discard_background(remove_background(image)))
     alpha = cutout.getchannel('A').point(lambda value: 255 if value > 0 else 0)
     bounds = _subject_bounds(cutout)
     kept = (alpha.histogram()[255] / float(alpha.width * alpha.height)) if bounds else 0.0
@@ -169,9 +229,12 @@ def prepare_inventory_photo(raw, validate_photo=None):
         cutout = image.copy()
         cutout.putalpha(255)
         bounds = (0, 0, image.width, image.height)
+    else:
+        cutout = _straighten(cutout)
+        bounds = _subject_bounds(cutout) or bounds
     subject = cutout.crop(bounds)
     source_long_side = max(subject.size)
-    subject = _discard_background(_scale_long_side(subject, CONTENT_MAX))
+    subject = _sharpen(_discard_background(_scale_long_side(subject, CONTENT_MAX)))
     canvas = Image.new('RGB', (CANVAS_SIZE, CANVAS_SIZE), WHITE)
     canvas.paste(
         subject,
