@@ -2275,7 +2275,8 @@ async def category_counts() -> dict:
 
 async def seed_categories():
     """Idempotent: default list + any category referenced by products, preserving slugs/names."""
-    if await db.categories.count_documents({}) == 0:
+    first_run = await db.categories.count_documents({}) == 0
+    if first_run:
         seed_path = ROOT_DIR / "seed_categories.json"
         if seed_path.exists():
             rows = json.loads(seed_path.read_text())
@@ -2286,7 +2287,9 @@ async def seed_categories():
             if rows:
                 await db.categories.insert_many(rows)
     existing = {c["slug"] for c in await db.categories.find({}, {"slug": 1}).to_list(500)}
-    wanted = list(DEFAULT_CATEGORIES)
+    # Default categories are only created on a brand-new site. Afterwards a category the owner
+    # deleted must stay deleted, so only categories that active products still use are restored.
+    wanted = list(DEFAULT_CATEGORIES) if first_run else []
     async for p in db.products.find({"active": True}, {"categorySlug": 1, "category": 1}):
         if p.get("categorySlug") and p["categorySlug"] not in {w[0] for w in wanted}:
             wanted.append((p["categorySlug"], (p.get("category") or p["categorySlug"]).upper()))
