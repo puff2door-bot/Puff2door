@@ -56,7 +56,7 @@ const AdminLayout = () => {
         <aside>
           <div className="lg:sticky lg:top-[180px]">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-3">HD Smoke Shop Admin</p>
-            <nav className="flex lg:flex-col gap-1 overflow-x-auto no-scrollbar">
+            <nav className="flex flex-wrap lg:flex-nowrap lg:flex-col gap-1">
               {nav.map((n) => (
                 <NavLink
                   key={n.to}
