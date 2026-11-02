@@ -1448,6 +1448,21 @@ class CloverIntegration:
             applied.append(await self._mutate_item_stock(row["orderId"], line, row.get("direction") or "decrement"))
         return applied
 
+    async def delete_clover_item(self, clover_item_id: str, product_id: Optional[int] = None) -> dict:
+        """Permanently delete one item from the Clover register. Only called after the owner
+        confirmed deleting that product everywhere (Store Photos delete)."""
+        clover_item_id = _clean_identifier(clover_item_id)
+        if not clover_item_id:
+            return {"status": "skipped"}
+        if not self.sync_enabled or self.dry_run:
+            raise CloverError("Clover sync is off, so the Clover item was not deleted.")
+        merchant_id = self._merchant_id(await self.config() or {})
+        if not merchant_id:
+            raise CloverError("Clover is not connected.")
+        await self.request("DELETE", f"/v3/merchants/{merchant_id}/items/{clover_item_id}")
+        await self.log("item_delete", "success", productId=product_id, cloverItemId=clover_item_id)
+        return {"status": "deleted", "cloverItemId": clover_item_id}
+
     async def push_stock_edit(self, product_id: int, old_stock: int, new_stock: int, confirm: bool = False) -> dict:
         """Send a stock number typed on the website to Clover as a change (+/-), not a
         replacement, so a register sale made meanwhile is kept. Large jumps need confirm."""

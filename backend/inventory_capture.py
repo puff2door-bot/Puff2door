@@ -160,7 +160,7 @@ async def ensure_inventory_indexes(db):
         logger.warning("Private inventory id index was not created: %s", exc)
 
 
-def create_inventory_capture_router(db, bucket, get_admin, prepare_photo, publish=None, unpublish=None):
+def create_inventory_capture_router(db, bucket, get_admin, prepare_photo, publish=None, unpublish=None, delete_product=None):
     router = APIRouter(prefix="/inventory-captures", dependencies=[Depends(get_admin)])
 
     async def _publish(capture_id, admin_id):
@@ -515,13 +515,20 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo, publis
         return _present_record(updated, categories, brands)
 
     @router.delete("/{capture_id}")
-    async def delete_capture(capture_id: str, admin=Depends(get_admin)):
-        """Delete a store photo record and its photo. The website product gets its previous picture back."""
+    async def delete_capture(capture_id: str, deleteProduct: int = 0, admin=Depends(get_admin)):
+        """Delete a store photo record and its photo. The website product gets its previous picture back.
+        With deleteProduct=<that product's id>, the product is deleted from the website and Clover too."""
         row = await db.inventory_captures.find_one({"id": capture_id})
         if not row:
             raise HTTPException(status_code=404, detail="Inventory record not found")
         restored = None
-        if unpublish is not None:
+        removed = None
+        if deleteProduct:
+            if delete_product is None:
+                raise HTTPException(status_code=400, detail="Deleting the product is not available.")
+            # Raises (and keeps the record) if the product can't be removed everywhere.
+            removed = await delete_product(row, int(deleteProduct), admin["id"])
+        elif unpublish is not None:
             try:
                 restored = await unpublish(row)
             except Exception as exc:
@@ -532,7 +539,8 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo, publis
                 await bucket.delete(row["blobId"])
             except Exception:
                 logger.warning("Could not remove the stored photo for %s", capture_id)
-        return {"deleted": True, "id": capture_id, "productRestored": (restored or {}).get("productName") or ""}
+        return {"deleted": True, "id": capture_id, "productRestored": (restored or {}).get("productName") or "",
+                "productDeleted": (removed or {}).get("productName") or "", "cloverDeleted": bool((removed or {}).get("cloverDeleted"))}
 
     @router.get("/{capture_id}/photo")
     async def photo(capture_id: str, admin=Depends(get_admin)):
