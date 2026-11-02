@@ -1054,6 +1054,7 @@ class ProductInput(BaseModel):
     blockedStates: List[str] = []
     confirmCloverPrice: bool = False
     createInClover: bool = False
+    confirmCloverStock: bool = False
 
     @field_validator("sku", "barcode")
     @classmethod
@@ -2821,7 +2822,7 @@ async def admin_create_product(inp: ProductInput, admin: dict = Depends(get_admi
     pid = await next_product_id()
     confirm_price = bool(inp.confirmCloverPrice)
     create_in_clover = bool(inp.createInClover)
-    doc = inp.dict(exclude={"confirmCloverPrice", "createInClover"})
+    doc = inp.dict(exclude={"confirmCloverPrice", "createInClover", "confirmCloverStock"})
     doc.update({
         "id": pid,
         "slug": f"{slugify(inp.name)}-{pid}",
@@ -2851,7 +2852,7 @@ async def admin_update_product(product_id: int, inp: ProductInput, admin: dict =
     await ensure_unique_inventory_identifiers(inp, product_id)
     confirm_price = bool(inp.confirmCloverPrice)
     create_in_clover = bool(inp.createInClover)
-    doc = inp.dict(exclude={"confirmCloverPrice", "createInClover"})
+    doc = inp.dict(exclude={"confirmCloverPrice", "createInClover", "confirmCloverStock"})
     doc["image2"] = inp.image2 or inp.image
     doc["brandName"] = await resolve_brand_name(inp)
     doc["category"] = await resolve_category_name(inp)
@@ -2875,9 +2876,15 @@ async def admin_update_product(product_id: int, inp: ProductInput, admin: dict =
         clover_sync = await clover_integration().sync_product_details(product_id, source="admin_product_edit", confirm_price=confirm_price, create_in_clover=create_in_clover)
     except CloverError as exc:
         clover_sync = {"status": "failed", "action": "update", "error": clover_error_detail(exc)}
+    clover_stock = {"status": "skipped"}
+    if int(existing.get("stock", 0)) != inp.stock:
+        try:
+            clover_stock = await clover_integration().push_stock_edit(product_id, int(existing.get("stock", 0)), inp.stock, confirm=bool(inp.confirmCloverStock))
+        except CloverError as exc:
+            clover_stock = {"status": "failed", "error": clover_error_detail(exc)}
     updated = await db.products.find_one({"id": product_id}) or updated
     asyncio.create_task(refresh_static_sitemap())
-    return {**product_out(updated), "restockNotified": notified, "cloverSync": clover_sync}
+    return {**product_out(updated), "restockNotified": notified, "cloverSync": clover_sync, "cloverStock": clover_stock}
 
 
 @api_router.delete("/admin/products/{product_id}")

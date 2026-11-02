@@ -69,6 +69,7 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
     allowedStates: (initial?.allowedStates || []).join(", "), blockedStates: (initial?.blockedStates || []).join(", ") });
   const [busy, setBusy] = useState(false);
   const [confirmCloverPrice, setConfirmCloverPrice] = useState(false);
+  const [confirmCloverStock, setConfirmCloverStock] = useState(false);
   const [createInClover, setCreateInClover] = useState(false);
   const { toast } = useToast();
   const set = (k, v) => setF((prev) => ({ ...prev, [k]: v }));
@@ -99,6 +100,7 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
       blockedStates: String(f.blockedStates || "").split(/[\s,]+/).map((v) => v.trim().toUpperCase()).filter(Boolean),
       brandName: f.brand ? f.brandName : "",
       confirmCloverPrice,
+      confirmCloverStock,
       createInClover,
     };
     delete payload.id; delete payload.slug; delete payload.inStock; delete payload.rating; delete payload.restockNotified;
@@ -106,12 +108,18 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
     try {
       const { data } = isEdit ? await api.put(`/admin/products/${initial.id}`, payload) : await api.post("/admin/products", payload);
       const clover = data.cloverSync || {};
-      if (clover.status === "needs_confirmation") {
+      const stock = data.cloverStock || {};
+      if (stock.status === "needs_confirmation") {
+        toast({ title: "Confirm the Clover stock change", description: stock.error, variant: "destructive" });
+      } else if (stock.status === "failed") {
+        toast({ title: "Product saved — Clover stock not updated", description: stock.error || "Open Clover Inventory to retry.", variant: "destructive" });
+      } else if (clover.status === "needs_confirmation") {
         toast({ title: "Confirm the Clover price", description: clover.error || "A price change over 50% or to $0 needs confirmation.", variant: "destructive" });
       } else if (["failed", "partial"].includes(clover.status)) {
         toast({ title: "Product saved — Clover needs a retry", description: clover.error || clover.priceBlocked || "Open Clover Inventory to retry the sync.", variant: "destructive" });
       } else {
-        const cloverText = clover.status === "success" ? (clover.action === "create" ? " Created in Clover." : " Clover updated.") : "";
+        const stockText = stock.status === "success" ? ` Clover stock ${stock.delta > 0 ? "+" : ""}${stock.delta} (now ${stock.resultingQuantity}).` : "";
+        const cloverText = (clover.status === "success" ? (clover.action === "create" ? " Created in Clover." : " Clover updated.") : "") + stockText;
         toast({ title: isEdit ? "Product updated" : "Product created", description: (data.restockNotified ? `${data.restockNotified} customer(s) notified of restock.` : data.name) + cloverText });
       }
       onSaved(data);
@@ -238,6 +246,9 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
         </label>
         <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
           <input type="checkbox" data-testid="pf-confirm-price" className="accent-emerald-600 h-4 w-4" checked={confirmCloverPrice} onChange={(e) => setConfirmCloverPrice(e.target.checked)} /> Confirm a Clover price change over 50% or to $0
+        </label>
+        <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+          <input type="checkbox" data-testid="pf-confirm-stock" className="accent-emerald-600 h-4 w-4" checked={confirmCloverStock} onChange={(e) => setConfirmCloverStock(e.target.checked)} /> Confirm a large Clover stock change (more than 50 units)
         </label>
 
         <div className="flex justify-end gap-3 pt-2">
