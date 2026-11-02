@@ -67,8 +67,10 @@ export const CatalogProvider = ({ children }) => {
       const r = brandRecord(slug);
       return { id: r?.id || slug, slug, name: r?.displayName || (brandNames[slug] || slug).toUpperCase(), image: r?.logo || "", count };
     };
+    // Only real, active brands from Brand Management are listed; hidden brands stay hidden.
+    const listedBrand = (slug) => !brandRecords.length || Boolean(brandRecord(slug));
     const activeBrands = products.length
-      ? Object.keys(brandCounts).map((slug) => toBrand(slug, brandCounts[slug])).sort((a, b) => a.name.localeCompare(b.name))
+      ? Object.keys(brandCounts).filter(listedBrand).map((slug) => toBrand(slug, brandCounts[slug])).sort((a, b) => a.name.localeCompare(b.name))
       : [];
     const promoTiles = home.promoBlocks.map((b) => {
       const pr = b.productId ? byId(b.productId) : null;
