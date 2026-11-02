@@ -579,6 +579,8 @@ class CloverIntegration:
                     changes["brand"] = item["mappedBrandSlug"]
                     changes["brandName"] = item.get("mappedBrandName") or item["mappedBrandSlug"]
                 changes["cloverPrice"] = item["price"]
+                # Remember Clover's own category names so the admin can compare them with the website.
+                changes["cloverCategory"] = ", ".join(item.get("cloverCategories") or [])
                 await self.db.products.update_one({"id": product["id"]}, {"$set": changes, "$unset": {"cloverSyncError": ""}})
                 updated += int(old_stock != effective_stock)
                 if old_stock == 0 and effective_stock > 0:
