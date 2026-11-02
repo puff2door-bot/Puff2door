@@ -82,7 +82,7 @@ def items_table(order: dict) -> str:
 def zelle_box(recipient: str, name: str, amount, memo: str) -> str:
     return f"""<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:18px;margin:16px 0;">
 <p style="margin:0 0 10px;font-weight:800;color:#065f46;">Complete your payment with Zelle</p>
-<p style="margin:0 0 12px;font-size:13px;color:#374151;">Open your bank app, choose Zelle and send the exact amount below. Put the order number in the memo so we can match it. Your order ships once payment arrives.</p>
+<p style="margin:0 0 12px;font-size:13px;color:#374151;">Open your bank app, choose Zelle and send the exact amount below. Put the order number in the memo so we can match it. Your order ships once payment arrives. Unpaid orders are cancelled automatically after 24 hours.</p>
 <table role="presentation" cellspacing="0" cellpadding="0" style="font-size:14px;">
 <tr><td style="padding:4px 16px 4px 0;color:#6b7280;">Send to</td><td style="font-weight:700;font-family:monospace;">{escape(recipient)}</td></tr>
 <tr><td style="padding:4px 16px 4px 0;color:#6b7280;">Recipient</td><td style="font-weight:700;">{escape(name)}</td></tr>
@@ -277,3 +277,11 @@ async def send_restock_alert(email: str, product: dict):
     body = f'<p style="font-size:15px;line-height:1.6;color:#374151;">Good news — <strong>{escape(product["name"])}</strong> is available again at {_money(product.get("salePrice") or product["price"])}. Stock is limited, so grab it while you can.</p>'
     body += f'<p style="margin:24px 0 0;">{button("Shop now", link)}</p>'
     return await _send([email], title, layout(title, body), "restock_alert", {"productId": product["id"], "email": email})
+
+
+async def send_zelle_expired(order: dict, hours: int):
+    to = order.get("shipping", {}).get("email")
+    title = f"Order {order['orderNumber']} was cancelled"
+    copy = f"We didn't receive your Zelle payment within {hours} hours, so we've cancelled this order and released the items. You haven't been charged. You're welcome to place a new order any time."
+    body = f'<p style="font-size:15px;line-height:1.6;color:#374151;">Hi {escape(order["shipping"].get("firstName") or "there")}, {copy}</p>'
+    await _send([to], title, layout(title, body, copy), "zelle_expired", {"orderId": order["id"]})
