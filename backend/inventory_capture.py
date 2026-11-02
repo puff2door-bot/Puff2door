@@ -1,6 +1,8 @@
-"""Private inventory reference photos and records.
+"""Store photos: inventory reference photos and records.
 
-These routes never create catalog products, change store prices, or call Clover.
+When a saved photo's SKU or barcode matches exactly one website product, the
+white-background photo is also published as that product's picture. These routes
+never create catalog products, change prices, or call Clover.
 """
 import asyncio
 import csv
@@ -66,6 +68,9 @@ def public_record(row):
         "updatedAt": _iso(row.get("updatedAt")),
         "createdBy": row.get("createdBy"),
         "purpose": "internal_inventory",
+        "publishedProductId": row.get("publishedProductId"),
+        "publishedProductName": row.get("publishedProductName") or "",
+        "publishNote": row.get("publishNote") or "",
     }
 
 
@@ -155,8 +160,27 @@ async def ensure_inventory_indexes(db):
         logger.warning("Private inventory id index was not created: %s", exc)
 
 
-def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
+def create_inventory_capture_router(db, bucket, get_admin, prepare_photo, publish=None):
     router = APIRouter(prefix="/inventory-captures", dependencies=[Depends(get_admin)])
+
+    async def _publish(capture_id, admin_id):
+        """Put this record's photo on its website product. Never fails the save."""
+        if publish is None:
+            return
+        row = await db.inventory_captures.find_one({"id": capture_id})
+        if not row or not row.get("blobId"):
+            return
+        try:
+            stream = await bucket.open_download_stream(row["blobId"])
+            result = await publish(row, await stream.read(), admin_id) or {}
+        except Exception as exc:
+            logger.warning("Store photo %s could not be published: %s", capture_id, exc)
+            result = {"note": "The photo is saved, but it could not be added to the website right now."}
+        await db.inventory_captures.update_one({"id": capture_id}, {"$set": {
+            "publishedProductId": result.get("productId"),
+            "publishedProductName": result.get("productName") or "",
+            "publishNote": result.get("note") or "",
+        }})
     processing_gate = asyncio.Semaphore(1)
     # Persistence always runs the full white-background pipeline. prepare_photo
     # remains in the signature so the existing server registration keeps working.
@@ -374,8 +398,20 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
         except Exception:
             await bucket.delete(blob)
             raise
+        await _publish(capture_id, admin["id"])
+        record = await db.inventory_captures.find_one({"id": capture_id}) or record
         categories, brands = await _catalog()
         return _present_record(record, categories, brands)
+
+    @router.post("/publish-all")
+    async def publish_all(admin=Depends(get_admin)):
+        """Re-check every saved store photo and put it on its website product."""
+        published = 0
+        for row in await db.inventory_captures.find({}, {"id": 1}).to_list(5000):
+            await _publish(row["id"], admin["id"])
+            if (await db.inventory_captures.find_one({"id": row["id"]}, {"publishedProductId": 1}) or {}).get("publishedProductId"):
+                published += 1
+        return {"published": published}
 
     @router.get("/{capture_id}")
     async def get_capture(capture_id: str, admin=Depends(get_admin)):
@@ -444,6 +480,8 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
             if existing:
                 raise_duplicate(existing)
             raise HTTPException(status_code=409, detail=duplicate_detail({"id": None, "barcode": code}))
+        if code != current["barcode"] or not row.get("publishedProductId"):
+            await _publish(capture_id, admin["id"])
         updated = await db.inventory_captures.find_one({"id": capture_id})
         return _present_record(updated, categories, brands)
 
@@ -471,6 +509,7 @@ def create_inventory_capture_router(db, bucket, get_admin, prepare_photo):
                 await bucket.delete(previous)
             except Exception:
                 logger.warning("Could not remove the previous private inventory photo for %s", capture_id)
+        await _publish(capture_id, admin["id"])
         updated = await db.inventory_captures.find_one({"id": capture_id})
         categories, brands = await _catalog()
         return _present_record(updated, categories, brands)
