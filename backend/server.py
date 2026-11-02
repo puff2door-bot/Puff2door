@@ -1185,7 +1185,9 @@ def slugify(name: str) -> str:
 
 
 def brand_slug(p: dict) -> str:
-    return p.get("brand") or slugify(p.get("brandName") or (p.get("name") or "").split(" ")[0])
+    # A product with no brand stays brandless. Guessing from the first word of the
+    # product name created fake brands such as "1510", "ASH" or "WATER".
+    return p.get("brand") or slugify(p.get("brandName") or "")
 
 
 def product_out(p: dict) -> dict:
@@ -2192,7 +2194,7 @@ async def seed_brands():
         sl = brand_slug(p)
         if sl and sl not in names:
             names[sl] = (p.get("brandName") or sl.replace("-", " ")).upper()
-    async for p in db.products.find({"$or": [{"brand": ""}, {"brand": {"$exists": False}}]}, {"brand": 1, "brandName": 1, "name": 1}):
+    async for p in db.products.find({"$or": [{"brand": ""}, {"brand": {"$exists": False}}], "brandName": {"$nin": ["", None]}}, {"brand": 1, "brandName": 1, "name": 1}):
         await db.products.update_one({"_id": p["_id"]}, {"$set": {"brand": brand_slug(p)}})
     created = 0
     for sl, nm in names.items():
@@ -2773,7 +2775,10 @@ async def resolve_brand_name(inp: ProductInput) -> str:
     if not (inp.brand or "").strip() and not (inp.brandName or "").strip():
         inp.brand = ""
         return ""
-    name = (inp.brandName or inp.name.split(" ")[0]).strip()
+    name = (inp.brandName or "").strip()
+    if not name:
+        inp.brand = ""
+        return ""
     sl = slugify(name)
     inp.brand = sl
     if sl and sl not in bm:

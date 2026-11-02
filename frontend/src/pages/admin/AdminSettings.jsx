@@ -65,7 +65,7 @@ const AdminSettings = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Field icon={Percent} label="Sales tax rate (%)" hint="Applied to items only, after any promo discount. Orlando / Orange County is 6.5%.">
+        <Field icon={Percent} label="Sales tax rate (%)" hint="Applied to items only, after any promo discount. Seminole County (Altamonte Springs) is 7%: 6% Florida + 1% county surtax.">
           <input required type="number" min="0" max="50" step="0.001" data-testid="settings-tax" className={inputCls} value={f.taxPercent} onChange={(e) => setF({ ...f, taxPercent: e.target.value })} />
         </Field>
         <Field icon={Truck} label="Delivery fee ($)" hint="Charged when the cart subtotal is below the free-delivery minimum.">
