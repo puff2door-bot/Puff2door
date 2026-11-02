@@ -176,6 +176,7 @@ class OrderInput(BaseModel):
     dateOfBirth: str = ""
     deliveryWindowId: str = ""
     ageAttestationAccepted: bool = False
+    fulfillment: str = Field(default="delivery", pattern=r"^(delivery|pickup)$")
 
 
 class PayPalCreateInput(BaseModel):
@@ -188,6 +189,7 @@ class PayPalCreateInput(BaseModel):
     dateOfBirth: str = ""
     deliveryWindowId: str = ""
     ageAttestationAccepted: bool = False
+    fulfillment: str = Field(default="delivery", pattern=r"^(delivery|pickup)$")
 
 
 class PaymentStatusInput(BaseModel):
@@ -255,8 +257,12 @@ DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99
                     "countdownHoursText": "Same-day cutoff is {cutoff} ET. No deliveries after {end} or before {start}.",
                     "countdownExtraLines": [],
                     "deliverySlotCapacity": 8, "deliveryDriverCount": 1, "ordersPerDriverPerWindow": 8, "defaultEtaMinutes": 45,
-                    "googleReviewUrl": "", "hideOutOfStock": True}
+                    "googleReviewUrl": "", "hideOutOfStock": True,
+                    "pickupEnabled": False, "pickupAddress": "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714",
+                    "pickupHoursText": "Pick up during store hours.", "pickupReadyMinutes": 15, "pickupHoldDays": 1,
+                    "pickupInstructions": "Bring a valid, unexpired 21+ photo ID that matches the name on the order."}
 STORE_TZ = ZoneInfo("America/New_York")
+PICKUP_STORE_ADDRESS = {"address": "481 N State Rd 434, Suite 1050", "city": "Altamonte Springs", "state": "FL", "zip": "32714"}
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 DELIVERY_SLOTS = [("12:00", "14:00"), ("16:00", "18:00"), ("18:00", "20:00")]
 _settings_cache: dict = {}
@@ -555,6 +561,12 @@ class StoreSettingsInput(BaseModel):
     defaultEtaMinutes: int = Field(default=45, ge=5, le=480)
     googleReviewUrl: str = Field(default="", max_length=500)
     hideOutOfStock: bool = True
+    pickupEnabled: bool = False
+    pickupAddress: str = Field(default="481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714", max_length=200)
+    pickupHoursText: str = Field(default="Pick up during store hours.", max_length=240)
+    pickupReadyMinutes: int = Field(default=15, ge=0, le=480)
+    pickupHoldDays: int = Field(default=1, ge=0, le=14)
+    pickupInstructions: str = Field(default="Bring a valid, unexpired 21+ photo ID that matches the name on the order.", max_length=400)
 
     @field_validator("homepageLayout")
     @classmethod
@@ -765,10 +777,11 @@ async def resolve_promo(code: str, subtotal: float) -> dict:
     return promo
 
 
-def compute_totals(subtotal: float, settings: dict, discount: float = 0.0) -> dict:
+def compute_totals(subtotal: float, settings: dict, discount: float = 0.0, pickup: bool = False) -> dict:
     subtotal = round(subtotal, 2)
     discount = round(min(discount, subtotal), 2)
-    shipping_cost = 0.0 if subtotal >= settings["freeDeliveryMin"] or subtotal == 0 else settings["deliveryFee"]
+    # Store pickup never pays a delivery fee.
+    shipping_cost = 0.0 if pickup or subtotal >= settings["freeDeliveryMin"] or subtotal == 0 else settings["deliveryFee"]
     tax = r2((subtotal - discount) * settings["taxRate"])
     return {"subtotal": subtotal, "discount": discount, "shippingCost": shipping_cost, "tax": tax, "taxRate": settings["taxRate"], "total": r2(subtotal - discount + shipping_cost + tax)}
 
@@ -971,7 +984,25 @@ async def paypal_request(method: str, path: str, body: Optional[dict] = None) ->
     return data
 
 
-async def price_cart(items: List[CartItem], promo_code: str = "", redeem_points: int = 0, user: Optional[dict] = None, tip: float = 0):
+def pickup_rules(settings: dict) -> dict:
+    return {key: settings.get(key, DEFAULT_SETTINGS[key]) for key in (
+        "pickupEnabled", "pickupAddress", "pickupHoursText", "pickupReadyMinutes", "pickupHoldDays", "pickupInstructions")}
+
+
+def require_pickup(settings: dict) -> dict:
+    """Pickup 'window': today, held until the end of the day pickupHoldDays later (store time)."""
+    if not settings.get("pickupEnabled"):
+        raise HTTPException(status_code=400, detail="Store pickup is not available right now. Choose delivery instead.")
+    today = datetime.now(STORE_TZ).date()
+    hold_days = int(settings.get("pickupHoldDays", 1))
+    hold_until = datetime.combine(today + timedelta(days=hold_days), datetime.max.time().replace(microsecond=0), tzinfo=STORE_TZ)
+    minutes = int(settings.get("pickupReadyMinutes", 15))
+    label = f"Store pickup · usually ready in about {minutes} minutes" if minutes else "Store pickup"
+    return {"id": "pickup", "date": today.isoformat(), "label": label, "sameDay": True, "pickup": True,
+            "holdUntil": hold_until.astimezone(timezone.utc)}
+
+
+async def price_cart(items: List[CartItem], promo_code: str = "", redeem_points: int = 0, user: Optional[dict] = None, tip: float = 0, pickup: bool = False):
     problems, priced = [], []
     for it in items:
         prod = await db.products.find_one({"id": it.productId})
@@ -998,7 +1029,7 @@ async def price_cart(items: List[CartItem], promo_code: str = "", redeem_points:
     promo = await resolve_promo(promo_code, subtotal) if promo_code.strip() else None
     pdisc = round(min(promo_discount(promo, subtotal) if promo else 0.0, subtotal), 2)
     reward = await loyalty_validate_redeem(user, int(redeem_points or 0), round(subtotal - pdisc, 2), settings)
-    totals = compute_totals(subtotal, settings, pdisc + reward)
+    totals = compute_totals(subtotal, settings, pdisc + reward, pickup=pickup)
     totals["discount"] = pdisc
     totals["rewardDiscount"] = reward
     totals["rewardPoints"] = int(redeem_points or 0) if reward else 0
@@ -1449,11 +1480,13 @@ async def send_order_push(order: dict, status: str) -> None:
         "returning_to_store": "Order is returning to the store",
         "returned": "Order returned to the store",
     }
+    if order.get("fulfillment") == "pickup":
+        labels.update({"confirmed": "We're preparing your pickup order", "out_for_delivery": "Your order is ready for pickup", "delivered": "Order picked up"})
     title = labels.get(status, "Order status updated")
     number = order.get("orderNumber", "your order")
     await send_push_to_user(order.get("userId"), {
         "title": title,
-        "body": f"{number}: open HD Smoke Shop for the latest delivery details.",
+        "body": f"{number}: open HD Smoke Shop for the latest {'pickup' if order.get('fulfillment') == 'pickup' else 'delivery'} details.",
         "url": f"/order/{order.get('id', '')}",
         "tag": f"p2d-order-{order.get('id', '')}",
         "renotify": True,
@@ -1472,7 +1505,10 @@ TRACK_STAGES = [
 STAGE_KEYS = [s[0] for s in TRACK_STAGES]
 
 
-def build_tracking(created_at: datetime, manual_status: Optional[str] = None, status_history: Optional[dict] = None, status_updated_at: Optional[datetime] = None):
+PICKUP_STAGE_LABELS = {"placed": "Order Placed", "confirmed": "Preparing", "out_for_delivery": "Ready for Pickup", "delivered": "Picked Up"}
+
+
+def build_tracking(created_at: datetime, manual_status: Optional[str] = None, status_history: Optional[dict] = None, status_updated_at: Optional[datetime] = None, labels: Optional[dict] = None):
     if created_at.tzinfo is None:
         created_at = created_at.replace(tzinfo=timezone.utc)
     status_history = status_history or {}
@@ -1497,11 +1533,20 @@ def build_tracking(created_at: datetime, manual_status: Optional[str] = None, st
             at = at.replace(tzinfo=timezone.utc)
         timeline.append({
             "key": key,
-            "label": label,
+            "label": (labels or {}).get(key, label),
             "at": at.isoformat() if done and isinstance(at, datetime) else None,
             "done": done,
         })
     return current, timeline
+
+
+def pickup_out(p: dict) -> dict:
+    out = dict(p)
+    for key in ("holdUntil", "expiredAt"):
+        value = out.get(key)
+        if isinstance(value, datetime):
+            out[key] = (value if value.tzinfo else value.replace(tzinfo=timezone.utc)).isoformat()
+    return out
 
 
 def order_response(o: dict) -> dict:
@@ -1540,9 +1585,9 @@ def order_response(o: dict) -> dict:
             {"key": manual_status, "label": exception_labels[manual_status], "at": changed_at.isoformat() if isinstance(changed_at, datetime) else changed_at, "done": True},
         ]
     elif awaiting:
-        status, timeline = build_tracking(created_dt, "placed", o.get("statusHistory"), None)
+        status, timeline = build_tracking(created_dt, "placed", o.get("statusHistory"), None, PICKUP_STAGE_LABELS if o.get("fulfillment") == "pickup" else None)
     else:
-        status, timeline = build_tracking(created_dt, o.get("manualStatus"), o.get("statusHistory"), o.get("statusUpdatedAt"))
+        status, timeline = build_tracking(created_dt, o.get("manualStatus"), o.get("statusHistory"), o.get("statusUpdatedAt"), PICKUP_STAGE_LABELS if o.get("fulfillment") == "pickup" else None)
     return {
         "id": o["id"],
         "orderNumber": o["orderNumber"],
@@ -1553,6 +1598,8 @@ def order_response(o: dict) -> dict:
         "sameDay": o.get("sameDay"),
         "deliveryWindow": o.get("deliveryWindow"),
         "arrivalLabel": (o.get("deliveryWindow") or {}).get("label", ""),
+        "fulfillment": o.get("fulfillment", "delivery"),
+        "pickup": pickup_out(o.get("pickup") or {}) if o.get("fulfillment") == "pickup" else None,
         "ageVerified": bool(o.get("ageVerifiedAt")),
         "requiresIdAtDelivery": bool(o.get("requiresIdAtDelivery", True)),
         "idCheck": o.get("idCheck", {"status": "pending"}),
@@ -1921,12 +1968,16 @@ async def paypal_create_order(inp: PayPalCreateInput, user: Optional[dict] = Dep
     if not inp.items:
         raise HTTPException(status_code=400, detail="Your cart is empty")
     settings = await get_settings()
-    require_delivery_zone(inp.zip, settings)
+    pickup = inp.fulfillment == "pickup"
     validate_age_21(inp.dateOfBirth)
-    require_delivery_window(inp.deliveryWindowId, settings)
-    await require_delivery_capacity(inp.deliveryWindowId, settings)
-    await validate_product_restrictions(inp.items, inp.state, inp.ageAttestationAccepted)
-    _, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user, inp.tip)
+    if pickup:
+        require_pickup(settings)
+    else:
+        require_delivery_zone(inp.zip, settings)
+        require_delivery_window(inp.deliveryWindowId, settings)
+        await require_delivery_capacity(inp.deliveryWindowId, settings)
+    await validate_product_restrictions(inp.items, PICKUP_STORE_ADDRESS["state"] if pickup else inp.state, inp.ageAttestationAccepted)
+    _, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user, 0 if pickup else inp.tip, pickup=pickup)
     total = totals["total"]
     data = await paypal_request("POST", "/v2/checkout/orders", {
         "intent": "CAPTURE",
@@ -1965,14 +2016,23 @@ async def create_order(inp: OrderInput, request: Request, user: Optional[dict] =
     if method not in PAYMENT_METHODS or not enabled[method]:
         raise HTTPException(status_code=400, detail="That payment method is not available")
     settings = await get_settings()
-    zone = require_delivery_zone(inp.shipping.zip, settings)
+    pickup = inp.fulfillment == "pickup"
     validate_age_21(inp.dateOfBirth)
-    chosen_window = require_delivery_window(inp.deliveryWindowId, settings)
-    await require_delivery_capacity(inp.deliveryWindowId, settings)
+    if pickup:
+        chosen_window = require_pickup(settings)
+        zone = {"distanceMiles": 0}
+        # A pickup order is collected at the store, so the store is its address.
+        inp.shipping = inp.shipping.model_copy(update=PICKUP_STORE_ADDRESS)
+        inp.tip = 0
+    else:
+        zone = require_delivery_zone(inp.shipping.zip, settings)
+        chosen_window = require_delivery_window(inp.deliveryWindowId, settings)
+        await require_delivery_capacity(inp.deliveryWindowId, settings)
     compliance_snapshot = await validate_product_restrictions(inp.items, inp.shipping.state, inp.ageAttestationAccepted)
-    window = await delivery_window_with_capacity(settings)
-    if inp.expectSameDay and not chosen_window["sameDay"]:
-        raise HTTPException(status_code=409, detail=window["message"] or "Same-day delivery is not available right now. Choose the next available delivery window.")
+    if not pickup:
+        window = await delivery_window_with_capacity(settings)
+        if inp.expectSameDay and not chosen_window["sameDay"]:
+            raise HTTPException(status_code=409, detail=window["message"] or "Same-day delivery is not available right now. Choose the next available delivery window.")
     pending = None
     if method in ("paypal", "apple_pay"):
         if not inp.paypalOrderId:
@@ -1987,7 +2047,7 @@ async def create_order(inp: OrderInput, request: Request, user: Optional[dict] =
             raise HTTPException(status_code=402, detail="This PayPal payment was already used.")
         if pending.get("capturing"):
             raise HTTPException(status_code=409, detail="This PayPal payment is already being processed. Please wait a moment.")
-    priced_items, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user, inp.tip)
+    priced_items, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user, inp.tip, pickup=pickup)
     subtotal, shipping_cost, total = totals["subtotal"], totals["shippingCost"], totals["total"]
     if pending and abs(pending["total"] - total) > 0.01:
         raise HTTPException(status_code=402, detail="PayPal order does not match your cart. Please try again.")
@@ -2041,7 +2101,9 @@ async def create_order(inp: OrderInput, request: Request, user: Optional[dict] =
         "deliveryDistanceMiles": zone["distanceMiles"],
         "deliveryDate": chosen_window["date"],
         "sameDay": bool(chosen_window["sameDay"]),
-        "deliveryWindow": chosen_window,
+        "deliveryWindow": {k: v for k, v in chosen_window.items() if k != "holdUntil"},
+        "fulfillment": "pickup" if pickup else "delivery",
+        **({"pickup": {"holdUntil": chosen_window["holdUntil"], "address": settings.get("pickupAddress", ""), "instructions": settings.get("pickupInstructions", "")}} if pickup else {}),
         "ageVerifiedAt": now_utc(),
         "ageVerification": {
             "result": "passed",
@@ -2339,7 +2401,8 @@ async def public_settings():
     settings = await get_settings()
     return {"pricing": pricing_rules(settings), "delivery": delivery_rules(settings), "loyalty": loyalty_public_rules(settings),
             "presentation": {"homepageLayout": settings.get("homepageLayout", "classic")},
-            "trust": {"googleReviewUrl": settings.get("googleReviewUrl", "")}}
+            "trust": {"googleReviewUrl": settings.get("googleReviewUrl", "")},
+            "pickup": pickup_rules(settings)}
 
 
 @api_router.get("/push/config")
@@ -3486,15 +3549,17 @@ def _as_datetime(value) -> Optional[datetime]:
 
 async def build_compliance_alerts() -> List[dict]:
     alerts = []
-    orders = await db.orders.find({"paymentStatus": {"$ne": "refunded"}, "manualStatus": {"$nin": ["cancelled", "returned"]}}).sort("createdAt", -1).to_list(2000)
+    orders = await db.orders.find({"paymentStatus": {"$ne": "refunded"}, "$or": [{"manualStatus": {"$nin": ["cancelled", "returned"]}}, {"pickup.refundNeeded": True}]}).sort("createdAt", -1).to_list(2000)
     for order in orders:
         status = order_response(order)["status"]
         if not order.get("ageVerifiedAt"):
             alerts.append({"id": f"age-{order['id']}", "severity": "critical", "kind": "missing_age_check", "orderId": order["id"], "orderNumber": order["orderNumber"], "message": "Checkout age verification record is missing."})
-        if status == "out_for_delivery" and not (order.get("dispatch") or {}).get("driverName"):
+        if status == "out_for_delivery" and order.get("fulfillment") != "pickup" and not (order.get("dispatch") or {}).get("driverName"):
             alerts.append({"id": f"driver-{order['id']}", "severity": "warning", "kind": "missing_driver", "orderId": order["id"], "orderNumber": order["orderNumber"], "message": "Order is out for delivery without a driver assignment."})
         if status == "delivered" and order.get("requiresIdAtDelivery", True) and (order.get("idCheck") or {}).get("status") != "passed":
             alerts.append({"id": f"id-{order['id']}", "severity": "critical", "kind": "missing_door_id_check", "orderId": order["id"], "orderNumber": order["orderNumber"], "message": "Delivered order is missing a successful door ID check."})
+        if (order.get("pickup") or {}).get("refundNeeded") and order.get("paymentStatus") == "paid":
+            alerts.append({"id": f"pickup-refund-{order['id']}", "severity": "warning", "kind": "pickup_not_collected", "orderId": order["id"], "orderNumber": order["orderNumber"], "message": "Pickup order was not collected and was cancelled. Stock is back on the shelf; refund the customer in Orders."})
         if status == "returned" and order.get("paymentStatus") == "paid":
             alerts.append({"id": f"payment-{order['id']}", "severity": "warning", "kind": "failed_id_payment_review", "orderId": order["id"], "orderNumber": order["orderNumber"], "message": "Failed-ID return is complete; review the payment and refund decision in Orders."})
     products = await db.products.find({"active": True}, {"id": 1, "name": 1, "complianceCategory": 1, "minimumAge": 1, "requiresIdAtDelivery": 1}).to_list(5000)
@@ -3713,13 +3778,19 @@ async def admin_record_id_check(order_id: str, inp: IdCheckInput, admin: dict = 
         "nameMatchesOrder": inp.nameMatchesOrder,
         "expirationValid": inp.expirationValid,
         "failureReason": inp.failureReason.strip(),
-        "checkedBy": inp.checkedBy.strip() or (order.get("dispatch") or {}).get("driverName", "") or "Driver",
+        "checkedBy": inp.checkedBy.strip() or (order.get("dispatch") or {}).get("driverName", "") or ("Store staff" if order.get("fulfillment") == "pickup" else "Driver"),
         "checkedAt": checked_at,
         "fullIdImageStored": False,
         "updatedBy": admin["id"],
     }
     updates = {"idCheck": record, "statusUpdatedAt": checked_at, "statusUpdatedBy": admin["id"]}
-    if inp.result == "failed":
+    if inp.result == "failed" and order.get("fulfillment") == "pickup":
+        # The order never left the store: hold it for an admin decision (refund / restock).
+        updates.update({
+            "manualStatus": "id_check_failed",
+            "returnProcedure": {"status": "returned", "startedAt": checked_at, "reason": inp.failureReason.strip(), "inventoryDisposition": "pending", "paymentDisposition": "pending_admin_review"},
+        })
+    elif inp.result == "failed":
         updates.update({
             "manualStatus": "returning_to_store",
             "returnProcedure": {"status": "returning", "startedAt": checked_at, "reason": inp.failureReason.strip(), "inventoryDisposition": "pending", "paymentDisposition": "pending_admin_review"},
@@ -4456,6 +4527,45 @@ async def clover_catalog_schedule():
             except Exception:
                 logger.error("Clover scheduled sync failed")
             await asyncio.sleep(CLOVER_SYNC_INTERVAL_SECONDS)
+
+    asyncio.create_task(loop())
+
+
+async def expire_uncollected_pickups() -> int:
+    """Cancel pickup orders not collected by their hold time; stock goes back on the shelf
+    (website and Clover). Refunds are not automatic: the order is flagged for the owner."""
+    now = now_utc()
+    count = 0
+    rows = await db.orders.find({"fulfillment": "pickup", "pickup.holdUntil": {"$lt": now},
+                                 "manualStatus": {"$nin": ["delivered", "cancelled", "returned", "id_check_failed"]}}).to_list(200)
+    for o in rows:
+        updates = {"manualStatus": "cancelled", "statusUpdatedAt": now, "statusUpdatedBy": "pickup_expiry",
+                   "pickup.expiredAt": now, "pickup.refundNeeded": o.get("paymentStatus") == "paid"}
+        if not o.get("stockReleased"):
+            await release_stock(o["items"])
+            updates["stockReleased"] = True
+            await restore_clover_order_stock(o)
+        await db.orders.update_one({"id": o["id"]}, {"$set": updates})
+        updated = await db.orders.find_one({"id": o["id"]})
+        await loyalty_reverse_for_order(updated, None, None)
+        asyncio.create_task(send_order_push(updated, "cancelled"))
+        asyncio.create_task(emails.send_pickup_expired(updated))
+        count += 1
+    if count:
+        logger.info("Cancelled %s uncollected pickup order(s)", count)
+    return count
+
+
+@app.on_event("startup")
+async def pickup_expiry_schedule():
+    async def loop():
+        await asyncio.sleep(60)
+        while True:
+            try:
+                await expire_uncollected_pickups()
+            except Exception as exc:
+                logger.error("Pickup expiry check failed: %s", exc)
+            await asyncio.sleep(900)
 
     asyncio.create_task(loop())
 

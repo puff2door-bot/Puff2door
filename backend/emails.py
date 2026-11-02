@@ -97,6 +97,12 @@ def address_block(s: dict) -> str:
 
 
 PAY_LABEL = {"square": "card", "cash_app": "Cash App Pay", "paypal": "PayPal", "apple_pay": "Apple Pay", "zelle": "Zelle", "test_card": "test card"}
+PICKUP_STATUS_COPY = {
+    "confirmed": ("We're preparing your pickup order", "We've received your payment and are getting your order ready. We'll email you as soon as it's ready to collect."),
+    "out_for_delivery": ("Your order is ready for pickup", "Your HD Smoke Shop order is ready. Come to the store and bring a valid, unexpired 21+ photo ID that matches the name on the order."),
+    "delivered": ("Thanks for picking up your order", "Enjoy! If anything isn't right, just reply to this email."),
+}
+
 STATUS_COPY = {
     "confirmed": ("Your order is confirmed", "We've received your payment and are getting your order ready."),
     "out_for_delivery": ("Your order is out for delivery", "Your HD Smoke Shop order is on its way. Keep your ID handy — deliveries are 21+ only."),
@@ -171,10 +177,16 @@ async def send_order_confirmation(order: dict, zelle: Optional[dict] = None, rew
         body += zelle_box(zelle["recipient"], zelle["name"], zelle["amount"], zelle["memo"])
     body += items_table(order)
     body += rewards_box(rewards)
-    body += f'<p style="font-size:13px;color:#6b7280;margin:0 0 6px;"><strong style="color:#171717;">Delivering to</strong><br>{address_block(order["shipping"])}</p>'
-    if order.get("deliveryWindow", {}).get("label"):
-        body += f'<p style="font-size:13px;color:#065f46;"><strong>Arrival window:</strong> {escape(order["deliveryWindow"]["label"])}</p>'
-    body += '<p style="font-size:12px;color:#6b7280;">A valid government-issued photo ID proving age 21+ is checked at the door. Orders cannot be left with anyone under 21.</p>'
+    if order.get("fulfillment") == "pickup":
+        pickup = order.get("pickup") or {}
+        body += f'<p style="font-size:13px;color:#6b7280;margin:0 0 6px;"><strong style="color:#171717;">Store pickup</strong><br>{escape(pickup.get("address", ""))}</p>'
+        body += '<p style="font-size:13px;color:#065f46;">We\'ll email you when your order is ready to collect.</p>'
+        body += f'<p style="font-size:12px;color:#6b7280;">{escape(pickup.get("instructions") or "Bring a valid 21+ photo ID matching the name on the order.")} Uncollected orders are cancelled after the hold time.</p>'
+    else:
+        body += f'<p style="font-size:13px;color:#6b7280;margin:0 0 6px;"><strong style="color:#171717;">Delivering to</strong><br>{address_block(order["shipping"])}</p>'
+        if order.get("deliveryWindow", {}).get("label"):
+            body += f'<p style="font-size:13px;color:#065f46;"><strong>Arrival window:</strong> {escape(order["deliveryWindow"]["label"])}</p>'
+        body += '<p style="font-size:12px;color:#6b7280;">A valid government-issued photo ID proving age 21+ is checked at the door. Orders cannot be left with anyone under 21.</p>'
     body += f'<p style="margin:24px 0 0;">{button("Track your order", order_link(order))}</p>'
     await _send([to], title, layout(title, body, intro), "order_confirmation", {"orderId": order["id"]})
     await notify_admin_new_order(order)
@@ -186,7 +198,8 @@ async def notify_admin_new_order(order: dict):
     n = order["orderNumber"]
     s = order["shipping"]
     pay = "UNPAID – Zelle pending" if order.get("paymentStatus") == "awaiting_payment" else f"paid via {PAY_LABEL.get(order.get('paymentMethod'), 'card')}"
-    title = f"New order {n} · {_money(order['total'])} · {pay}"
+    kind = "PICKUP" if order.get("fulfillment") == "pickup" else "Delivery"
+    title = f"New {kind} order {n} · {_money(order['total'])} · {pay}"
     body = f'<p style="font-size:14px;color:#374151;">{escape(s.get("firstName", ""))} {escape(s.get("lastName", ""))} · {escape(s.get("email", ""))} · {escape(s.get("phone", ""))}</p>'
     body += items_table(order)
     body += f'<p style="font-size:13px;color:#6b7280;">{address_block(s)}</p>'
@@ -226,15 +239,27 @@ async def send_payment_received(order: dict, rewards: Optional[dict] = None):
 
 
 async def send_status_update(order: dict, status: str):
-    if status not in STATUS_COPY:
+    copy_table = PICKUP_STATUS_COPY if order.get("fulfillment") == "pickup" else STATUS_COPY
+    if status not in copy_table:
         return
     to = order.get("shipping", {}).get("email")
-    title, copy = STATUS_COPY[status]
+    title, copy = copy_table[status]
+    if order.get("fulfillment") == "pickup" and status == "out_for_delivery" and (order.get("pickup") or {}).get("address"):
+        copy += f' Pickup address: {order["pickup"]["address"]}.'
+
     subject = f"{title} — {order['orderNumber']}"
     body = f'<p style="font-size:15px;line-height:1.6;color:#374151;">Hi {escape(order["shipping"].get("firstName") or "there")}, {copy}</p>'
     body += f'<p style="font-size:13px;color:#6b7280;">{len(order["items"])} item(s) · {_money(order["total"])}</p>'
-    body += f'<p style="margin:24px 0 0;">{button("View delivery tracker", order_link(order))}</p>'
+    body += f'<p style="margin:24px 0 0;">{button("View your order" if order.get("fulfillment") == "pickup" else "View delivery tracker", order_link(order))}</p>'
     await _send([to], subject, layout(title, body, copy), f"status_{status}", {"orderId": order["id"]})
+
+
+async def send_pickup_expired(order: dict):
+    to = order.get("shipping", {}).get("email")
+    title = f"Pickup order {order['orderNumber']} was cancelled"
+    copy = "Your pickup order wasn't collected in time, so we've cancelled it and put the items back on the shelf. We'll process your refund. Questions? Just reply to this email."
+    body = f'<p style="font-size:15px;line-height:1.6;color:#374151;">Hi {escape(order["shipping"].get("firstName") or "there")}, {copy}</p>'
+    await _send([to], title, layout(title, body, copy), "pickup_expired", {"orderId": order["id"]})
 
 
 async def send_password_reset(email: str, first_name: str, token: str, minutes: int):

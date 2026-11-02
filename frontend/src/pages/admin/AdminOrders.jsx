@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink, BadgeDollarSign, Camera, MessageSquareText, Save } from "lucide-react";
+import { ExternalLink, BadgeDollarSign, Camera, MessageSquareText, Save, Store, ShieldCheck, PackageCheck, BellRing } from "lucide-react";
 import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
 
@@ -10,6 +10,8 @@ const STATUSES = [
   { key: "out_for_delivery", label: "Out for Delivery" },
   { key: "delivered", label: "Delivered" },
 ];
+const PICKUP_LABELS = { placed: "Order Placed", confirmed: "Preparing", out_for_delivery: "Ready for Pickup", delivered: "Picked Up", cancelled: "Cancelled" };
+const ID_TYPES = ["Driver license", "State ID", "Passport", "Military ID"];
 const CANCELLED = { key: "cancelled", label: "Cancelled" };
 const ALL_STATUSES = [...STATUSES, CANCELLED];
 const SPECIAL_LABELS = { returning_to_store: "Returning to Store", returned: "Returned to Store", id_check_failed: "ID Check Failed" };
@@ -24,6 +26,7 @@ const AdminOrders = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [deliveryDrafts, setDeliveryDrafts] = useState({});
+  const [pickupDrafts, setPickupDrafts] = useState({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -35,7 +38,7 @@ const AdminOrders = () => {
     try {
       const { data } = await api.put(`/admin/orders/${o.id}/status`, { status });
       setOrders((prev) => prev.map((x) => (x.id === o.id ? data : x)));
-      toast({ title: "Order updated", description: `${o.orderNumber} → ${ALL_STATUSES.find((s) => s.key === status).label}` });
+      toast({ title: "Order updated", description: `${o.orderNumber} → ${o.fulfillment === "pickup" ? PICKUP_LABELS[status] : ALL_STATUSES.find((s) => s.key === status).label}` });
     } catch (e) {
       toast({ title: "Update failed", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
     }
@@ -92,14 +95,41 @@ const AdminOrders = () => {
     }
   };
 
-  const list = filter === "all" ? orders : filter === "awaiting_payment" ? orders.filter((o) => o.paymentStatus === "awaiting_payment") : orders.filter((o) => o.status === filter);
+  // Store pickup: "Ready" emails the customer; handing over needs a passed 21+ ID check first.
+  const pickupDraft = (o) => pickupDrafts[o.id] || { idType: ID_TYPES[0], checked: false };
+  const setPickupDraft = (o, patch) => setPickupDrafts((prev) => ({ ...prev, [o.id]: { ...pickupDraft(o), ...patch } }));
+  const handOver = async (o) => {
+    const d = pickupDraft(o);
+    if (!d.checked) return toast({ title: "Check the ID first", description: "Tick the ID box after checking photo, age 21+, name and expiry.", variant: "destructive" });
+    try {
+      await api.put(`/admin/orders/${o.id}/id-check`, { result: "passed", idType: d.idType, photoIdValid: true, age21Confirmed: true, nameMatchesOrder: true, expirationValid: true, checkedBy: "Store staff" });
+      const { data } = await api.put(`/admin/orders/${o.id}/status`, { status: "delivered" });
+      setOrders((prev) => prev.map((x) => (x.id === o.id ? data : x)));
+      toast({ title: "Picked up", description: `${o.orderNumber} handed over.` });
+    } catch (e) {
+      toast({ title: "Update failed", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
+    }
+  };
+  const failPickupId = async (o) => {
+    const reason = window.prompt(`Why couldn't ${o.orderNumber} be handed over? (e.g. no ID, under 21, name doesn't match)`, "");
+    if (!reason) return;
+    try {
+      const { data } = await api.put(`/admin/orders/${o.id}/id-check`, { result: "failed", idType: pickupDraft(o).idType, failureReason: reason, checkedBy: "Store staff" });
+      setOrders((prev) => prev.map((x) => (x.id === o.id ? data : x)));
+      toast({ title: "ID check failed recorded", description: "Decide on the refund in Delivery Operations." });
+    } catch (e) {
+      toast({ title: "Update failed", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
+    }
+  };
+
+  const list = filter === "pickup" ? orders.filter((o) => o.fulfillment === "pickup") : filter === "all" ? orders : filter === "awaiting_payment" ? orders.filter((o) => o.paymentStatus === "awaiting_payment") : orders.filter((o) => o.status === filter);
 
   return (
     <div data-testid="admin-orders">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h1 className="font-heading text-3xl uppercase tracking-tight">Orders <span className="text-neutral-400 text-xl">({orders.length})</span></h1>
         <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-          {[{ key: "all", label: "All" }, { key: "awaiting_payment", label: "Awaiting Payment" }, ...ALL_STATUSES].map((s) => (
+          {[{ key: "all", label: "All" }, { key: "pickup", label: "Pickup" }, { key: "awaiting_payment", label: "Awaiting Payment" }, ...ALL_STATUSES].map((s) => (
             <button key={s.key} onClick={() => setFilter(s.key)} data-testid={`orders-filter-${s.key}`} className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-colors ${filter === s.key ? "bg-neutral-900 border-neutral-900 text-white" : "border-neutral-300 text-neutral-600 hover:border-neutral-900"}`}>{s.label}</button>
           ))}
         </div>
@@ -116,13 +146,18 @@ const AdminOrders = () => {
               <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-6">
                 <div className="min-w-[160px]">
                   <p className="font-heading text-lg">{o.orderNumber}</p>
+                  {o.fulfillment === "pickup" && <span data-testid={`pickup-badge-${o.orderNumber}`} className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800"><Store className="h-3 w-3" /> PICKUP</span>}
                   <p className="text-xs text-neutral-500">{new Date(o.createdAt).toLocaleString()}</p>
                 </div>
                 <div className="flex-1 min-w-0 text-sm">
                   <p className="font-medium text-neutral-900">{o.shipping.firstName} {o.shipping.lastName} <span className="text-neutral-400 font-normal">· {o.shipping.email || "guest"}</span></p>
                   <p className="text-xs text-neutral-500 line-clamp-1">{o.items.map((i) => `${i.qty}× ${i.name}`).join(", ")}</p>
+                  {o.fulfillment === "pickup" ? (
+                    <p className="text-xs font-semibold text-purple-800">Store pickup · {o.shipping.phone}{o.pickup?.holdUntil && !["delivered", "cancelled"].includes(o.status) ? ` · held until ${new Date(o.pickup.holdUntil).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : ""}{o.pickup?.refundNeeded && o.paymentStatus === "paid" ? " · NOT COLLECTED — refund needed" : ""}</p>
+                  ) : <>
                   <p className="text-xs text-neutral-500">{[o.shipping.address, o.shipping.city, o.shipping.state, o.shipping.zip].filter(Boolean).join(", ")}</p>
                   {o.arrivalLabel && <p className="text-xs font-semibold text-emerald-700">Delivery window: {o.arrivalLabel}</p>}
+                  </>}
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="font-heading text-xl">${o.total.toFixed(2)}</span>
@@ -137,13 +172,31 @@ const AdminOrders = () => {
                   {(o.pointsEarned > 0 || o.rewardPoints > 0) && (
                     <span data-testid={`order-points-${o.orderNumber}`} className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">{o.pointsEarned > 0 ? `+${o.pointsEarned - (o.pointsReversed || 0)} pts` : ""}{o.pointsEarned > 0 && o.rewardPoints > 0 ? " · " : ""}{o.rewardPoints > 0 ? `${o.rewardPoints} redeemed` : ""}</span>
                   )}
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${tone[o.status] || tone.placed}`}>{ALL_STATUSES.find((s) => s.key === o.status)?.label || SPECIAL_LABELS[o.status] || o.status}</span>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${tone[o.status] || tone.placed}`}>{(o.fulfillment === "pickup" && PICKUP_LABELS[o.status]) || ALL_STATUSES.find((s) => s.key === o.status)?.label || SPECIAL_LABELS[o.status] || o.status}</span>
                   {SPECIAL_LABELS[o.status] ? <Link to="/admin/operations" className="text-xs font-bold text-red-700 underline">Manage return</Link> : <select data-testid={`order-status-select-${o.orderNumber}`} disabled={o.paymentStatus === "awaiting_payment"} value={o.manualStatus || o.status} onChange={(e) => setStatus(o, e.target.value)} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold outline-none focus:border-emerald-600">
-                    {ALL_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                    {ALL_STATUSES.map((s) => <option key={s.key} value={s.key}>{o.fulfillment === "pickup" ? PICKUP_LABELS[s.key] : s.label}</option>)}
                   </select>}
                   <Link to={`/order/${o.id}`} target="_blank" className="text-neutral-400 hover:text-emerald-600" aria-label="Open"><ExternalLink className="h-4 w-4" /></Link>
                 </div>
               </div>
+              {o.fulfillment === "pickup" ? (
+                !["delivered", "cancelled", "id_check_failed", "returned"].includes(o.status) && o.paymentStatus !== "awaiting_payment" && (
+                <div className="mt-4 pt-4 border-t border-neutral-100 flex flex-wrap items-center gap-3" data-testid={`pickup-panel-${o.orderNumber}`}>
+                  {o.status !== "out_for_delivery" ? (
+                    <button type="button" onClick={() => setStatus(o, "out_for_delivery")} data-testid={`pickup-ready-${o.orderNumber}`} className="inline-flex items-center gap-1.5 rounded-full bg-purple-700 text-white px-4 py-2 text-xs font-bold hover:bg-purple-800"><BellRing className="h-3.5 w-3.5" /> Ready for pickup (emails customer)</button>
+                  ) : (
+                    <>
+                      <select value={pickupDraft(o).idType} onChange={(e) => setPickupDraft(o, { idType: e.target.value })} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold">{ID_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
+                      <label className="flex items-center gap-2 text-xs font-semibold text-neutral-700 cursor-pointer">
+                        <input type="checkbox" checked={pickupDraft(o).checked} onChange={(e) => setPickupDraft(o, { checked: e.target.checked })} className="accent-emerald-600 h-4 w-4" data-testid={`pickup-id-ok-${o.orderNumber}`} />
+                        <ShieldCheck className="h-4 w-4 text-emerald-600" /> ID checked: photo matches, 21+, name matches order, not expired
+                      </label>
+                      <button type="button" onClick={() => handOver(o)} data-testid={`pickup-done-${o.orderNumber}`} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 text-white px-4 py-2 text-xs font-bold hover:bg-emerald-700"><PackageCheck className="h-3.5 w-3.5" /> Picked up</button>
+                      <button type="button" onClick={() => failPickupId(o)} className="text-xs font-bold text-red-700 underline">ID failed</button>
+                    </>
+                  )}
+                </div>)
+              ) : (
               <div className="mt-4 pt-4 border-t border-neutral-100 grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-3 items-center" data-testid={`delivery-details-${o.orderNumber}`}>
                 <label className="flex items-center gap-2 rounded-lg border border-neutral-300 px-3 focus-within:border-emerald-600">
                   <Camera className="h-4 w-4 text-neutral-400 shrink-0" />
@@ -154,7 +207,7 @@ const AdminOrders = () => {
                   <MessageSquareText className="h-4 w-4 text-emerald-600" /> Driver text sent
                 </label>
                 <button type="button" onClick={() => saveDelivery(o)} className="inline-flex items-center justify-center gap-1.5 rounded-full bg-neutral-900 text-white px-4 py-2 text-xs font-bold hover:bg-emerald-600"><Save className="h-3.5 w-3.5" /> Save tracking details</button>
-              </div>
+              </div>)}
               {(o.issues || []).length > 0 && <div className="mt-4 border-t pt-4 space-y-2">{o.issues.map((i)=><div key={i.id} className="rounded-xl bg-amber-50 border border-amber-200 p-3 flex flex-wrap items-center gap-2 text-sm"><b className="capitalize">{i.kind.replaceAll("_"," ")}</b><span className="text-neutral-600 flex-1">{i.message || "No details provided"}</span><select value={i.status} onChange={(e)=>resolveIssue(o,i,e.target.value)} className="border rounded-lg px-2 py-1 text-xs"><option value="open">Open</option><option value="working">Working</option><option value="resolved">Resolved</option></select></div>)}</div>}
             </div>
           ))}

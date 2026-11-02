@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Save, Percent, Truck, Gift, MapPin, Radius, Clock, LayoutTemplate, Gauge, Plus, Trash2, Eye, EyeOff, Star } from "lucide-react";
+import { Save, Percent, Truck, Gift, MapPin, Radius, Clock, LayoutTemplate, Gauge, Plus, Trash2, Eye, EyeOff, Star, Store } from "lucide-react";
 import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
 
@@ -27,7 +27,9 @@ const AdminSettings = () => {
     countdownClosedDayText: data.countdownClosedDayText ?? "No local delivery today. Order now for the next available delivery day ({next}).", countdownPausedText: data.countdownPausedText ?? "Local delivery is currently paused. Please check back soon.",
     countdownHoursText: data.countdownHoursText ?? "Same-day cutoff is {cutoff} ET. No deliveries after {end} or before {start}.", countdownExtraLines: data.countdownExtraLines || [],
     deliverySlotCapacity: data.deliverySlotCapacity ?? 8, deliveryDriverCount: data.deliveryDriverCount ?? 1, ordersPerDriverPerWindow: data.ordersPerDriverPerWindow ?? 8, defaultEtaMinutes: data.defaultEtaMinutes ?? 45,
-    googleReviewUrl: data.googleReviewUrl || "", hideOutOfStock: data.hideOutOfStock ?? true });
+    googleReviewUrl: data.googleReviewUrl || "", hideOutOfStock: data.hideOutOfStock ?? true,
+    pickupEnabled: data.pickupEnabled ?? false, pickupAddress: data.pickupAddress || "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714", pickupHoursText: data.pickupHoursText ?? "Pick up during store hours.",
+    pickupReadyMinutes: data.pickupReadyMinutes ?? 15, pickupHoldDays: data.pickupHoldDays ?? 1, pickupInstructions: data.pickupInstructions ?? "Bring a valid, unexpired 21+ photo ID that matches the name on the order." });
 
   useEffect(() => {
     api.get("/admin/settings").then(({ data }) => setF(toForm(data)));
@@ -40,7 +42,8 @@ const AdminSettings = () => {
       const { data } = await api.put("/admin/settings", { taxRate: Number(f.taxPercent) / 100, deliveryFee: Number(f.deliveryFee), freeDeliveryMin: Number(f.freeDeliveryMin), deliveryZip: f.deliveryZip, deliveryRadiusMiles: Number(f.deliveryRadiusMiles), allowedZipCodes: f.allowedZipCodes.split(/[\s,]+/).map((z) => z.trim()).filter(Boolean),
         sameDayEnabled: Boolean(f.sameDayEnabled), deliveryCutoff: f.deliveryCutoff, deliveryStart: f.deliveryStart, deliveryEnd: f.deliveryEnd, deliveryDays: f.deliveryDays, homepageLayout: f.homepageLayout,
         countdownVisible: Boolean(f.countdownVisible), countdownHeadlineVisible: Boolean(f.countdownHeadlineVisible), countdownHoursVisible: Boolean(f.countdownHoursVisible), countdownOpenText: f.countdownOpenText, countdownClosedText: f.countdownClosedText, countdownClosedDayText: f.countdownClosedDayText, countdownPausedText: f.countdownPausedText, countdownHoursText: f.countdownHoursText, countdownExtraLines: f.countdownExtraLines,
-        deliverySlotCapacity: Number(f.deliverySlotCapacity), deliveryDriverCount: Number(f.deliveryDriverCount), ordersPerDriverPerWindow: Number(f.ordersPerDriverPerWindow), defaultEtaMinutes: Number(f.defaultEtaMinutes), googleReviewUrl: f.googleReviewUrl.trim(), hideOutOfStock: Boolean(f.hideOutOfStock) });
+        deliverySlotCapacity: Number(f.deliverySlotCapacity), deliveryDriverCount: Number(f.deliveryDriverCount), ordersPerDriverPerWindow: Number(f.ordersPerDriverPerWindow), defaultEtaMinutes: Number(f.defaultEtaMinutes), googleReviewUrl: f.googleReviewUrl.trim(), hideOutOfStock: Boolean(f.hideOutOfStock),
+        pickupEnabled: Boolean(f.pickupEnabled), pickupAddress: f.pickupAddress.trim(), pickupHoursText: f.pickupHoursText, pickupReadyMinutes: Number(f.pickupReadyMinutes), pickupHoldDays: Number(f.pickupHoldDays), pickupInstructions: f.pickupInstructions });
       setF(toForm(data));
       toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
     } catch (err) {
@@ -171,6 +174,25 @@ const AdminSettings = () => {
           <div><label className="block text-xs font-bold text-neutral-600 mb-1">Default live ETA (minutes)</label><input required type="number" min="5" max="480" step="5" data-testid="settings-default-eta" className={inputCls} value={f.defaultEtaMinutes} onChange={(e) => setF({ ...f, defaultEtaMinutes: e.target.value })} /></div>
         </div>
         <p className="mt-3 text-xs font-semibold text-emerald-700">Effective capacity: {Math.min(Number(f.deliverySlotCapacity) || 1, (Number(f.deliveryDriverCount) || 1) * (Number(f.ordersPerDriverPerWindow) || 1))} orders per delivery window.</p>
+      </div>
+
+      <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-pickup">
+        <label className="flex items-center justify-between gap-4 cursor-pointer mb-1">
+          <span className="flex items-center gap-2"><Store className="h-4 w-4 text-emerald-600" /><span className="text-sm font-bold text-neutral-900">Store pickup</span></span>
+          <span className="flex items-center gap-2 text-sm font-bold">{f.pickupEnabled ? "On" : "Off"}<input type="checkbox" data-testid="settings-pickup-enabled" className="accent-emerald-600 h-5 w-5" checked={f.pickupEnabled} onChange={(e) => setF({ ...f, pickupEnabled: e.target.checked })} /></span>
+        </label>
+        <p className="text-xs text-neutral-500 mb-4">When on, checkout offers "Store pickup": no delivery fee, no driver tip, paid online. In Orders, tap <b>Ready for pickup</b> (the customer gets an email), check their 21+ ID at the counter, then tap <b>Picked up</b>. Uncollected orders are cancelled after the hold time and the stock goes back on the shelf.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2"><label className="block text-xs font-bold text-neutral-600 mb-1">Pickup address shown to customers</label><input required data-testid="settings-pickup-address" className={inputCls} value={f.pickupAddress} onChange={(e) => setF({ ...f, pickupAddress: e.target.value })} /></div>
+          <div className="sm:col-span-2"><label className="block text-xs font-bold text-neutral-600 mb-1">Pickup hours note</label><input data-testid="settings-pickup-hours" className={inputCls} value={f.pickupHoursText} onChange={(e) => setF({ ...f, pickupHoursText: e.target.value })} /></div>
+          <div><label className="block text-xs font-bold text-neutral-600 mb-1">Usually ready in (minutes, 0 = don't show)</label><input required type="number" min="0" max="480" step="5" data-testid="settings-pickup-ready" className={inputCls} value={f.pickupReadyMinutes} onChange={(e) => setF({ ...f, pickupReadyMinutes: e.target.value })} /></div>
+          <div><label className="block text-xs font-bold text-neutral-600 mb-1">Hold uncollected orders until end of day +</label>
+            <select data-testid="settings-pickup-hold" className={inputCls} value={f.pickupHoldDays} onChange={(e) => setF({ ...f, pickupHoldDays: e.target.value })}>
+              {[0, 1, 2, 3, 5, 7].map((d) => <option key={d} value={d}>{d === 0 ? "Same day" : d === 1 ? "Next day (end of)" : `${d} days`}</option>)}
+            </select>
+          </div>
+          <div className="sm:col-span-2"><label className="block text-xs font-bold text-neutral-600 mb-1">Pickup instructions</label><input data-testid="settings-pickup-instructions" className={inputCls} value={f.pickupInstructions} onChange={(e) => setF({ ...f, pickupInstructions: e.target.value })} /></div>
+        </div>
       </div>
 
       <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-hide-out-of-stock">
