@@ -219,6 +219,51 @@ def _encode(canvas):
     return output.getvalue()
 
 
+BOX_FILL = 0.90  # an item filling this much of its upright box is treated as a box
+
+
+def _box_edges(alpha):
+    """Clean edges for box-shaped items. The predicted outline is coarse (320px), so box sides
+    came out wavy with background shadow along them. If the item is a box, return its rectangle
+    (robust median of each side, trimmed slightly inside the shadow line); otherwise None."""
+    scale = min(1.0, 800.0 / max(alpha.size))
+    small = alpha if scale == 1.0 else alpha.resize(
+        (max(1, round(alpha.width * scale)), max(1, round(alpha.height * scale))), Image.Resampling.BILINEAR)
+    solid = small.point(lambda v: 255 if v >= 128 else 0)
+    box = solid.getbbox()
+    if not box:
+        return None
+    w, h = box[2] - box[0], box[3] - box[1]
+    if w < 20 or h < 20:
+        return None
+    filled = solid.crop(box).histogram()[255] / float(w * h)
+    if filled < BOX_FILL:
+        return None
+    import numpy as np
+    m = np.asarray(solid) > 0
+    rows = [r for r in range(box[1] + h // 10, box[3] - h // 10) if m[r].any()]
+    cols = [c for c in range(box[0] + w // 10, box[2] - w // 10) if m[:, c].any()]
+    if len(rows) < 5 or len(cols) < 5:
+        return None
+    left = float(np.median([np.argmax(m[r]) for r in rows]))
+    right = float(np.median([m.shape[1] - np.argmax(m[r][::-1]) for r in rows]))
+    top = float(np.median([np.argmax(m[:, c]) for c in cols]))
+    bottom = float(np.median([m.shape[0] - np.argmax(m[:, c][::-1]) for c in cols]))
+    inset = 0.010 * min(right - left, bottom - top)
+    return tuple(v / scale for v in (left + inset, top + inset, right - inset, bottom - inset))
+
+
+def _rectangle_mask(size, edges):
+    """Anti-aliased rectangle with slightly rounded corners, like a real box."""
+    from PIL import ImageDraw
+    ss = 4
+    big = Image.new('L', (size[0] * ss, size[1] * ss), 0)
+    left, top, right, bottom = (v * ss for v in edges)
+    radius = 0.012 * min(right - left, bottom - top)
+    ImageDraw.Draw(big).rounded_rectangle((left, top, right - 1, bottom - 1), radius=radius, fill=255)
+    return big.resize(size, Image.Resampling.BOX)
+
+
 WORK_SIZE = 1000
 
 
@@ -255,9 +300,14 @@ def prepare_inventory_photo(raw, validate_photo=None):
         subject.putalpha(_steepen(mask))
         if angle:
             subject = subject.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True, fillcolor=(255, 255, 255, 0))
-        tight = _subject_bounds(subject)
-        if tight:
-            subject = subject.crop(tight)
+        edges = _box_edges(subject.getchannel('A'))
+        if edges:
+            subject.putalpha(_rectangle_mask(subject.size, edges))
+            subject = subject.crop(tuple(int(round(v)) for v in edges))
+        else:
+            tight = _subject_bounds(subject)
+            if tight:
+                subject = subject.crop(tight)
     source_long_side = max(subject.size)
     subject = _sharpen(_discard_background(_scale_long_side(subject, CONTENT_MAX)))
     canvas = Image.new('RGB', (CANVAS_SIZE, CANVAS_SIZE), WHITE)
