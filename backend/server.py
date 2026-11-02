@@ -2960,7 +2960,9 @@ class CloverImportInput(BaseModel):
 
 class CloverCategoryMapRow(BaseModel):
     cloverName: str = Field(min_length=1, max_length=120)
-    categorySlug: str = Field(min_length=1, max_length=80)
+    # Empty only for a keyword-split row (Tobacco), which sorts items by name instead.
+    categorySlug: str = Field(default="", max_length=80)
+    keywordSplit: bool = False
 
 
 class CloverCategoryMapInput(BaseModel):
