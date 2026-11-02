@@ -22,6 +22,14 @@ import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from pymongo.errors import DuplicateKeyError
 
+# New Clover items whose names match these are imported hidden for an admin to review.
+_HIDE_ON_IMPORT = re.compile(r"(urine|fetish|rhino|royal honey|vvip|love power|^\s*(super\s+)?rush\s*$)", re.I)
+
+
+def _slug(value: str) -> str:
+    text = re.sub(r"[^a-z0-9]+", "-", str(value or "").lower().replace("&", " and ")).strip("-")
+    return text[:80] or "item"
+
 
 LOGGER = logging.getLogger(__name__)
 USER_AGENT = "HD Smoke Shop/1.0 (inventory-sync; https://puff2door.com)"
@@ -577,6 +585,12 @@ class CloverIntegration:
                 elif product.get("cloverMissing"):
                     await self.db.products.update_one({"id": product["id"]}, {"$set": {"cloverMissing": False}, "$unset": {"cloverDeletionFlag": ""}})
             unmatched = [item for item in remote if item["id"] not in matched_remote]
+            imported_items = 0
+            if self.import_new_items and self.sync_enabled and not self.dry_run:
+                imported_items = await self._auto_import_new_items(unmatched, link_candidates)
+                if imported_items:
+                    imported_ids = {row["cloverItemId"] for row in await self.db.products.find({"cloverItemId": {"$in": [item["id"] for item in unmatched]}}, {"cloverItemId": 1}).to_list(10000)}
+                    unmatched = [item for item in unmatched if item["id"] not in imported_ids]
             summary = {
                 "source": source,
                 "remoteItems": len(remote),
@@ -587,6 +601,7 @@ class CloverIntegration:
                 "unmatchedItems": len(unmatched),
                 "skippedItems": len(unmatched),
                 "linkCandidates": len(link_candidates),
+                "importedItems": imported_items,
                 "restockedProductIds": restocked,
             }
             await self.db.integrations.update_one({"key": "clover"}, {
@@ -845,6 +860,91 @@ class CloverIntegration:
         await self._attach_category_and_brand(merchant_id, clover_id, product, remote)
         await self.log("import", "success", productId=product["id"], cloverItemId=clover_id, direction="website_to_clover")
         return {"status": "success", "action": "create", "cloverItemId": clover_id}
+
+    async def category_placeholders(self) -> dict:
+        config = await self.config() or {}
+        return dict(config.get("categoryPlaceholders") or {})
+
+    async def save_category_placeholders(self, placeholders: dict) -> dict:
+        categories, _brands = await self._website_catalog()
+        allowed = {row.get("slug") for row in categories if row.get("slug")}
+        cleaned = {}
+        for slug, url in (placeholders or {}).items():
+            slug, url = str(slug or "").strip(), str(url or "").strip()
+            if slug in allowed and url.startswith("/api/files/"):
+                cleaned[slug] = url
+        await self.db.integrations.update_one({"key": "clover"}, {"$set": {"categoryPlaceholders": cleaned, "updatedAt": utcnow()}}, upsert=True)
+        return cleaned
+
+    async def _auto_import_new_items(self, unmatched: list[dict], link_candidates: list[dict], limit: int = 100) -> int:
+        """Create website products for Clover items that are not on the website yet.
+
+        Items that look like an existing website product (a link candidate) are left for an
+        admin to confirm, so this never makes a second copy of a product. An item goes live
+        only when its category is known and its price is above $0; everything else is created
+        hidden for review. Nothing is written to Clover here.
+        """
+        candidate_ids = {str(row.get("cloverItemId")) for row in link_candidates or []}
+        placeholders = await self.category_placeholders()
+        created = 0
+        for item in unmatched:
+            if created >= limit:
+                break
+            clover_id = str(item.get("id") or "")
+            if not clover_id or clover_id in candidate_ids or item.get("hidden"):
+                continue
+            if await self.db.products.find_one({"cloverItemId": clover_id}, {"_id": 1}):
+                continue
+            name = str(item.get("name") or "").strip() or "Clover item"
+            price = float(item.get("price") or 0)
+            category_slug = item.get("mappedCategorySlug") or ""
+            live = bool(category_slug) and price > 0 and not item.get("needsReview") and not _HIDE_ON_IMPORT.search(name)
+            image = placeholders.get(category_slug, "")
+            doc = {
+                "name": name,
+                "price": price,
+                "salePrice": None,
+                "stock": max(0, int(item.get("stock") or 0)),
+                "sku": item.get("sku") or "",
+                "barcode": item.get("barcode") or "",
+                "category": item.get("mappedCategoryName") or "",
+                "categorySlug": category_slug,
+                "brand": item.get("mappedBrandSlug") or "",
+                "brandName": item.get("mappedBrandName") or "",
+                "image": image,
+                "image2": image,
+                "flavors": [],
+                "puffs": None,
+                "rating": 4.5,
+                "description": "",
+                "complianceCategory": "regulated",
+                "minimumAge": 21,
+                "requiresIdAtDelivery": True,
+                "localDeliveryOnly": True,
+                "allowedStates": ["FL"],
+                "blockedStates": [],
+                "cloverItemId": clover_id,
+                "cloverPrice": price,
+                "cloverNeedsReview": not live,
+                "cloverAutoImported": True,
+                "cloverLastSyncedAt": utcnow(),
+                "active": live,
+                "createdAt": utcnow(),
+                "updatedAt": utcnow(),
+            }
+            for _attempt in range(5):
+                last = await self.db.products.find_one(sort=[("id", -1)])
+                next_id = int(last["id"]) + 1 if last and last.get("id") else 1
+                try:
+                    await self.db.products.insert_one({**doc, "id": next_id, "slug": f"{_slug(name)}-{next_id}"})
+                except DuplicateKeyError:
+                    if await self.db.products.find_one({"cloverItemId": clover_id}, {"_id": 1}):
+                        break
+                    continue
+                created += 1
+                await self.log("import", "success", productId=next_id, cloverItemId=clover_id, direction="clover_to_website", live=live)
+                break
+        return created
 
     async def import_mapped_items(self) -> dict:
         """Create hidden website products only for Clover items already mapped to an existing category and brand."""

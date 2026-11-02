@@ -242,3 +242,76 @@ def test_brand_alias_matches_without_creating_a_brand():
         assert result["mappedBrandSlug"] == "geek-bar"
 
     run(go())
+
+
+def _auto_import_handler(items, calls):
+    def handler(request):
+        calls.append(request.method + " " + request.url.path)
+        if request.method != "GET":
+            raise AssertionError("auto import must not write to Clover: " + request.method + " " + request.url.path)
+        if request.url.path.endswith("/items"):
+            return httpx.Response(200, json={"elements": items})
+        if request.url.path.endswith("/item_stocks"):
+            return httpx.Response(200, json={"elements": [{"item": {"id": row["id"]}, "quantity": 3} for row in items]})
+        return httpx.Response(200, json={"elements": []})
+    return handler
+
+
+def test_new_clover_items_import_with_category_brand_and_placeholder():
+    async def go():
+        db = AsyncMongoMockClient()["autoimport"]
+        calls = []
+        items = [
+            {"id": "new-1", "name": "Geek Bar Pulse Lime Ice", "price": 2499, "categories": {"elements": [{"name": "Nicotine Vapes"}]}},
+            {"id": "new-2", "name": "Mystery Thing", "price": 500},
+            {"id": "new-3", "name": "Zero Price Item", "price": 0, "categories": {"elements": [{"name": "Nicotine Vapes"}]}},
+            {"id": "new-4", "name": "U Pass Fetish Urine", "price": 3500, "categories": {"elements": [{"name": "Nicotine Vapes"}]}},
+        ]
+        clover = integration(db, _auto_import_handler(items, calls), import_new_items=True)
+        await connect(db, clover)
+        await db.categories.insert_one({"slug": "disposable", "name": "DISPOSABLE VAPES"})
+        await db.brands.insert_one({"slug": "geek-bar", "name": "GEEK BAR", "displayName": "GEEK BAR"})
+        await clover.save_category_mappings([{"cloverName": "Nicotine Vapes", "categorySlug": "disposable"}])
+        await clover.save_category_placeholders({"disposable": "/api/files/ph/disposable.png", "nope": "/api/files/x.png"})
+        await db.products.insert_one({"id": 5, "name": "Existing", "price": 1, "cloverItemId": "old"})
+
+        summary = await clover.sync_catalog(source="test")
+        assert summary["importedItems"] == 4
+        geek = await db.products.find_one({"cloverItemId": "new-1"})
+        assert geek["active"] is True
+        assert geek["categorySlug"] == "disposable"
+        assert geek["brand"] == "geek-bar"
+        assert geek["price"] == 24.99 and geek["stock"] == 3 and geek["minimumAge"] == 21
+        assert geek["image"] == "/api/files/ph/disposable.png"
+        assert geek["id"] == 6 and geek["slug"] == "geek-bar-pulse-lime-ice-6"
+        assert (await db.products.find_one({"cloverItemId": "new-2"}))["active"] is False
+        assert (await db.products.find_one({"cloverItemId": "new-3"}))["active"] is False
+        assert (await db.products.find_one({"cloverItemId": "new-4"}))["active"] is False
+        assert await clover.category_placeholders() == {"disposable": "/api/files/ph/disposable.png"}
+
+        again = await clover.sync_catalog(source="test")
+        assert again["importedItems"] == 0
+        assert await db.products.count_documents({"cloverItemId": "new-1"}) == 1
+
+    run(go())
+
+
+def test_auto_import_is_off_by_default_and_skips_likely_duplicates():
+    async def go():
+        db = AsyncMongoMockClient()["autoimport_off"]
+        calls = []
+        items = [{"id": "c-1", "name": "Raz Miami Mint 25k", "price": 2999}]
+        clover = integration(db, _auto_import_handler(items, calls))
+        await connect(db, clover)
+        summary = await clover.sync_catalog(source="test")
+        assert summary["importedItems"] == 0
+        assert await db.products.count_documents({}) == 0
+
+        db2 = AsyncMongoMockClient()["autoimport_dupe"]
+        clover2 = integration(db2, _auto_import_handler(items, calls), import_new_items=True)
+        await connect(db2, clover2)
+        await db2.products.insert_one({"id": 1, "name": "RAZ TN 9000 PUFFS - MIAMI MINT", "price": 22.99})
+        await clover2._auto_import_new_items(items, [{"cloverItemId": "c-1", "productId": 1}])
+        assert await db2.products.count_documents({"cloverItemId": "c-1"}) == 0
+
+    run(go())

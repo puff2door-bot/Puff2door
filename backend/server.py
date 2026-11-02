@@ -11,7 +11,7 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr, field_validator
-from typing import List, Optional
+from typing import Dict, List, Optional
 import uuid
 import random
 import re
@@ -3138,6 +3138,20 @@ async def admin_clover_import_new(admin: dict = Depends(get_admin_user)):
     return result
 
 
+class CloverPlaceholderInput(BaseModel):
+    placeholders: Dict[str, str] = Field(default_factory=dict)
+
+
+@api_router.get("/admin/clover/placeholders")
+async def admin_clover_placeholders(admin: dict = Depends(get_admin_user)):
+    return {"placeholders": await clover_integration().category_placeholders()}
+
+
+@api_router.put("/admin/clover/placeholders")
+async def admin_clover_save_placeholders(inp: CloverPlaceholderInput, admin: dict = Depends(get_admin_user)):
+    return {"placeholders": await clover_integration().save_category_placeholders(inp.placeholders)}
+
+
 class CloverUnlinkInput(BaseModel):
     productId: int = Field(ge=1)
 
@@ -4291,6 +4305,9 @@ async def clover_catalog_schedule():
                 summary = await clover_integration().sync_catalog(source="schedule")
                 if summary.get("applied"):
                     await notify_restocked_products(summary.get("restockedProductIds", []))
+                    if summary.get("importedItems"):
+                        await refresh_catalog_copies()
+                        asyncio.create_task(refresh_static_sitemap())
             except Exception:
                 logger.error("Clover scheduled sync failed")
             await asyncio.sleep(CLOVER_SYNC_INTERVAL_SECONDS)
