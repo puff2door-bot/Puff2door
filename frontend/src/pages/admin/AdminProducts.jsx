@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, Pencil, EyeOff, Search, RefreshCw } from "lucide-react";
+import { Plus, Pencil, EyeOff, Search, RefreshCw, Trash2 } from "lucide-react";
 import api, { imgUrl } from "../../api";
 import { useToast } from "../../hooks/use-toast";
 import { useCatalog } from "../../context/CatalogContext";
@@ -45,6 +45,18 @@ const AdminProducts = () => {
     setProducts((prev) => prev.map((x) => (x.id === p.id ? { ...x, active: false } : x)));
     refresh();
     toast({ title: data?.cloverSync?.status === "failed" ? "Product hidden — Clover needs a retry" : "Product hidden", description: data?.cloverSync?.error || p.name, variant: data?.cloverSync?.status === "failed" ? "destructive" : "default" });
+  };
+
+  const removeEverywhere = async (p) => {
+    if (!window.confirm(`Permanently delete "${p.name}" from the WEBSITE and from your CLOVER register?\n\nThis cannot be undone. To only take it off the website, use Hide instead.`)) return;
+    try {
+      const { data } = await api.delete(`/admin/products/${p.id}/permanent`);
+      setProducts((prev) => prev.filter((x) => x.id !== p.id));
+      refresh();
+      toast({ title: "Product deleted", description: `${data.name || p.name} was deleted from the website${data.cloverDeleted ? " and Clover" : ""}.` });
+    } catch (error) {
+      toast({ title: "Not deleted", description: error?.response?.data?.detail || "Try again.", variant: "destructive" });
+    }
   };
 
   const retryClover = async (p) => {
@@ -115,6 +127,7 @@ const AdminProducts = () => {
                       <button onClick={() => setEditing(p)} data-testid={`admin-edit-${p.id}`} className="h-8 w-8 grid place-items-center rounded-full hover:bg-emerald-50 text-neutral-600 hover:text-emerald-700" aria-label="Edit"><Pencil className="h-4 w-4" /></button>
                       {p.cloverSyncError && <button onClick={() => retryClover(p)} className="h-8 w-8 grid place-items-center rounded-full hover:bg-amber-50 text-amber-600" aria-label="Retry Clover sync"><RefreshCw className="h-4 w-4" /></button>}
                       {p.active && <button onClick={() => hide(p)} data-testid={`admin-hide-${p.id}`} className="h-8 w-8 grid place-items-center rounded-full hover:bg-red-50 text-neutral-600 hover:text-red-600" aria-label="Hide"><EyeOff className="h-4 w-4" /></button>}
+                      <button onClick={() => removeEverywhere(p)} data-testid={`admin-delete-${p.id}`} className="h-8 w-8 grid place-items-center rounded-full hover:bg-red-50 text-neutral-600 hover:text-red-700" aria-label="Delete from website and Clover" title="Delete from website and Clover"><Trash2 className="h-4 w-4" /></button>
                     </div>
                   </td>
                 </tr>

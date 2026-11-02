@@ -2901,6 +2901,53 @@ async def admin_delete_product(product_id: int, admin: dict = Depends(get_admin_
     return {"ok": True, "cloverSync": clover_sync}
 
 
+@api_router.delete("/admin/products/{product_id}/permanent")
+async def admin_delete_product_everywhere(product_id: int, admin: dict = Depends(get_admin_user)):
+    """Permanently delete a product from the website and its item from the Clover register.
+    The Clover item goes first; if Clover refuses, nothing is deleted."""
+    product = await db.products.find_one({"id": product_id})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    clover_deleted = False
+    if product.get("cloverItemId"):
+        try:
+            await clover_integration().delete_clover_item(product["cloverItemId"], product_id=product_id)
+            clover_deleted = True
+        except CloverError as exc:
+            detail = clover_error_detail(exc)
+            if "not found" not in str(detail).lower():
+                raise HTTPException(status_code=502, detail=f"Clover did not delete the item, so nothing was deleted: {detail}")
+    await db.products.delete_one({"id": product_id})
+    await db.inventory_captures.update_many({"publishedProductId": product_id}, {"$set": {"publishedProductId": None, "publishedProductName": "", "publishNote": "The product was deleted."}})
+    logger.info("Product %s (%s) deleted from website and Clover by %s", product_id, product.get("name"), admin["id"])
+    asyncio.create_task(refresh_static_sitemap())
+    return {"ok": True, "name": product.get("name") or "", "cloverDeleted": clover_deleted}
+
+
+@api_router.post("/admin/products/{product_id}/photo")
+async def admin_product_photo(product_id: int, file: UploadFile = File(...), admin: dict = Depends(get_admin_user)):
+    """Set a product's picture straight from the camera (Missing Photos page). The photo gets the
+    same white-background treatment as Store Photos; an approved preview is stored unchanged."""
+    from inventory_photo_processing import ProcessingUnavailable, prepare_inventory_photo
+    product = await db.products.find_one({"id": product_id})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    raw = await file.read(12 * 1024 * 1024 + 1)
+    if len(raw) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Choose a photo under 12 MB.")
+    try:
+        prepared, _low = await asyncio.to_thread(prepare_inventory_photo, raw)
+    except ProcessingUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if _mostly_white(prepared):
+        raise HTTPException(status_code=422, detail="The photo came out almost all white. Retake it with the item filling more of the frame.")
+    url = await store_image(prepared, "webp", f"product-{product_id}.webp", admin["id"])
+    await db.products.update_one({"id": product_id}, {"$set": {"image": url, "image2": url}})
+    return {"ok": True, "id": product_id, "image": url}
+
+
 # ---- Clover inventory sync ----
 class CloverProductLinkInput(BaseModel):
     productId: int = Field(ge=1)
