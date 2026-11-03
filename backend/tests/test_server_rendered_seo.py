@@ -3,11 +3,44 @@
 import asyncio
 import os
 
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, JSONResponse
+
 os.environ.setdefault("MONGO_URL", "mongodb://127.0.0.1:27017")
 os.environ.setdefault("DB_NAME", "seo_test")
 os.environ.setdefault("JWT_SECRET", "12345678901234567890123456789012")
 
 import server
+
+
+def _request(host):
+    return Request({
+        "type": "http",
+        "method": "GET",
+        "scheme": "https",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "headers": [(b"host", host.encode())],
+        "client": ("127.0.0.1", 1234),
+        "server": (host, 443),
+    })
+
+
+def test_render_html_is_noindex_but_primary_domain_and_api_are_not():
+    async def html_response(_request):
+        return HTMLResponse("<html></html>")
+
+    async def json_response(_request):
+        return JSONResponse({"ok": True})
+
+    render_html = asyncio.run(server.security_headers(_request("puff2door.onrender.com"), html_response))
+    primary_html = asyncio.run(server.security_headers(_request("puff2door.com"), html_response))
+    render_api = asyncio.run(server.security_headers(_request("puff2door.onrender.com"), json_response))
+
+    assert render_html.headers["X-Robots-Tag"] == "noindex, nofollow"
+    assert "X-Robots-Tag" not in primary_html.headers
+    assert "X-Robots-Tag" not in render_api.headers
 
 
 def test_static_and_private_route_metadata():

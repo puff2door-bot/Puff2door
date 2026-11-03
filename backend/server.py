@@ -4630,6 +4630,11 @@ async def security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["Content-Security-Policy"] = "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://www.paypal.com https://www.sandbox.paypal.com"
+    # Keep Render's service URL available for diagnostics and emergency access,
+    # but prevent it from competing with the canonical custom domain in search.
+    host = request.headers.get("host", "").partition(":")[0].lower().rstrip(".")
+    if host == "puff2door.onrender.com" and response.headers.get("content-type", "").lower().startswith("text/html"):
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
     if request.url.path.startswith(("/api/auth", "/api/admin", "/api/orders")):
         response.headers["Cache-Control"] = "no-store"
     if request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").split(",")[0].strip() == "https":
