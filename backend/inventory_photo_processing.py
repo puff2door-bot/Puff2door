@@ -5,7 +5,7 @@ import threading
 import warnings
 from pathlib import Path
 
-from PIL import Image, ImageFilter, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps, UnidentifiedImageError
 
 # Every saved reference uses one square. The item's long side always fills the
 # same inner box, leaving an equal pure-white frame on every side.
@@ -204,10 +204,64 @@ def _tilt_angle(cutout):
     return best_angle
 
 
-def _sharpen(subject):
-    """Light sharpening after resizing so box text stays readable."""
+def _levels(channel_hist, total):
+    """Black and white points for one channel from its histogram (0.5% / 99.5% of the item's pixels)."""
+    low_target, high_target = total * 0.005, total * 0.995
+    running, low, high = 0, 0, 255
+    for value, count in enumerate(channel_hist):
+        running += count
+        if running <= low_target:
+            low = value
+        if running < high_target:
+            high = value + 1
+    return low, min(255, high)
+
+
+def _enhance(subject):
+    """Make phone photos look like studio shots: true whites, brighter, livelier color, crisp text.
+
+    Only the item's own pixels are measured, so the white frame never skews it. Every
+    correction is capped, so an already clean product image is barely changed."""
     alpha = subject.getchannel('A')
-    rgb = subject.convert('RGB').filter(ImageFilter.UnsharpMask(radius=1.4, percent=100, threshold=2))
+    rgb = subject.convert('RGB')
+    mask = alpha.point(lambda value: 255 if value > 128 else 0)
+    hist = rgb.histogram(mask=mask)
+    total = sum(hist[0:256])
+    if total < 500:
+        return _sharpen(subject)
+    luts = []
+    for band in range(3):
+        low, high = _levels(hist[band * 256:(band + 1) * 256], total)
+        # Phone shots of white boxes come out gray or yellow; pull each channel's
+        # brightest real pixels up to white, but never by more than 30%.
+        high = max(high, 196, low + 64)
+        low = min(low, 28)
+        scale = 255.0 / (high - low)
+        luts.extend(max(0, min(255, round((v - low) * scale))) for v in range(256))
+    rgb = rgb.point(luts)
+    # Lift mid-tones a little when the item is still on the dark side.
+    gray_hist = rgb.convert('L').histogram(mask=mask)
+    running, median = 0, 128
+    for value, count in enumerate(gray_hist):
+        running += count
+        if running >= total / 2:
+            median = value
+            break
+    if median < 170:
+        gamma = 0.85 if median < 120 else 0.92
+        rgb = rgb.point([round(255 * ((v / 255.0) ** gamma)) for v in range(256)] * 3)
+    rgb = ImageEnhance.Contrast(rgb).enhance(1.06)
+    rgb = ImageEnhance.Color(rgb).enhance(1.12)
+    rgb.putalpha(alpha)
+    return _sharpen(rgb)
+
+
+def _sharpen(subject):
+    """Crisp edges and readable box text after resizing: one broad pass, one fine detail pass."""
+    alpha = subject.getchannel('A')
+    rgb = subject.convert('RGB')
+    rgb = rgb.filter(ImageFilter.UnsharpMask(radius=2.0, percent=130, threshold=3))
+    rgb = rgb.filter(ImageFilter.UnsharpMask(radius=0.8, percent=70, threshold=2))
     rgb.putalpha(alpha)
     return rgb
 
@@ -371,7 +425,7 @@ def prepare_inventory_photo(raw, validate_photo=None):
             if tight:
                 subject = subject.crop(tight)
     source_long_side = max(subject.size)
-    subject = _sharpen(_discard_background(_scale_long_side(subject, CONTENT_MAX)))
+    subject = _enhance(_discard_background(_scale_long_side(subject, CONTENT_MAX)))
     canvas = Image.new('RGB', (CANVAS_SIZE, CANVAS_SIZE), WHITE)
     canvas.paste(
         subject,
