@@ -47,20 +47,24 @@ export const titleCase = (s = "") => s.toLowerCase().replace(/\b[a-z]/g, (c) => 
 
 // Short on-page intro per category. Titles and meta descriptions follow one local pattern (see categorySeo).
 export const CATEGORY_SEO = {
-  disposable: { intro: "Shop disposable vapes from top brands. Order online for local delivery in Altamonte Springs (ZIP 32714) or pick them up at our SR 434 store." },
-  delta: { intro: "Hemp-derived delta disposable vapes from trusted brands, available in store or for local delivery in ZIP 32714." },
-  "delta-cartridges": { intro: "510-thread delta cartridges from leading brands, available in store or for local delivery in ZIP 32714." },
-  "delta-edibles": { intro: "Hemp-derived delta gummies and edibles from popular brands, available in store or for local delivery in ZIP 32714." },
-  "delta-smokeables": { intro: "THCA flower, pre-rolls and other delta smokeables from trusted brands, available in store or for local delivery in ZIP 32714." },
-  "vape-accessories": { intro: "Vape accessories and essentials, available in store or for local delivery in ZIP 32714." },
-  "glass-pipes": { intro: "Glass hand pipes, bubblers and smoking accessories. Visit our Altamonte Springs store or order for local delivery." },
-  kratom: { intro: "Kratom capsules, extracts and botanical products, available in store or for local delivery in ZIP 32714." },
-  "hemp-wraps": { intro: "Hemp wraps from popular brands, available in store or for local delivery." },
-  "paper-cones": { intro: "Rolling papers and pre-rolled cones, available in store or for local delivery." },
-  lighter: { intro: "Lighters and torch lighters, available in store or for local delivery." },
-  "air-freshner": { intro: "Air fresheners and odor eliminators for your space." },
-  "hookah-accessories": { intro: "Hookah accessories, available in store or for local delivery." },
-  miscellaneous: { intro: "Smoke shop essentials and other useful extras." },
+  disposable: { intro: "Disposable vapes from RAZ, Geek Bar, Lost Mary, Fume, Smogger, Beri and more. Shop them at our Altamonte Springs store on SR 434 or order online for local delivery in ZIP 32714." },
+  "e-liquids": { intro: "Refillable pod kits and replacement pods from Off Stamp, RAZ, Foger, Smogger, Lost Mary and EVR. Pick your kit and flavor in store in Altamonte Springs or order online for local delivery." },
+  delta: { intro: "Hemp-derived delta disposables from Lost THC, Cookies and other trusted brands. Adults 21+ only — shop in store on SR 434 or order online for local delivery in ZIP 32714." },
+  "delta-cartridges": { intro: "510-thread delta cartridges from brands like Mellow Fellow. Adults 21+ only — available in our Altamonte Springs store or for local delivery." },
+  "delta-edibles": { intro: "Hemp-derived gummies and edibles from GMY, Flying Monkey, Torch and Cookies. Adults 21+ only — shop in store in Altamonte Springs or order for local delivery." },
+  "delta-smokeables": { intro: "THCA flower, pre-rolls and other hemp smokeables from Flying Monkey, VIP Boyz, Meadow and Hemp Maestro. Adults 21+ only — in store on SR 434 or local delivery." },
+  cigars: { intro: "Cigars, cigarillos and leaf wraps from Backwoods, Swisher Sweets, White Owl, Black & Mild, Game and Da Woods. Find the full selection at our Altamonte Springs smoke shop or order online." },
+  "paper-cones": { intro: "Rolling papers, pre-rolled cones, tips and rollers from RAW, OCB, Zig-Zag, Blazy Susan and Bambu. Stock up in store on SR 434 or get them delivered in ZIP 32714." },
+  "hemp-wraps": { intro: "Hemp wraps and blunt wraps from King Palm, High Hemp and Zig-Zag. Available at our Altamonte Springs store or for local delivery." },
+  "glass-pipes": { intro: "Glass hand pipes, water pipes, bubblers and dab rigs from Glass House, Cheech & Chong and more. See the glass in person at our Altamonte Springs store, or order online for local delivery." },
+  "smoke-accessories": { intro: "Grinders, rolling trays, ashtrays, stash jars, batteries and chargers from Santa Cruz Shredder, Ooze and Smoke Buddy. Shop in store on SR 434 or order for local delivery." },
+  lighter: { intro: "Torch lighters, refillable lighters and butane from Special Blue, Clipper, Zippo and more. Pick one up in our Altamonte Springs store or add it to a delivery order." },
+  hookah: { intro: "Hookah tobacco and coals from Al Fakher, Coco Nara and other favorites. Visit our Altamonte Springs smoke shop or order online for local delivery in ZIP 32714." },
+  kratom: { intro: "Kratom capsules, powders and shots from popular brands. Adults 21+ only — available in our Altamonte Springs store or for local delivery." },
+  "air-freshner": { intro: "Candles, sprays and odor eliminators from Kadilo, Blunteffects and more, in store or for local delivery." },
+  miscellaneous: { intro: "Smoke shop extras like cleaners, scales, bags and more — in store on SR 434 or for local delivery." },
+  munchies: { intro: "Snacks and drinks to grab with your order, in store or for local delivery." },
+  merchandise: { intro: "HD Smoke Shop merchandise, available in our Altamonte Springs store." },
 };
 
 export const categorySeo = (cat) => {

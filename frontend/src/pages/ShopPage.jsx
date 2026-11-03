@@ -105,7 +105,7 @@ const ShopPage = () => {
       <div className="relative overflow-hidden rounded-xl bg-neutral-900 px-8 py-10 mb-8">
         <div className="absolute -right-10 -bottom-16 h-56 w-56 rounded-full bg-emerald-600/20 blur-2xl" />
         <h1 className="font-heading text-3xl sm:text-4xl font-700 text-white uppercase tracking-tight relative">{title}</h1>
-        <p className="text-neutral-400 text-sm mt-1 relative">{baseList.length} products available{seo.intro ? ` · ${seo.intro}` : ""}</p>
+        <p className="text-neutral-400 text-sm mt-1 relative">{baseList.length} {baseList.length === 1 ? "product" : "products"} available{seo.intro ? ` · ${seo.intro}` : ""}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-8">
