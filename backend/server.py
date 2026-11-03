@@ -2965,6 +2965,59 @@ async def admin_update_product(product_id: int, inp: ProductInput, admin: dict =
     return {**product_out(updated), "restockNotified": notified, "cloverSync": clover_sync, "cloverStock": clover_stock}
 
 
+class ProductQuickInput(BaseModel):
+    price: Optional[float] = Field(default=None, ge=0)
+    active: Optional[bool] = None
+    categorySlug: Optional[str] = None
+    brand: Optional[str] = None  # "" clears the brand
+    confirmCloverPrice: bool = False
+
+
+@api_router.patch("/admin/products/{product_id}")
+async def admin_quick_update_product(product_id: int, inp: ProductQuickInput, admin: dict = Depends(get_admin_user)):
+    """Small edits from the Products list: price, show/hide, category, brand."""
+    existing = await db.products.find_one({"id": product_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Product not found")
+    doc = {}
+    if inp.price is not None:
+        doc["price"] = round(float(inp.price), 2)
+    if inp.active is not None:
+        doc["active"] = bool(inp.active)
+    if inp.categorySlug is not None:
+        cat = next((c for c in await get_categories() if c["slug"] == inp.categorySlug), None)
+        if not cat:
+            raise HTTPException(status_code=400, detail="That category doesn't exist")
+        doc["categorySlug"], doc["category"] = cat["slug"], cat["name"]
+    if inp.brand is not None:
+        slug = slugify(inp.brand) if inp.brand.strip() else ""
+        if slug:
+            b = (await get_brand_map()).get(slug)
+            if not b:
+                raise HTTPException(status_code=400, detail="That brand doesn't exist")
+            doc["brand"], doc["brandName"] = b["slug"], b.get("displayName") or b.get("name") or slug.upper()
+        else:
+            doc["brand"], doc["brandName"] = "", ""
+    if not doc:
+        return {**product_out(existing), "cloverSync": {"status": "skipped", "action": "none"}}
+    doc["updatedAt"] = now_utc()
+    await db.products.update_one({"id": product_id}, {"$set": doc})
+    clover_sync = {"status": "skipped", "action": "none"}
+    if "price" in doc or "active" in doc:
+        try:
+            clover_sync = await clover_integration().sync_product_details(product_id, source="admin_quick_edit", confirm_price=inp.confirmCloverPrice)
+        except CloverError as exc:
+            clover_sync = {"status": "failed", "action": "update", "error": clover_error_detail(exc)}
+        if clover_sync.get("status") == "needs_confirmation" and "price" in doc:
+            # Keep website and Clover in step: undo the price until it's confirmed.
+            await db.products.update_one({"id": product_id}, {"$set": {"price": existing.get("price")}})
+    if "categorySlug" in doc or "brand" in doc:
+        invalidate_brands()
+    updated = await db.products.find_one({"id": product_id})
+    asyncio.create_task(refresh_static_sitemap())
+    return {**product_out(updated), "cloverSync": clover_sync}
+
+
 @api_router.delete("/admin/products/{product_id}")
 async def admin_delete_product(product_id: int, admin: dict = Depends(get_admin_user)):
     res = await db.products.update_one({"id": product_id}, {"$set": {"active": False, "updatedAt": now_utc()}})
