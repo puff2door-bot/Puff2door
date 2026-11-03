@@ -4601,6 +4601,26 @@ async def expire_unpaid_zelle_orders() -> int:
 
 
 @app.on_event("startup")
+async def keep_awake_schedule():
+    """The free hosting plan sleeps after ~15 idle minutes and then takes ~50 s to answer
+    the next visitor (or Google). A light request to the public site every 10 minutes keeps it awake."""
+    if os.environ.get("KEEP_AWAKE", "true").strip().lower() != "true":
+        return
+
+    async def loop():
+        await asyncio.sleep(120)
+        while True:
+            try:
+                async with httpx.AsyncClient(timeout=20) as http:
+                    await http.get(f"{SITE_URL}/api/", headers={"User-Agent": "HDSmokeShop-keepawake"})
+            except Exception as exc:
+                logger.info("Keep-awake ping failed: %s", exc)
+            await asyncio.sleep(600)
+
+    asyncio.create_task(loop())
+
+
+@app.on_event("startup")
 async def pickup_expiry_schedule():
     async def loop():
         await asyncio.sleep(60)
@@ -4820,7 +4840,89 @@ async def _seo_meta_for_path(path: str) -> dict:
     return {"title": "Page not found | HD Smoke Shop", "description": "The page you followed does not exist or has moved.", "canonical": canonical, "robots": "noindex, nofollow", "type": "website", "jsonLd": []}
 
 
-def _seo_inject_html(document: str, meta: dict) -> str:
+
+# ---- Crawlable page content ----
+# The React app draws every page with JavaScript. Search engines, link previews and AI
+# search tools often read only the first HTML response, which used to be an empty
+# <div id="root">. Put the page's real headline, text and links there; React replaces
+# it as soon as the app starts, so shoppers see the normal site.
+STORE_NAP_HTML = (
+    '<p><strong>HD Smoke Shop</strong> · 481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714 · '
+    '<a href="tel:+14076256826">(407) 625-6826</a> · Open 10 AM–10 PM daily · Adults 21+ only, valid photo ID required.</p>'
+)
+
+
+def _h(value) -> str:
+    return html_escape(str(value or ""), quote=True)
+
+
+def _money_text(value) -> str:
+    try:
+        return f"${float(value):.2f}"
+    except (TypeError, ValueError):
+        return ""
+
+
+async def _seo_visible_products(query: dict, limit: int = 120) -> list:
+    query = {**query, "active": True}
+    if (await get_settings()).get("hideOutOfStock", True):
+        query["stock"] = {"$gt": 0}
+    return await db.products.find(query, {"name": 1, "slug": 1, "price": 1, "salePrice": 1, "brandName": 1}).sort("name", 1).to_list(limit)
+
+
+def _seo_product_list(products: list) -> str:
+    if not products:
+        return "<p>Ask in store for current stock.</p>"
+    items = "".join(
+        f'<li><a href="/shop/{_h(p.get("slug"))}">{_h(_seo_display_name(p.get("name")))}</a> {_money_text(p.get("salePrice") or p.get("price"))}</li>'
+        for p in products
+    )
+    return f"<ul>{items}</ul>"
+
+
+async def _seo_body_html(path: str, meta: dict) -> str:
+    normalized = path.strip("/")
+    if meta.get("robots", "").startswith("noindex"):
+        return ""
+    cats = [c for c in await get_categories() if c.get("active", True)]
+    counts = await category_counts()
+    nav = "".join(f'<li><a href="/product-category/{_h(c["slug"])}">{_h(_seo_display_name(c.get("name")))}</a></li>' for c in cats if counts.get(c["slug"]))
+    links = ('<nav aria-label="Site"><ul><li><a href="/">Home</a></li><li><a href="/shop">Shop all</a></li><li><a href="/brands">Brands</a></li>'
+             '<li><a href="/delivery-area">Delivery area</a></li><li><a href="/about">About</a></li><li><a href="/contact">Contact &amp; directions</a></li>'
+             f'<li><a href="/faq">FAQ</a></li></ul><h2>Shop by category</h2><ul>{nav}</ul></nav>')
+    headline = re.split(r"\s[|–]\s", meta.get("title", ""), maxsplit=1)[0]
+    main = f"<h1>{_h(headline)}</h1><p>{_h(meta.get('description'))}</p>"
+    if normalized == "":
+        main = ("<h1>HD Smoke Shop – Smoke &amp; Vape Shop in Altamonte Springs, FL</h1>"
+                "<p>Locally owned smoke shop on SR 434 in Altamonte Springs, open 10 AM–10 PM every day. Disposable vapes, pods, "
+                "hookah, glass pipes, rolling papers and cones, cigars and wraps, lighters, kratom and hemp products. Walk in, order "
+                "online for store pickup, or get local delivery within ZIP 32714. Adults 21+ only.</p>"
+                "<p>Close to Longwood, Casselberry, Maitland, Winter Springs, Forest City and Apopka.</p>")
+    elif normalized.startswith("product-category/"):
+        slug = normalized.split("/", 1)[1]
+        main += "<h2>In stock now</h2>" + _seo_product_list(await _seo_visible_products({"categorySlug": slug}))
+    elif normalized.startswith("brand/"):
+        slug = normalized.split("/", 1)[1]
+        main += "<h2>In stock now</h2>" + _seo_product_list(await _seo_visible_products({"brand": slug}))
+    elif normalized.startswith("shop/"):
+        product = await db.products.find_one({"slug": normalized.split("/", 1)[1], "active": True})
+        if product:
+            stock = int(product.get("stock") or 0)
+            price = product.get("salePrice") or product.get("price")
+            main = (f"<h1>{_h(_seo_display_name(product.get('name')))}</h1>"
+                    f"<p>{_money_text(price)} · {'In stock' if stock > 0 else 'Sold out — ask in store'}"
+                    f"{(' · Brand: ' + _h(product.get('brandName'))) if product.get('brandName') else ''}"
+                    f" · Category: <a href=\"/product-category/{_h(product.get('categorySlug'))}\">{_h(_seo_display_name(product.get('category')))}</a></p>"
+                    f"<p>{_h(meta.get('description'))}</p>")
+    elif normalized in ("shop", "brands"):
+        if normalized == "brands":
+            brands = sorted((b for b in (await get_brand_map()).values() if b.get("active", True)), key=lambda b: str(b.get("displayName") or b.get("name") or "").lower())
+            bcounts = await brand_counts()
+            main += "<ul>" + "".join(f'<li><a href="/brand/{_h(b["slug"])}">{_h(b.get("displayName") or b.get("name"))}</a></li>' for b in brands if bcounts.get(b["slug"])) + "</ul>"
+    return f'<div data-seo-fallback="1" style="max-width:1100px;margin:0 auto;padding:16px;font-family:system-ui,sans-serif;color:#111">{main}{links}{STORE_NAP_HTML}</div>'
+
+
+def _seo_inject_html(document: str, meta: dict, body_html: str = "") -> str:
     title = html_escape(meta["title"], quote=True)
     description = html_escape(meta["description"], quote=True)
     canonical = html_escape(meta["canonical"], quote=True)
@@ -4854,6 +4956,8 @@ def _seo_inject_html(document: str, meta: dict) -> str:
             for block in meta["jsonLd"]
         )
         document = document.replace("</head>", blocks + "</head>", 1)
+    if body_html:
+        document = document.replace('<div id="root"></div>', f'<div id="root">{body_html}</div>', 1)
     return document
 
 
@@ -4889,4 +4993,9 @@ if FRONTEND_BUILD_DIR.exists():
         headers = {"Cache-Control": "no-cache"}
         if meta["robots"].startswith("noindex"):
             headers["X-Robots-Tag"] = "noindex, nofollow"
-        return HTMLResponse(_seo_inject_html(document, meta), headers=headers)
+        try:
+            body_html = await _seo_body_html(full_path, meta)
+        except Exception as exc:
+            logger.warning("SEO page content failed for %s: %s", full_path, exc)
+            body_html = ""
+        return HTMLResponse(_seo_inject_html(document, meta, body_html), headers=headers)
