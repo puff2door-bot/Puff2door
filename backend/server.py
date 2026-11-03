@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from dotenv import load_dotenv
 import httpx
 import asyncio
@@ -25,7 +25,8 @@ import io
 import ipaddress
 import socket
 import zipcodes
-from urllib.parse import urljoin, urlsplit
+from html import escape as html_escape
+from urllib.parse import quote, urljoin, urlsplit
 from datetime import datetime, timedelta, timezone, date, time as dtime
 from zoneinfo import ZoneInfo
 import jwt
@@ -4674,6 +4675,188 @@ async def shutdown_db_client():
 # FastAPI process. API routes are registered first, so this fallback only
 # handles browser assets and client-side routes such as /shop and /admin.
 FRONTEND_BUILD_DIR = ROOT_DIR.parent / "frontend" / "build"
+
+# Search engines can execute the React app, but returning the correct title,
+# description, canonical and structured data in the first HTML response makes
+# catalog pages easier to crawl and replaces stale pre-launch titles faster.
+SEO_STATIC_META = {
+    "": (
+        "HD Smoke Shop Altamonte Springs, FL – Smoke Shop & Delivery",
+        "Smoke shop on SR 434 in Altamonte Springs, open 10 AM–10 PM daily. Shop in store or order online for local delivery. 21+ only, ID required.",
+    ),
+    "shop": (
+        "Shop Smoke Shop Accessories Online – HD Smoke Shop",
+        "Browse vaporizers, hookah, glass and smoke shop accessories at HD Smoke Shop in Altamonte Springs. Local delivery or in-store pickup. 21+ only.",
+    ),
+    "brands": (
+        "Vape & Smoke Shop Brands | HD Smoke Shop",
+        "Browse vape and smoke shop brands carried by HD Smoke Shop in Altamonte Springs. Shop in store, pick up, or order for local delivery. 21+ only.",
+    ),
+    "delivery-area": (
+        "Smoke Shop Delivery in Altamonte Springs 32714 – HD Smoke Shop",
+        "Local delivery from our SR 434 store within Altamonte Springs, ZIP 32714. Order online at puff2door.com. Adults 21+ only; ID checked at the door.",
+    ),
+    "about": (
+        "About HD Smoke Shop – Altamonte Springs Smoke Shop",
+        "Locally owned smoke shop in Altamonte Springs. Meet our team and learn how we serve adults 21+ in store, with pickup, and through local delivery.",
+    ),
+    "contact": (
+        "Contact & Directions – HD Smoke Shop Altamonte Springs",
+        "Get directions, store hours and contact information for HD Smoke Shop in Altamonte Springs, Florida. Walk-ins welcome every day.",
+    ),
+    "faq": (
+        "FAQ – HD Smoke Shop Altamonte Springs",
+        "Answers about local delivery, 21+ ID checks, payment, store hours, parking and returns at HD Smoke Shop in Altamonte Springs.",
+    ),
+    "privacy-policy": ("Privacy Policy | HD Smoke Shop", "How HD Smoke Shop collects, uses, protects and retains customer information."),
+    "terms": ("Terms & Conditions | HD Smoke Shop", "Terms for using HD Smoke Shop and placing an in-store pickup or local delivery order."),
+    "delivery-policy": ("Delivery Policy | HD Smoke Shop", "HD Smoke Shop delivery areas, windows, age checks and failed-delivery rules."),
+    "refund-policy": ("Refund & Return Policy | HD Smoke Shop", "How HD Smoke Shop handles damaged, incorrect, cancelled and undeliverable orders."),
+    "age-and-id-policy": ("Age & ID Policy (21+) – HD Smoke Shop", "How HD Smoke Shop verifies age in store and at delivery. Valid government photo ID showing 21+ is required."),
+}
+SEO_PRIVATE_PREFIXES = ("admin", "cart", "checkout", "wishlist", "my-account", "order", "track")
+
+
+def _seo_clean_text(value: str, limit: int = 158) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    return text if len(text) <= limit else text[: limit - 1].rsplit(" ", 1)[0].rstrip(" ,.;:-") + "…"
+
+
+def _seo_display_name(value: str) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip().title()
+    for before, after in (("Thca", "THCA"), ("Thc", "THC"), ("Cbd", "CBD"), ("Hhc", "HHC"), ("D8", "D8"), ("D9", "D9")):
+        text = re.sub(rf"\b{before}\b", after, text)
+    return text
+
+
+def _seo_canonical(path: str) -> str:
+    return SITE_URL + ("/" if not path else "/" + quote(path, safe="/-._~"))
+
+
+def _seo_breadcrumb(items: list[tuple[str, str]]) -> dict:
+    return {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": i + 1, "name": name, "item": _seo_canonical(path)}
+            for i, (name, path) in enumerate(items)
+        ],
+    }
+
+
+async def _seo_meta_for_path(path: str) -> dict:
+    normalized = path.strip("/")
+    canonical = _seo_canonical(normalized)
+    if normalized in SEO_STATIC_META:
+        title, description = SEO_STATIC_META[normalized]
+        return {"title": title, "description": description, "canonical": canonical, "robots": "index, follow, max-image-preview:large", "type": "website", "jsonLd": []}
+
+    if normalized in SEO_PRIVATE_PREFIXES or normalized.startswith(tuple(prefix + "/" for prefix in SEO_PRIVATE_PREFIXES)):
+        return {"title": "Private page | HD Smoke Shop", "description": "Private HD Smoke Shop page.", "canonical": canonical, "robots": "noindex, nofollow", "type": "website", "jsonLd": []}
+
+    if normalized.startswith("product-category/"):
+        slug = normalized.split("/", 1)[1]
+        category = next((row for row in await get_categories() if row.get("slug") == slug and row.get("active", True)), None)
+        if category:
+            name = _seo_display_name(category.get("name") or slug.replace("-", " "))
+            return {
+                "title": f"{name} – Shop Online or In Store | HD Smoke Shop",
+                "description": _seo_clean_text(f"Shop {name.lower()} at HD Smoke Shop in Altamonte Springs. Order online for local delivery or visit our SR 434 store. 21+ only, ID required."),
+                "canonical": canonical,
+                "robots": "index, follow, max-image-preview:large",
+                "type": "website",
+                "jsonLd": [_seo_breadcrumb([("Home", ""), ("Shop", "shop"), (name, normalized)])],
+            }
+
+    if normalized.startswith("brand/"):
+        slug = normalized.split("/", 1)[1]
+        brand = (await get_brand_map()).get(slug)
+        if brand and brand.get("active", True):
+            name = str(brand.get("displayName") or brand.get("name") or slug.replace("-", " ")).strip()
+            return {
+                "title": f"{name} – Available at HD Smoke Shop Altamonte Springs",
+                "description": _seo_clean_text(f"Find {name} at HD Smoke Shop. Check online availability, then order for local delivery or pick up in Altamonte Springs. 21+ only."),
+                "canonical": canonical,
+                "robots": "index, follow, max-image-preview:large",
+                "type": "website",
+                "jsonLd": [_seo_breadcrumb([("Home", ""), ("Shop", "shop"), (name, normalized)])],
+            }
+
+    if normalized.startswith("shop/"):
+        slug = normalized.split("/", 1)[1]
+        product = await db.products.find_one({"slug": slug, "active": True})
+        if product:
+            name = _seo_display_name(product.get("name") or slug.replace("-", " "))
+            brand = str(product.get("brandName") or "").strip()
+            category = _seo_display_name(product.get("category") or "Smoke shop products")
+            description = _seo_clean_text(f"{name}{f' from {brand}' if brand else ''} at HD Smoke Shop, Altamonte Springs. Check availability and order for local delivery or store pickup. 21+ only, ID required.")
+            image = str(product.get("image") or "").strip()
+            image = image if image.startswith("http") else SITE_URL + (image if image.startswith("/") else "/" + image) if image else SITE_URL + "/img/og-image.jpg"
+            price = product.get("salePrice") if product.get("salePrice") is not None else product.get("price")
+            schema = {
+                "@context": "https://schema.org",
+                "@type": "Product",
+                "name": name,
+                "image": [image],
+                "description": description,
+                "sku": str(product.get("sku") or product.get("slug") or ""),
+                "category": category,
+                "url": canonical,
+                "offers": {
+                    "@type": "Offer",
+                    "url": canonical,
+                    "priceCurrency": "USD",
+                    "price": f"{float(price or 0):.2f}",
+                    "availability": "https://schema.org/InStock" if int(product.get("stock") or 0) > 0 else "https://schema.org/OutOfStock",
+                    "itemCondition": "https://schema.org/NewCondition",
+                    "seller": {"@id": SITE_URL + "/#store"},
+                },
+            }
+            if brand:
+                schema["brand"] = {"@type": "Brand", "name": brand}
+            schema_blocks = [schema, _seo_breadcrumb([("Home", ""), (category, f"product-category/{product.get('categorySlug', '')}"), (name, normalized)])]
+            return {"title": f"{name} | HD Smoke Shop", "description": description, "canonical": canonical, "robots": "index, follow, max-image-preview:large", "type": "product", "image": image, "jsonLd": schema_blocks}
+
+    return {"title": "Page not found | HD Smoke Shop", "description": "The page you followed does not exist or has moved.", "canonical": canonical, "robots": "noindex, nofollow", "type": "website", "jsonLd": []}
+
+
+def _seo_inject_html(document: str, meta: dict) -> str:
+    title = html_escape(meta["title"], quote=True)
+    description = html_escape(meta["description"], quote=True)
+    canonical = html_escape(meta["canonical"], quote=True)
+    image = html_escape(meta.get("image") or SITE_URL + "/img/og-image.jpg", quote=True)
+    replacements = {
+        r"<title>.*?</title>": f"<title>{title}</title>",
+        r'(<meta name="description" content=")[^"]*("\s*/?>)': rf"\g<1>{description}\g<2>",
+        r'(<meta name="robots" content=")[^"]*("\s*/?>)': rf"\g<1>{meta['robots']}\g<2>",
+        r'(<link rel="canonical" href=")[^"]*("\s*/?>)': rf"\g<1>{canonical}\g<2>",
+        r'(<meta property="og:type" content=")[^"]*("\s*/?>)': rf"\g<1>{meta['type']}\g<2>",
+        r'(<meta property="og:title" content=")[^"]*("\s*/?>)': rf"\g<1>{title}\g<2>",
+        r'(<meta property="og:description" content=")[^"]*("\s*/?>)': rf"\g<1>{description}\g<2>",
+        r'(<meta property="og:url" content=")[^"]*("\s*/?>)': rf"\g<1>{canonical}\g<2>",
+        r'(<meta property="og:image" content=")[^"]*("\s*/?>)': rf"\g<1>{image}\g<2>",
+        r'(<meta name="twitter:title" content=")[^"]*("\s*/?>)': rf"\g<1>{title}\g<2>",
+        r'(<meta name="twitter:description" content=")[^"]*("\s*/?>)': rf"\g<1>{description}\g<2>",
+        r'(<meta name="twitter:image" content=")[^"]*("\s*/?>)': rf"\g<1>{image}\g<2>",
+    }
+    for pattern, replacement in replacements.items():
+        document = re.sub(pattern, replacement, document, count=1, flags=re.IGNORECASE | re.DOTALL)
+    if 'name="twitter:title"' not in document.lower():
+        twitter_tags = (
+            f'<meta name="twitter:title" content="{title}"/>'
+            f'<meta name="twitter:description" content="{description}"/>'
+            f'<meta name="twitter:image" content="{image}"/>'
+        )
+        document = document.replace("</head>", twitter_tags + "</head>", 1)
+    if meta.get("jsonLd"):
+        blocks = "".join(
+            '<script type="application/ld+json" data-seo-ld="page">' + json.dumps(block, separators=(",", ":")).replace("<", "\\u003c") + "</script>"
+            for block in meta["jsonLd"]
+        )
+        document = document.replace("</head>", blocks + "</head>", 1)
+    return document
+
+
 if FRONTEND_BUILD_DIR.exists():
     # Some minimal Linux images do not register WebP, causing product images
     # to be served as text/plain. Register it explicitly for browser-safe MIME
@@ -4687,7 +4870,7 @@ if FRONTEND_BUILD_DIR.exists():
         return Response(content=await build_sitemap(), media_type="application/xml; charset=utf-8", headers={"Cache-Control": "public, max-age=3600"})
 
     @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_frontend(full_path: str):
+    async def serve_frontend(full_path: str, request: Request):
         candidate = (FRONTEND_BUILD_DIR / full_path).resolve()
         try:
             candidate.relative_to(FRONTEND_BUILD_DIR.resolve())
@@ -4699,4 +4882,11 @@ if FRONTEND_BUILD_DIR.exists():
             immutable = bool(re.search(r"\.[0-9a-f]{8,}\.", candidate.name))
             headers = {"Cache-Control": "public, max-age=31536000, immutable" if immutable else "public, max-age=3600"}
             return FileResponse(candidate, headers=headers)
-        return FileResponse(FRONTEND_BUILD_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+        meta = await _seo_meta_for_path(full_path)
+        if request.query_params.get("search"):
+            meta = {**meta, "robots": "noindex, nofollow"}
+        document = (FRONTEND_BUILD_DIR / "index.html").read_text()
+        headers = {"Cache-Control": "no-cache"}
+        if meta["robots"].startswith("noindex"):
+            headers["X-Robots-Tag"] = "noindex, nofollow"
+        return HTMLResponse(_seo_inject_html(document, meta), headers=headers)
