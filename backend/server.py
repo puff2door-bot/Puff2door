@@ -1106,6 +1106,16 @@ class ProductInput(BaseModel):
     def _state_lists(cls, values):
         return list(dict.fromkeys(str(v).strip()[:40] for v in values if str(v).strip()))
 
+    @field_validator("flavors")
+    @classmethod
+    def clean_flavors(cls, value):
+        out = []
+        for raw in value or []:
+            text = " ".join(str(raw).split())[:30]
+            if text and text.lower() not in {x.lower() for x in out}:
+                out.append(text)
+        return out[:20]
+
 
 class OrderStatusInput(BaseModel):
     status: str

@@ -75,6 +75,25 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
   const set = (k, v) => setF((prev) => ({ ...prev, [k]: v }));
   const [brandList, setBrandList] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [usedFlavors, setUsedFlavors] = useState([]);
+  const [newFlavor, setNewFlavor] = useState("");
+  const flavorChoices = [...new Set([...FLAVOR_KEYWORDS, ...usedFlavors, ...(f.flavors || [])])]
+    .sort((a, b) => a.localeCompare(b));
+  const addFlavor = () => {
+    const text = newFlavor.replace(/\s+/g, " ").trim().slice(0, 30)
+      .toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
+    if (!text) return;
+    const existing = flavorChoices.find((x) => x.toLowerCase() === text.toLowerCase()) || text;
+    setF((prev) => ({ ...prev, flavors: prev.flavors.includes(existing) ? prev.flavors : [...prev.flavors, existing] }));
+    setNewFlavor("");
+  };
+  useEffect(() => {
+    // Flavors already used on any product, so ones added before can be picked again.
+    api.get("/products").then(({ data }) => {
+      const rows = data.products || data.items || data || [];
+      setUsedFlavors([...new Set(rows.flatMap((p) => p.flavors || []).filter(Boolean))]);
+    }).catch(() => {});
+  }, []);
   useEffect(() => {
     api.get("/admin/brands").then(({ data }) => setBrandList(data.brands || [])).catch(() => {});
     api.get("/admin/categories").then(({ data }) => {
@@ -209,13 +228,27 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
         <div>
           <label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Flavors</label>
           <div className="flex flex-wrap gap-1.5">
-            {FLAVOR_KEYWORDS.map((fl) => {
+            {flavorChoices.map((fl) => {
               const on = f.flavors.includes(fl);
               return (
                 <button type="button" key={fl} onClick={() => set("flavors", on ? f.flavors.filter((x) => x !== fl) : [...f.flavors, fl])} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${on ? "bg-emerald-600 border-emerald-600 text-white" : "border-neutral-300 text-neutral-600 hover:border-emerald-500"}`}>{fl}</button>
               );
             })}
           </div>
+          <div className="flex gap-2 mt-2">
+            <input
+              data-testid="pf-new-flavor"
+              value={newFlavor}
+              maxLength={30}
+              onChange={(e) => setNewFlavor(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addFlavor(); } }}
+              placeholder="Add a flavor, e.g. Pink Lemonade"
+              className="flex-1 min-w-0 border border-neutral-300 rounded-lg px-3 py-1.5 text-sm"
+            />
+            <button type="button" data-testid="pf-add-flavor" onClick={addFlavor} disabled={!newFlavor.trim()}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white disabled:opacity-40">Add</button>
+          </div>
+          <p className="text-xs text-neutral-500 mt-1">Click a flavor to turn it on or off. New flavors show in the shop's Flavor filter once saved.</p>
         </div>
 
         <div>
