@@ -163,7 +163,9 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
             labelClassName="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5"
             buttonClassName={inputCls}
             emptyOption={{ value: "", label: "None" }}
-            options={brandList.map((brand) => ({ value: brand.slug, label: `${brand.displayName}${brand.active ? "" : " (inactive)"}` }))}
+            options={brandList.length
+              ? brandList.map((brand) => ({ value: brand.slug, label: `${brand.displayName}${brand.active ? "" : " (inactive)"}` }))
+              : (f.brand ? [{ value: f.brand, label: f.brandName || f.brand }] : [])}
             value={f.brand || ""}
             onChange={(slug) => { const brand = brandList.find((row) => row.slug === slug); setF((prev) => ({ ...prev, brand: slug, brandName: brand ? brand.displayName : "" })); }}
           />

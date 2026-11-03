@@ -2,13 +2,21 @@ import React from "react";
 import { X } from "lucide-react";
 import { PUFF_RANGES } from "../mock";
 
+const COLLAPSED = 8;
+
 const Group = ({ title, options, selected, onToggle, testPrefix }) => {
+  const [expanded, setExpanded] = React.useState(false);
   if (options.length === 0) return null;
+  // Show the biggest groups first when collapsed, but never hide one that is ticked.
+  const byCount = [...options].sort((a, b) => b.count - a.count);
+  const keep = new Set(byCount.slice(0, COLLAPSED).map((o) => o.key).concat(selected));
+  const shown = expanded || options.length <= COLLAPSED ? options : options.filter((o) => keep.has(o.key));
+  const hiddenCount = options.length - shown.length;
   return (
     <div className="mb-6">
       <h4 className="text-xs font-bold uppercase tracking-[0.15em] text-neutral-500 mb-2">{title}</h4>
-      <ul className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-        {options.map((o) => (
+      <ul className="space-y-1.5 pr-1">
+        {shown.map((o) => (
           <li key={o.key}>
             <label className="flex items-center gap-2.5 text-sm text-neutral-700 cursor-pointer hover:text-emerald-700">
               <input
@@ -24,18 +32,28 @@ const Group = ({ title, options, selected, onToggle, testPrefix }) => {
           </li>
         ))}
       </ul>
+      {(hiddenCount > 0 || expanded) && options.length > COLLAPSED && (
+        <button
+          type="button"
+          data-testid={`${testPrefix}-more`}
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-2 text-xs font-bold text-emerald-700 hover:underline"
+        >
+          {expanded ? "Show fewer" : `Show all ${options.length}`}
+        </button>
+      )}
     </div>
   );
 };
 
-const slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+const slugify = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
 export const buildFilterOptions = (list) => {
   const brandCounts = {};
   const flavorCounts = {};
   const puffCounts = {};
   list.forEach((p) => {
-    brandCounts[p.brandName] = (brandCounts[p.brandName] || 0) + 1;
+    if ((p.brandName || "").trim()) brandCounts[p.brandName] = (brandCounts[p.brandName] || 0) + 1;
     p.flavors.forEach((f) => { flavorCounts[f] = (flavorCounts[f] || 0) + 1; });
     if (p.puffs) {
       const r = PUFF_RANGES.find((x) => p.puffs >= x.min && p.puffs <= x.max);
