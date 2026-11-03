@@ -3114,8 +3114,32 @@ class PhotoEnhanceInput(BaseModel):
     limit: int = Field(default=10, ge=1, le=25)
 
 
-def _enhance_query() -> dict:
-    return {"image": {"$regex": "^/api/files/"}, "photoEnhancedAt": {"$exists": False}}
+def _enhance_query(placeholders=()) -> dict:
+    # Category "photo coming soon" placeholders are not product photos: never touch them,
+    # or Missing Photos stops recognising those products as needing a picture.
+    return {"image": {"$regex": "^/api/files/", "$nin": list(placeholders)}, "photoEnhancedAt": {"$exists": False}}
+
+
+async def _placeholder_urls() -> list:
+    return [u for u in (await clover_integration().category_placeholders()).values() if u]
+
+
+async def restore_enhanced_placeholders():
+    """Undo the photo pass on category placeholders (it gave them new URLs by mistake)."""
+    urls = await _placeholder_urls()
+    if not urls:
+        return
+    restored = 0
+    async for p in db.products.find({"photoBeforeEnhance": {"$in": urls}}, {"id": 1, "photoBeforeEnhance": 1, "photoBeforeEnhance2": 1}):
+        await db.products.update_one({"id": p["id"]}, {
+            "$set": {"image": p["photoBeforeEnhance"], "image2": p.get("photoBeforeEnhance2") or p["photoBeforeEnhance"]},
+            "$unset": {"photoBeforeEnhance": "", "photoBeforeEnhance2": "", "photoEnhancedAt": ""},
+        })
+        restored += 1
+    # Products still on an unenhanced placeholder were stamped "done"; clear that so nothing is skipped later.
+    await db.products.update_many({"image": {"$in": urls}, "photoBeforeEnhance": {"$exists": False}}, {"$unset": {"photoEnhancedAt": ""}})
+    if restored:
+        logger.info("Restored %s products to their category placeholder", restored)
 
 
 @api_router.post("/admin/products/enhance-photos")
@@ -3125,7 +3149,7 @@ async def admin_enhance_photos(inp: PhotoEnhanceInput, admin: dict = Depends(get
     using it is updated. The previous picture is kept on the product so it can be undone."""
     from inventory_photo_processing import enhance_saved_photo
     done, failed = 0, []
-    images = (await db.products.distinct("image", _enhance_query()))[: inp.limit]
+    images = (await db.products.distinct("image", _enhance_query(await _placeholder_urls())))[: inp.limit]
     for old in images:
         try:
             raw, _ctype = await get_object(old[len("/api/files/"):])
@@ -3142,7 +3166,7 @@ async def admin_enhance_photos(inp: PhotoEnhanceInput, admin: dict = Depends(get
             await db.products.update_many({"image": old, "photoEnhancedAt": {"$exists": False}},
                                           {"$set": {"photoEnhancedAt": now_utc(), "photoEnhanceError": str(exc)[:200]}})
             failed.append(old)
-    remaining = len(await db.products.distinct("image", _enhance_query()))
+    remaining = len(await db.products.distinct("image", _enhance_query(await _placeholder_urls())))
     return {"done": done, "failed": failed, "remaining": remaining}
 
 
@@ -3153,7 +3177,7 @@ async def _run_enhance_job(admin_id: str):
     from inventory_photo_processing import enhance_saved_photo
     try:
         while True:
-            images = (await db.products.distinct("image", _enhance_query()))[:1]
+            images = (await db.products.distinct("image", _enhance_query(await _placeholder_urls())))[:1]
             if not images:
                 break
             old = images[0]
@@ -3171,7 +3195,7 @@ async def _run_enhance_job(admin_id: str):
                 await db.products.update_many({"image": old, "photoEnhancedAt": {"$exists": False}},
                                               {"$set": {"photoEnhancedAt": now_utc(), "photoEnhanceError": str(exc)[:200]}})
                 _enhance_job["failed"] += 1
-            _enhance_job["remaining"] = len(await db.products.distinct("image", _enhance_query()))
+            _enhance_job["remaining"] = len(await db.products.distinct("image", _enhance_query(await _placeholder_urls())))
             await asyncio.sleep(0.5)
     finally:
         _enhance_job["running"] = False
@@ -3189,7 +3213,7 @@ async def admin_start_enhance_job(admin: dict = Depends(get_admin_user)):
 @api_router.get("/admin/products/enhance-photos/status")
 async def admin_enhance_job_status(admin: dict = Depends(get_admin_user)):
     if _enhance_job["remaining"] is None:
-        _enhance_job["remaining"] = len(await db.products.distinct("image", _enhance_query()))
+        _enhance_job["remaining"] = len(await db.products.distinct("image", _enhance_query(await _placeholder_urls())))
     return _enhance_job
 
 
@@ -4914,6 +4938,7 @@ async def seed_data():
     await seed_categories()
     await migrate_legacy_brand_copy()
     await assign_known_brandless_products()
+    await restore_enhanced_placeholders()
     await refresh_static_sitemap()
 
 
