@@ -3749,7 +3749,7 @@ async def admin_update_order_status(order_id: str, inp: OrderStatusInput, admin:
     elif inp.status == "delivered":
         await loyalty_award_for_order(updated)
     if inp.status in STAGE_KEYS:
-        asyncio.create_task(emails.send_status_update(updated, inp.status))
+        asyncio.create_task(emails.send_status_update(updated, inp.status, (await get_settings()).get("googleReviewUrl", "")))
     asyncio.create_task(send_order_push(updated, inp.status))
     return order_response(await db.orders.find_one({"id": order_id}))
 
@@ -4734,6 +4734,26 @@ SEO_STATIC_META = {
     "refund-policy": ("Refund & Return Policy | HD Smoke Shop", "How HD Smoke Shop handles damaged, incorrect, cancelled and undeliverable orders."),
     "age-and-id-policy": ("Age & ID Policy (21+) – HD Smoke Shop", "How HD Smoke Shop verifies age in store and at delivery. Valid government photo ID showing 21+ is required."),
 }
+CATEGORY_INTROS = {
+    "disposable": "Disposable vapes from RAZ, Geek Bar, Lost Mary, Fume, Smogger, Beri and more. Shop them at our Altamonte Springs store on SR 434 or order online for local delivery in ZIP 32714.",
+    "e-liquids": "Refillable pod kits and replacement pods from Off Stamp, RAZ, Foger, Smogger, Lost Mary and EVR. Pick your kit and flavor in store in Altamonte Springs or order online for local delivery.",
+    "delta": "Hemp-derived delta disposables from Lost THC, Cookies and other trusted brands. Adults 21+ only — shop in store on SR 434 or order online for local delivery in ZIP 32714.",
+    "delta-cartridges": "510-thread delta cartridges from brands like Mellow Fellow. Adults 21+ only — available in our Altamonte Springs store or for local delivery.",
+    "delta-edibles": "Hemp-derived gummies and edibles from GMY, Flying Monkey, Torch and Cookies. Adults 21+ only — shop in store in Altamonte Springs or order for local delivery.",
+    "delta-smokeables": "THCA flower, pre-rolls and other hemp smokeables from Flying Monkey, VIP Boyz, Meadow and Hemp Maestro. Adults 21+ only — in store on SR 434 or local delivery.",
+    "cigars": "Cigars, cigarillos and leaf wraps from Backwoods, Swisher Sweets, White Owl, Black & Mild, Game and Da Woods. Find the full selection at our Altamonte Springs smoke shop or order online.",
+    "paper-cones": "Rolling papers, pre-rolled cones, tips and rollers from RAW, OCB, Zig-Zag, Blazy Susan and Bambu. Stock up in store on SR 434 or get them delivered in ZIP 32714.",
+    "hemp-wraps": "Hemp wraps and blunt wraps from King Palm, High Hemp and Zig-Zag. Available at our Altamonte Springs store or for local delivery.",
+    "glass-pipes": "Glass hand pipes, water pipes, bubblers and dab rigs from Glass House, Cheech & Chong and more. See the glass in person at our Altamonte Springs store, or order online for local delivery.",
+    "smoke-accessories": "Grinders, rolling trays, ashtrays, stash jars, batteries and chargers from Santa Cruz Shredder, Ooze and Smoke Buddy. Shop in store on SR 434 or order for local delivery.",
+    "lighter": "Torch lighters, refillable lighters and butane from Special Blue, Clipper, Zippo and more. Pick one up in our Altamonte Springs store or add it to a delivery order.",
+    "hookah": "Hookah tobacco and coals from Al Fakher, Coco Nara and other favorites. Visit our Altamonte Springs smoke shop or order online for local delivery in ZIP 32714.",
+    "kratom": "Kratom capsules, powders and shots from popular brands. Adults 21+ only — available in our Altamonte Springs store or for local delivery.",
+    "air-freshner": "Candles, sprays and odor eliminators from Kadilo, Blunteffects and more, in store or for local delivery.",
+    "miscellaneous": "Smoke shop extras like cleaners, scales, bags and more — in store on SR 434 or for local delivery.",
+    "munchies": "Snacks and drinks to grab with your order, in store or for local delivery.",
+    "merchandise": "HD Smoke Shop merchandise, available in our Altamonte Springs store."
+}
 SEO_PRIVATE_PREFIXES = ("admin", "cart", "checkout", "wishlist", "my-account", "order", "track")
 
 
@@ -4900,6 +4920,8 @@ async def _seo_body_html(path: str, meta: dict) -> str:
                 "<p>Close to Longwood, Casselberry, Maitland, Winter Springs, Forest City and Apopka.</p>")
     elif normalized.startswith("product-category/"):
         slug = normalized.split("/", 1)[1]
+        if CATEGORY_INTROS.get(slug):
+            main += f"<p>{_h(CATEGORY_INTROS[slug])}</p>"
         main += "<h2>In stock now</h2>" + _seo_product_list(await _seo_visible_products({"categorySlug": slug}))
     elif normalized.startswith("brand/"):
         slug = normalized.split("/", 1)[1]

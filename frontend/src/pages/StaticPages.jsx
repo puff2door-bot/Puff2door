@@ -119,6 +119,9 @@ const FAQ_SECTIONS = [
     title: "Products & Returns",
     faqs: [
       { q: "What do you sell?", a: "Disposable vapes and pods, hemp-derived delta disposables, cartridges, edibles and smokeables, kratom, cigars and wraps, rolling papers and cones, glass, lighters, hookah supplies and other smoke shop essentials from well-known brands." },
+      { q: "Which disposable vape brands do you carry?", a: "Popular brands including RAZ, Geek Bar, Lost Mary, Fume, Smogger, Beri, Off Stamp and Foger. Check the Disposable Vapes and Pods pages for flavors in stock right now." },
+      { q: "Do you sell hookah tobacco and coals?", a: "Yes. We carry hookah tobacco such as Al Fakher and coconut coals such as Coco Nara. See the Hookah page for what's in stock." },
+      { q: "Do you sell glass pipes and rolling papers?", a: "Yes. Glass pipes, water pipes and bubblers, plus rolling papers and cones from RAW, OCB, Zig-Zag, Blazy Susan and Bambu, and grinders, trays and lighters." },
       { q: "Is the stock on the website accurate?", a: "Yes. The website is synced with our in-store register throughout the day, so what you see online reflects what's on our shelves." },
       { q: "Can I return an item?", a: "Opened or used consumable products generally can't be returned. If an item is missing, wrong, damaged or defective, contact us right away with your order number. See our Refund Policy for details." },
     ],

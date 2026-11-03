@@ -238,7 +238,7 @@ async def send_payment_received(order: dict, rewards: Optional[dict] = None):
     await _send([to], title, layout(title, body), "payment_received", {"orderId": order["id"]})
 
 
-async def send_status_update(order: dict, status: str):
+async def send_status_update(order: dict, status: str, review_url: str = ""):
     copy_table = PICKUP_STATUS_COPY if order.get("fulfillment") == "pickup" else STATUS_COPY
     if status not in copy_table:
         return
@@ -251,6 +251,10 @@ async def send_status_update(order: dict, status: str):
     body = f'<p style="font-size:15px;line-height:1.6;color:#374151;">Hi {escape(order["shipping"].get("firstName") or "there")}, {copy}</p>'
     body += f'<p style="font-size:13px;color:#6b7280;">{len(order["items"])} item(s) · {_money(order["total"])}</p>'
     body += f'<p style="margin:24px 0 0;">{button("View your order" if order.get("fulfillment") == "pickup" else "View delivery tracker", order_link(order))}</p>'
+    if status == "delivered" and review_url.startswith("https://"):
+        # Reviews are asked for, never rewarded (Google's rules).
+        body += f'<p style="font-size:14px;line-height:1.6;color:#374151;margin:28px 0 8px;">Happy with your order? A quick Google review helps a small local shop a lot.</p>'
+        body += f'<p style="margin:0;">{button("Review us on Google", review_url)}</p>'
     await _send([to], subject, layout(title, body, copy), f"status_{status}", {"orderId": order["id"]})
 
 

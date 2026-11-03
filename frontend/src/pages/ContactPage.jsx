@@ -49,6 +49,7 @@ const ContactPage = () => {
         <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-emerald-600/20 blur-2xl" />
         <h1 className="font-heading text-4xl font-700 text-white uppercase tracking-tight relative">Contact &amp; Directions</h1>
         <p className="text-neutral-300 mt-3 relative">Visit our Altamonte Springs store or order for delivery. Questions about an order or product? We're here to help.</p>
+        <p className="text-neutral-400 text-sm mt-2 relative">In San Sebastian Square on SR 434 — a short drive for customers from Longwood, Casselberry, Maitland, Winter Springs, Forest City and Apopka.</p>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-10">
         <form onSubmit={submit} className="space-y-4">
