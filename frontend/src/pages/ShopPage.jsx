@@ -18,7 +18,7 @@ const EMPTY_FILTERS = { brands: [], flavors: [], puffs: [] };
 
 const ShopPage = () => {
   const { slug } = useParams();
-  const { products, getProductsByCategory, loading, activeCategories, getCategory, getBrand } = useCatalog();
+  const { products, getProductsByCategory, loading, activeCategories, getCategory, getBrand, categoryRecords, brandRecords } = useCatalog();
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const isBrand = location.pathname.startsWith("/brand/");
@@ -91,7 +91,12 @@ const ShopPage = () => {
 
   return (
     <div className="max-w-[1280px] mx-auto px-4 py-8">
-      <Seo title={seo.title} description={seo.description} path={seo.path} noindex={seo.noindex} jsonLd={seo.noindex ? undefined : breadcrumbJsonLd(crumbs)} />
+      {/* Until the catalog has really loaded, a category or brand can't be found yet. Saying
+          "not found / noindex" in that moment made Google drop real pages, so keep the
+          server's tags until we actually know. */}
+      {!(slug && !currentCat && !currentBrand && (loading || !(isBrand ? brandRecords.length : categoryRecords.length))) && (
+        <Seo title={seo.title} description={seo.description} path={seo.path} noindex={seo.noindex} jsonLd={seo.noindex ? undefined : breadcrumbJsonLd(crumbs)} />
+      )}
       {/* Breadcrumb */}
       <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-neutral-500 mb-4">
         <Link to="/" className="hover:text-emerald-600">Home</Link>
