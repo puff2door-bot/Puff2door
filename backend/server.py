@@ -3105,8 +3105,57 @@ async def admin_product_photo(product_id: int, file: UploadFile = File(...), adm
     if _mostly_white(prepared):
         raise HTTPException(status_code=422, detail="The photo came out almost all white. Retake it with the item filling more of the frame.")
     url = await store_image(prepared, "webp", f"product-{product_id}.webp", admin["id"])
-    await db.products.update_one({"id": product_id}, {"$set": {"image": url, "image2": url}})
+    # New photos already get the bright/sharp treatment, so the one-time batch skips them.
+    await db.products.update_one({"id": product_id}, {"$set": {"image": url, "image2": url, "photoEnhancedAt": now_utc()}})
     return {"ok": True, "id": product_id, "image": url}
+
+
+class PhotoEnhanceInput(BaseModel):
+    limit: int = Field(default=10, ge=1, le=25)
+
+
+def _enhance_query() -> dict:
+    return {"image": {"$regex": "^/api/files/"}, "photoEnhancedAt": {"$exists": False}}
+
+
+@api_router.post("/admin/products/enhance-photos")
+async def admin_enhance_photos(inp: PhotoEnhanceInput, admin: dict = Depends(get_admin_user)):
+    """One-time pass: brighten and sharpen existing product photos, a few pictures per call.
+    Flavors often share one picture, so each picture is processed once and every product
+    using it is updated. The previous picture is kept on the product so it can be undone."""
+    from inventory_photo_processing import enhance_saved_photo
+    done, failed = 0, []
+    images = (await db.products.distinct("image", _enhance_query()))[: inp.limit]
+    for old in images:
+        try:
+            raw, _ctype = await get_object(old[len("/api/files/"):])
+            enhanced = await asyncio.to_thread(enhance_saved_photo, raw)
+            url = await store_image(enhanced, "webp", "product-enhanced.webp", admin["id"])
+            stamp = now_utc()
+            await db.products.update_many({"image": old, "image2": old, "photoEnhancedAt": {"$exists": False}},
+                                          {"$set": {"image2": url, "photoBeforeEnhance2": old}})
+            await db.products.update_many({"image": old, "photoEnhancedAt": {"$exists": False}},
+                                          {"$set": {"image": url, "photoEnhancedAt": stamp, "photoBeforeEnhance": old}})
+            done += 1
+        except Exception as exc:  # unreadable or missing file: mark it so the batch moves on
+            logger.warning("Photo enhance failed for %s: %s", old, exc)
+            await db.products.update_many({"image": old, "photoEnhancedAt": {"$exists": False}},
+                                          {"$set": {"photoEnhancedAt": now_utc(), "photoEnhanceError": str(exc)[:200]}})
+            failed.append(old)
+    remaining = len(await db.products.distinct("image", _enhance_query()))
+    return {"done": done, "failed": failed, "remaining": remaining}
+
+
+@api_router.post("/admin/products/enhance-photos/revert")
+async def admin_revert_enhanced_photos(admin: dict = Depends(get_admin_user)):
+    reverted = 0
+    async for p in db.products.find({"photoBeforeEnhance": {"$exists": True}}, {"id": 1, "photoBeforeEnhance": 1, "photoBeforeEnhance2": 1}):
+        await db.products.update_one({"id": p["id"]}, {
+            "$set": {"image": p["photoBeforeEnhance"], **({"image2": p["photoBeforeEnhance2"]} if p.get("photoBeforeEnhance2") else {})},
+            "$unset": {"photoBeforeEnhance": "", "photoBeforeEnhance2": "", "photoEnhancedAt": ""},
+        })
+        reverted += 1
+    return {"reverted": reverted}
 
 
 # ---- Clover inventory sync ----

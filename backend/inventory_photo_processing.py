@@ -434,3 +434,27 @@ def prepare_inventory_photo(raw, validate_photo=None):
     )
     _paint_white_frame(canvas)
     return _encode(canvas), source_long_side < 640
+
+
+def enhance_saved_photo(raw):
+    """Brighten and sharpen a product photo that is already on a white background.
+
+    Levels are measured on the item (everything that isn't near-white) and applied to the
+    whole picture, so the background stays pure white and there is no seam at the edges.
+    Returns lossless WebP bytes."""
+    image = load_photo(raw)
+    if image.mode == 'RGBA' and image.getchannel('A').getextrema()[0] < 255:
+        flat = Image.new('RGB', image.size, WHITE)
+        flat.paste(image, (0, 0), image.getchannel('A'))
+    else:
+        flat = image.convert('RGB')
+    item = flat.convert('L').point(lambda value: 255 if value < 242 else 0)
+    subject = flat.copy()
+    subject.putalpha(item)
+    result = _enhance(subject).convert('RGB')
+    if result.size == (CANVAS_SIZE, CANVAS_SIZE):
+        _paint_white_frame(result)
+    # High-quality lossy keeps the file ~6x smaller than lossless; flat white stays white.
+    output = io.BytesIO()
+    result.save(output, 'WEBP', quality=90, method=6)
+    return output.getvalue()
