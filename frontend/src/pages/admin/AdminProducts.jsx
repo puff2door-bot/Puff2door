@@ -44,6 +44,9 @@ const TAGS = {
   nobrand: ["No brand", "bg-neutral-100 text-neutral-600"],
 };
 
+const NO_CAT = "NO CATEGORY";
+const catOf = (p) => p.category || NO_CAT;
+
 const matchStatus = (p, key) => (key === "all" ? true : key === "visible" ? p.active : flagsOf(p).includes(key));
 
 const SORTS = {
@@ -110,24 +113,25 @@ const AdminProducts = () => {
     return products.filter((p) => (!brand || p.brandName === brand) && (!s || `${p.name} ${p.brandName} ${p.category} ${p.id} ${p.sku || ""} ${p.barcode || ""}`.toLowerCase().includes(s)));
   }, [products, q, brand]);
 
-  const inCat = (p) => cat === "ALL" || p.category === cat;
+  const inCat = (p) => cat === "ALL" || catOf(p) === cat;
   const tiles = STATUS.map((st) => ({ ...st, count: base.filter((p) => inCat(p) && matchStatus(p, st.key)).length }));
   const inStatus = base.filter((p) => matchStatus(p, status));
 
   const catNames = useMemo(() => {
     const fromList = categories.map((c) => c.name);
-    const extra = [...new Set(products.map((p) => p.category))].filter((c) => c && !fromList.includes(c));
-    return [...fromList, ...extra.sort()];
+    const extra = [...new Set(products.map(catOf))].filter((c) => c !== NO_CAT && !fromList.includes(c));
+    const missing = products.some((p) => !p.category) ? [NO_CAT] : [];
+    return [...missing, ...fromList, ...extra.sort()];
   }, [categories, products]);
 
   const catRow = (name, rows, key) => {
     const live = rows.filter((p) => p.active && p.stock > 0).length;
     return { name, key, count: rows.length, live, pct: rows.length ? Math.round((live / rows.length) * 100) : 0 };
   };
-  const catRows = [catRow("All categories", inStatus, "ALL"), ...catNames.map((c) => catRow(c, inStatus.filter((p) => p.category === c), c))];
+  const catRows = [catRow("All categories", inStatus, "ALL"), ...catNames.map((c) => catRow(c, inStatus.filter((p) => catOf(p) === c), c))];
 
   const shown = inStatus.filter(inCat).sort(SORTS[sort] || SORTS.name);
-  const groupNames = cat === "ALL" ? catNames.filter((c) => shown.some((p) => p.category === c)) : (shown.length ? [cat] : []);
+  const groupNames = cat === "ALL" ? catNames.filter((c) => shown.some((p) => catOf(p) === c)) : (shown.length ? [cat] : []);
   const brandNames = useMemo(() => [...new Set(products.map((p) => p.brandName).filter(Boolean))].sort(), [products]);
   const hasFilters = Boolean(q || brand || status !== "all" || cat !== "ALL");
   const clearAll = () => { setQ(""); setBrand(""); setStatus("all"); setCat("ALL"); };
@@ -367,7 +371,7 @@ const AdminProducts = () => {
               )}
 
               {groupNames.map((g) => {
-                const rows = shown.filter((p) => p.category === g);
+                const rows = shown.filter((p) => catOf(p) === g);
                 const open = !closed[g];
                 const limit = limits[g] || PAGE;
                 const visibleRows = rows.slice(0, limit);
