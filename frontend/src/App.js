@@ -20,6 +20,7 @@ import AuthPage from "./pages/AuthPage";
 import ContactPage from "./pages/ContactPage";
 import WishlistPage from "./pages/WishlistPage";
 import { BrandsPage, AboutPage, FaqPage } from "./pages/StaticPages";
+import { GuidesIndex, GuideArticle } from "./pages/GuidesPage";
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminProducts from "./pages/admin/AdminProducts";
@@ -92,6 +93,8 @@ const AppRoutes = () => {
       <Route path="/about" element={<AboutPage />} />
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/faq" element={<FaqPage />} />
+      <Route path="/guides" element={<GuidesIndex />} />
+      <Route path="/guides/:slug" element={<GuideArticle />} />
       <Route path="/privacy-policy" element={<PrivacyPolicy />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/delivery-policy" element={<DeliveryPolicy />} />

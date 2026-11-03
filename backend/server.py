@@ -32,6 +32,7 @@ from zoneinfo import ZoneInfo
 import jwt
 from passlib.context import CryptContext
 from clover import CloverError, CloverIntegration, order_should_sync_stock
+from guides import GUIDES, GUIDES_BY_SLUG, GUIDES_INDEX_META, guide_summary
 
 try:
     from pywebpush import WebPushException, webpush
@@ -2377,6 +2378,19 @@ async def seed_categories():
     invalidate_categories()
 
 
+@api_router.get("/guides")
+async def list_guides():
+    return {"guides": [guide_summary(g) for g in GUIDES]}
+
+
+@api_router.get("/guides/{slug}")
+async def get_guide(slug: str):
+    guide = GUIDES_BY_SLUG.get(slug)
+    if not guide:
+        raise HTTPException(status_code=404, detail="Guide not found")
+    return guide
+
+
 @api_router.get("/categories")
 async def list_categories():
     cats, counts = await get_categories(), await category_counts()
@@ -2589,6 +2603,9 @@ async def build_sitemap() -> str:
     catalog_day = newest(prods)
     for path in SITEMAP_STATIC:
         add(path, catalog_day if path in ("/", "/shop", "/brands") else SITEMAP_BASE_DATE)
+    add("/guides", max(g["updated"] for g in GUIDES))
+    for g in GUIDES:
+        add(f"/guides/{g['slug']}", g["updated"])
     for cat in sorted({p.get("categorySlug") for p in prods if p.get("categorySlug")}):
         add(f"/product-category/{cat}", newest([p for p in prods if p.get("categorySlug") == cat]))
     for brand in sorted({brand_slug(p) for p in prods if brand_slug(p)}):
@@ -4888,6 +4905,22 @@ async def _seo_meta_for_path(path: str) -> dict:
         title, description = SEO_STATIC_META[normalized]
         return {"title": title, "description": description, "canonical": canonical, "robots": "index, follow, max-image-preview:large", "type": "website", "jsonLd": []}
 
+    if normalized == "guides":
+        title, description = GUIDES_INDEX_META
+        return {"title": title, "description": description, "canonical": canonical, "robots": "index, follow, max-image-preview:large", "type": "website",
+                "jsonLd": [_seo_breadcrumb([("Home", ""), ("Guides", "guides")])]}
+    if normalized.startswith("guides/") and GUIDES_BY_SLUG.get(normalized.split("/", 1)[1]):
+        g = GUIDES_BY_SLUG[normalized.split("/", 1)[1]]
+        article = {
+            "@context": "https://schema.org", "@type": "Article", "headline": g["title"], "description": g["description"],
+            "datePublished": g["updated"], "dateModified": g["updated"], "mainEntityOfPage": canonical,
+            "author": {"@type": "Organization", "name": "HD Smoke Shop", "url": SITE_URL},
+            "publisher": {"@type": "Organization", "name": "HD Smoke Shop", "logo": {"@type": "ImageObject", "url": SITE_URL + "/img/logo.png"}},
+            "image": [SITE_URL + "/img/og-image.jpg"],
+        }
+        return {"title": g["metaTitle"], "description": g["description"], "canonical": canonical, "robots": "index, follow, max-image-preview:large", "type": "article",
+                "jsonLd": [article, _seo_breadcrumb([("Home", ""), ("Guides", "guides"), (g["title"], normalized)])]}
+
     if normalized in SEO_PRIVATE_PREFIXES or normalized.startswith(tuple(prefix + "/" for prefix in SEO_PRIVATE_PREFIXES)):
         return {"title": "Private page | HD Smoke Shop", "description": "Private HD Smoke Shop page.", "canonical": canonical, "robots": "noindex, nofollow", "type": "website", "jsonLd": []}
 
@@ -5006,7 +5039,7 @@ async def _seo_body_html(path: str, meta: dict) -> str:
     nav = "".join(f'<li><a href="/product-category/{_h(c["slug"])}">{_h(_seo_display_name(c.get("name")))}</a></li>' for c in cats if counts.get(c["slug"]))
     links = ('<nav aria-label="Site"><ul><li><a href="/">Home</a></li><li><a href="/shop">Shop all</a></li><li><a href="/brands">Brands</a></li>'
              '<li><a href="/delivery-area">Delivery area</a></li><li><a href="/about">About</a></li><li><a href="/contact">Contact &amp; directions</a></li>'
-             f'<li><a href="/faq">FAQ</a></li></ul><h2>Shop by category</h2><ul>{nav}</ul></nav>')
+             f'<li><a href="/faq">FAQ</a></li><li><a href="/guides">Guides</a></li></ul><h2>Shop by category</h2><ul>{nav}</ul></nav>')
     headline = re.split(r"\s[|–]\s", meta.get("title", ""), maxsplit=1)[0]
     main = f"<h1>{_h(headline)}</h1><p>{_h(meta.get('description'))}</p>"
     if normalized == "":
@@ -5052,6 +5085,21 @@ async def _seo_body_html(path: str, meta: dict) -> str:
             more = await _seo_visible_products({**related_q, "brand": {"$ne": product.get("brand") or "__none"}}, limit=8)
             if more:
                 main += f"<h2>More {_h(_seo_display_name(product.get('category')))}</h2>" + _seo_product_list(more)
+    elif normalized == "guides":
+        main = ("<h1>Smoke Shop Guides</h1><p>Plain-English buying and how-to guides from the HD Smoke Shop team.</p><ul>"
+                + "".join(f'<li><a href="/guides/{_h(g["slug"])}">{_h(g["title"])}</a> – {_h(g["description"])}</li>' for g in GUIDES) + "</ul>")
+    elif normalized.startswith("guides/") and GUIDES_BY_SLUG.get(normalized.split("/", 1)[1]):
+        g = GUIDES_BY_SLUG[normalized.split("/", 1)[1]]
+        parts = [f"<article><h1>{_h(g['title'])}</h1><p>Updated {_h(g['updated'])} · {g['readMinutes']} min read</p><p>{_h(g['intro'])}</p>"]
+        for sec in g["sections"]:
+            parts.append(f"<h2>{_h(sec['h'])}</h2>")
+            parts.extend(f"<p>{_h(t)}</p>" for t in sec.get("p", []))
+            if sec.get("list"):
+                parts.append("<ul>" + "".join(f"<li>{_h(t)}</li>" for t in sec["list"]) + "</ul>")
+        parts.append("<h2>Shop</h2><ul>" + "".join(f'<li><a href="{_h(l["href"])}">{_h(l["label"])}</a></li>' for l in g["links"]) + "</ul>")
+        others = [o for o in GUIDES if o["slug"] != g["slug"]]
+        parts.append("<h2>More guides</h2><ul>" + "".join(f'<li><a href="/guides/{_h(o["slug"])}">{_h(o["title"])}</a></li>' for o in others) + "</ul></article>")
+        main = "".join(parts)
     elif normalized in ("shop", "brands"):
         if normalized == "brands":
             brands = sorted((b for b in (await get_brand_map()).values() if b.get("active", True)), key=lambda b: str(b.get("displayName") or b.get("name") or "").lower())
