@@ -3146,6 +3146,53 @@ async def admin_enhance_photos(inp: PhotoEnhanceInput, admin: dict = Depends(get
     return {"done": done, "failed": failed, "remaining": remaining}
 
 
+_enhance_job = {"running": False, "done": 0, "failed": 0, "remaining": None, "startedAt": None, "finishedAt": None}
+
+
+async def _run_enhance_job(admin_id: str):
+    from inventory_photo_processing import enhance_saved_photo
+    try:
+        while True:
+            images = (await db.products.distinct("image", _enhance_query()))[:1]
+            if not images:
+                break
+            old = images[0]
+            try:
+                raw, _ctype = await get_object(old[len("/api/files/"):])
+                enhanced = await asyncio.to_thread(enhance_saved_photo, raw)
+                url = await store_image(enhanced, "webp", "product-enhanced.webp", admin_id)
+                await db.products.update_many({"image": old, "image2": old, "photoEnhancedAt": {"$exists": False}},
+                                              {"$set": {"image2": url, "photoBeforeEnhance2": old}})
+                await db.products.update_many({"image": old, "photoEnhancedAt": {"$exists": False}},
+                                              {"$set": {"image": url, "photoEnhancedAt": now_utc(), "photoBeforeEnhance": old}})
+                _enhance_job["done"] += 1
+            except Exception as exc:
+                logger.warning("Photo enhance failed for %s: %s", old, exc)
+                await db.products.update_many({"image": old, "photoEnhancedAt": {"$exists": False}},
+                                              {"$set": {"photoEnhancedAt": now_utc(), "photoEnhanceError": str(exc)[:200]}})
+                _enhance_job["failed"] += 1
+            _enhance_job["remaining"] = len(await db.products.distinct("image", _enhance_query()))
+            await asyncio.sleep(0.5)
+    finally:
+        _enhance_job["running"] = False
+        _enhance_job["finishedAt"] = now_utc().isoformat()
+
+
+@api_router.post("/admin/products/enhance-photos/start")
+async def admin_start_enhance_job(admin: dict = Depends(get_admin_user)):
+    if not _enhance_job["running"]:
+        _enhance_job.update({"running": True, "done": 0, "failed": 0, "startedAt": now_utc().isoformat(), "finishedAt": None})
+        asyncio.create_task(_run_enhance_job(admin["id"]))
+    return _enhance_job
+
+
+@api_router.get("/admin/products/enhance-photos/status")
+async def admin_enhance_job_status(admin: dict = Depends(get_admin_user)):
+    if _enhance_job["remaining"] is None:
+        _enhance_job["remaining"] = len(await db.products.distinct("image", _enhance_query()))
+    return _enhance_job
+
+
 @api_router.post("/admin/products/enhance-photos/revert")
 async def admin_revert_enhanced_photos(admin: dict = Depends(get_admin_user)):
     reverted = 0
