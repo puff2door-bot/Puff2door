@@ -32,7 +32,6 @@ export const STORE = {
   googleReviewUrl: "https://g.page/r/CYycZ-oALhFOEBM/review",
   instagram: "https://www.instagram.com/hdsmokeshop.altamonte/",
   facebook: "https://www.facebook.com/puff2doors",
-  tiktok: "https://www.tiktok.com/@hd_smokeshop",
 };
 
 export const absUrl = (path = "/") => (path.startsWith("http") ? path : `${SITE_URL}${path.startsWith("/") ? path : `/${path}`}`);
@@ -126,7 +125,7 @@ export const storeJsonLd = () => ({
   openingHoursSpecification: [{ "@type": "OpeningHoursSpecification", dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], opens: STORE.opens, closes: STORE.closes }],
   areaServed: [{ "@type": "Place", name: "Altamonte Springs, FL 32714", address: { "@type": "PostalAddress", postalCode: STORE.deliveryZip, addressLocality: STORE.city, addressRegion: STORE.region, addressCountry: STORE.country } }],
   audience: { "@type": "PeopleAudience", suggestedMinAge: 21 },
-  sameAs: [STORE.directionsUrl, STORE.instagram, STORE.facebook, STORE.tiktok],
+  sameAs: [STORE.directionsUrl, STORE.instagram, STORE.facebook],
 });
 
 // Kept for older imports.
