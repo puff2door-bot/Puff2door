@@ -207,7 +207,7 @@ def _tilt_angle(cutout):
 def _sharpen(subject):
     """Light sharpening after resizing so box text stays readable."""
     alpha = subject.getchannel('A')
-    rgb = subject.convert('RGB').filter(ImageFilter.UnsharpMask(radius=1.6, percent=70, threshold=2))
+    rgb = subject.convert('RGB').filter(ImageFilter.UnsharpMask(radius=1.4, percent=100, threshold=2))
     rgb.putalpha(alpha)
     return rgb
 
@@ -264,6 +264,62 @@ def _rectangle_mask(size, edges):
     return mask.filter(ImageFilter.GaussianBlur(0.8))
 
 
+QUAD_FILL = 0.93  # an item filling this much of its four-corner outline is a box
+
+
+def _box_quad(cut_small):
+    """Four corners of a box-shaped item (top-left, top-right, bottom-right, bottom-left) in the
+    small copy's pixels, or None. A box shot slightly from the side shows as a tilted trapezoid;
+    straightening it with these corners makes the print square like a scan."""
+    import numpy as np
+    solid = cut_small.getchannel('A').point(lambda v: 255 if v >= 128 else 0)
+    # Opening removes stray specks so they can't pose as a corner.
+    solid = solid.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.MaxFilter(5))
+    m = np.asarray(solid) > 0
+    ys, xs = np.nonzero(m)
+    if len(xs) < 500:
+        return None
+    s_sum, s_diff = xs + ys, xs - ys
+    tl = (xs[s_sum.argmin()], ys[s_sum.argmin()])
+    br = (xs[s_sum.argmax()], ys[s_sum.argmax()])
+    tr = (xs[s_diff.argmax()], ys[s_diff.argmax()])
+    bl = (xs[s_diff.argmin()], ys[s_diff.argmin()])
+    quad = [tl, tr, br, bl]
+    area = 0.0
+    for i in range(4):
+        x1, y1 = quad[i]
+        x2, y2 = quad[(i + 1) % 4]
+        area += x1 * y2 - x2 * y1
+    area = abs(area) / 2.0
+    if area <= 0:
+        return None
+    sides = [((quad[i][0] - quad[(i + 1) % 4][0]) ** 2 + (quad[i][1] - quad[(i + 1) % 4][1]) ** 2) ** 0.5 for i in range(4)]
+    if min(sides) < 40:
+        return None
+    fill = len(xs) / area
+    if fill < QUAD_FILL or fill > 1.06:
+        return None
+    return [(float(x), float(y)) for x, y in quad]
+
+
+def _warp_quad(image, quad, scale):
+    """Map the four corners onto an upright rectangle (perspective straightening)."""
+    tl, tr, br, bl = [(x / scale, y / scale) for x, y in quad]
+    dist = lambda a, b: ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+    width = (dist(tl, tr) + dist(bl, br)) / 2.0
+    height = (dist(tl, bl) + dist(tr, br)) / 2.0
+    shrink = min(1.0, CROP_MAX / max(width, height))
+    size = (max(1, int(round(width * shrink))), max(1, int(round(height * shrink))))
+    data = (tl[0], tl[1], bl[0], bl[1], br[0], br[1], tr[0], tr[1])
+    warped = image.convert('RGB').transform(size, Image.Transform.QUAD, data, resample=Image.Resampling.BICUBIC)
+    # Trim a sliver inside the edge so the background and shadow line never show.
+    inset = int(round(min(size) * 0.012))
+    if inset:
+        warped = warped.crop((inset, inset, size[0] - inset, size[1] - inset))
+    warped.putalpha(_rectangle_mask(warped.size, (0, 0, warped.width, warped.height)))
+    return warped
+
+
 WORK_SIZE = 1000
 CROP_MAX = 2000
 
@@ -288,6 +344,8 @@ def prepare_inventory_photo(raw, validate_photo=None):
         # The cut-out removed the item itself. Keep the full photo rather than save a blank.
         subject = image.copy()
         subject.putalpha(255)
+    elif (quad := _box_quad(cut_small)):
+        subject = _warp_quad(image, quad, factor)
     else:
         angle = _tilt_angle(cut_small)
         # Room around the item so straightening never clips a corner.
