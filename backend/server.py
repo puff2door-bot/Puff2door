@@ -3193,10 +3193,26 @@ async def admin_enhance_job_status(admin: dict = Depends(get_admin_user)):
     return _enhance_job
 
 
+@api_router.get("/admin/products/enhance-photos/pairs")
+async def admin_enhance_pairs(admin: dict = Depends(get_admin_user)):
+    """Before/after pairs for review: saved pairs plus pictures currently enhanced."""
+    pairs = {}
+    async for r in db.photo_enhance_pairs.find({}, {"_id": 0}).sort("at", -1).limit(200):
+        pairs[r["after"]] = {"name": r.get("name", ""), "before": r["before"], "after": r["after"], "live": False}
+    async for p in db.products.find({"photoBeforeEnhance": {"$exists": True}}, {"name": 1, "image": 1, "photoBeforeEnhance": 1}):
+        pairs[p["image"]] = {"name": p.get("name", ""), "before": p["photoBeforeEnhance"], "after": p["image"], "live": True}
+    return {"pairs": list(pairs.values())}
+
+
 @api_router.post("/admin/products/enhance-photos/revert")
 async def admin_revert_enhanced_photos(admin: dict = Depends(get_admin_user)):
     reverted = 0
-    async for p in db.products.find({"photoBeforeEnhance": {"$exists": True}}, {"id": 1, "photoBeforeEnhance": 1, "photoBeforeEnhance2": 1}):
+    seen = set()
+    async for p in db.products.find({"photoBeforeEnhance": {"$exists": True}}, {"id": 1, "name": 1, "image": 1, "photoBeforeEnhance": 1, "photoBeforeEnhance2": 1}):
+        # Keep the pair so the owner can still compare before and after once it's undone.
+        if p.get("image") and p["image"] not in seen:
+            seen.add(p["image"])
+            await db.photo_enhance_pairs.update_one({"after": p["image"]}, {"$set": {"name": p.get("name", ""), "before": p["photoBeforeEnhance"], "after": p["image"], "at": now_utc()}}, upsert=True)
         await db.products.update_one({"id": p["id"]}, {
             "$set": {"image": p["photoBeforeEnhance"], **({"image2": p["photoBeforeEnhance2"]} if p.get("photoBeforeEnhance2") else {})},
             "$unset": {"photoBeforeEnhance": "", "photoBeforeEnhance2": "", "photoEnhancedAt": ""},
