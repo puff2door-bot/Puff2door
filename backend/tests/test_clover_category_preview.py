@@ -51,8 +51,10 @@ def test_examples_keep_the_mapped_category_and_do_not_use_keywords():
 def test_saved_old_mappings_gain_the_real_clover_names_once():
     async def go():
         db = AsyncMongoMockClient()["clover_mapping_migration"]
+        calls = []
 
         def handler(request):
+            calls.append((request.method, request.url.path))
             if request.url.path.endswith("/items"):
                 return httpx.Response(200, json={"elements": [
                     {"id": "flower-1", "name": "Vip Boyz Cosmic Za 1g", "sku": "VZ1", "price": 1000,
@@ -66,11 +68,6 @@ def test_saved_old_mappings_gain_the_real_clover_names_once():
                 return httpx.Response(200, json={"elements": [
                     {"id": "cat-flower", "name": "Flower"},
                     {"id": "cat-thc", "name": "THC-P Vapes"},
-                ]})
-            if request.url.path.endswith("/category_items"):
-                return httpx.Response(200, json={"elements": [
-                    {"category": {"id": "cat-flower"}, "item": {"id": "flower-1"}},
-                    {"category": {"id": "cat-thc"}, "item": {"id": "thc-1"}},
                 ]})
             raise AssertionError(request.url.path)
 
@@ -104,5 +101,6 @@ def test_saved_old_mappings_gain_the_real_clover_names_once():
         assert rows["Budget Pink Gummy Disposable 1g"]["mappedCategoryName"] == "DELTA DISPOSABLES"
         assert rows["Budget Pink Gummy Disposable 1g"]["needsReview"] is False
         assert plan["previewTotal"] == 2
+        assert not any(method == "GET" and path.endswith("/category_items") for method, path in calls)
 
     run(go())

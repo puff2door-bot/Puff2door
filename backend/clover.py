@@ -373,23 +373,16 @@ class CloverIntegration:
     async def _category_directory(self, merchant_id: str) -> tuple[dict, dict]:
         """Join Clover category ids to names. Item expand often omits the name."""
         by_id: dict[str, str] = {}
-        by_item: dict[str, list[str]] = {}
         try:
             for row in await self._paged(f"/v3/merchants/{merchant_id}/categories"):
                 if row.get("id") and row.get("name"):
                     by_id[str(row["id"])] = str(row["name"]).strip()
-            for row in await self._paged(f"/v3/merchants/{merchant_id}/category_items", {"expand": "category,item"}):
-                item = row.get("item") if isinstance(row.get("item"), dict) else {}
-                item_id = str(item.get("id") or row.get("itemId") or "")
-                category = row.get("category") if isinstance(row.get("category"), dict) else {}
-                name = str(category.get("name") or by_id.get(str(category.get("id") or row.get("categoryId") or "")) or "").strip()
-                if item_id and name:
-                    names = by_item.setdefault(item_id, [])
-                    if name not in names:
-                        names.append(name)
         except Exception:
-            LOGGER.warning("Clover category list could not be loaded; using category names on each item")
-        return by_id, by_item
+            LOGGER.warning("Clover categories could not be loaded; using category names on each item")
+        # Clover documents category_items as a POST-only association endpoint.
+        # Item/category membership already comes from expand=categories above;
+        # this directory supplies names when those expanded rows contain only ids.
+        return by_id, {}
 
     def _merchant_id(self, config: Optional[dict] = None) -> str:
         if self.token_mode:
