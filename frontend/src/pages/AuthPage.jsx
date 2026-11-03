@@ -121,6 +121,10 @@ const AuthPage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const resetToken = searchParams.get("reset_token") || "";
+  const sessionExpired = searchParams.get("expired") === "1";
+  useEffect(() => {
+    if (sessionExpired) toast({ title: "Your login expired", description: "Please log in again. Tick \"Remember me\" to stay signed in for 30 days.", variant: "destructive" });
+  }, [sessionExpired]); // eslint-disable-line react-hooks/exhaustive-deps
   const [tab, setTab] = useState("login");
   const [mode, setMode] = useState(resetToken ? "reset" : "auth");
   const [busy, setBusy] = useState(false);
@@ -137,7 +141,8 @@ const AuthPage = () => {
     try {
       const loggedInUser = await loginWithGoogle();
       toast({ title: "Welcome to HD Smoke Shop!" });
-      navigate(loggedInUser?.role === "admin" ? "/admin" : "/my-account");
+      const nextPath = searchParams.get("next") || "";
+      navigate(loggedInUser?.role === "admin" ? (nextPath.startsWith("/admin") ? nextPath : "/admin") : "/my-account");
     } catch (err) {
       fail("Google sign-in failed", err);
     } finally {
@@ -151,7 +156,8 @@ const AuthPage = () => {
     try {
       const loggedInUser = await login(loginData.email, loginData.password, loginData.rememberMe);
       toast({ title: "Welcome back!", description: loginData.rememberMe ? "We'll keep you signed in for 30 days." : undefined });
-      navigate(loggedInUser?.role === "admin" ? "/admin" : "/");
+      const next = searchParams.get("next") || "";
+      navigate(loggedInUser?.role === "admin" ? (next.startsWith("/admin") ? next : "/admin") : "/");
     } catch (err) {
       fail("Login failed", err);
     } finally { setBusy(false); }

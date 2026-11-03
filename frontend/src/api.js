@@ -14,6 +14,24 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// An expired admin login used to make saves fail silently. Send the owner to the login page
+// instead, and bring them back to the same admin page afterwards.
+let redirecting = false;
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    const url = String(error?.config?.url || "");
+    const onAdmin = typeof window !== "undefined" && window.location.pathname.startsWith("/admin");
+    if (status === 401 && onAdmin && url.startsWith("/admin") && !redirecting) {
+      redirecting = true;
+      const next = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.assign(`/my-account?expired=1&next=${next}`);
+    }
+    return Promise.reject(error);
+  },
+);
+
 export const setToken = () => {
   // Authentication is stored by the API in an HttpOnly cookie. Remove any
   // legacy browser-readable token left by older HD Smoke Shop releases.
