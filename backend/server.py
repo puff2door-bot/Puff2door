@@ -2552,6 +2552,8 @@ async def notify_restocked_products(product_ids):
         )
 
 SITEMAP_STATIC = ["/", "/shop", "/brands", "/delivery-area", "/about", "/contact", "/faq", "/privacy-policy", "/terms", "/delivery-policy", "/refund-policy", "/age-and-id-policy"]
+# Date the static pages last changed meaningfully; bump when their copy changes.
+SITEMAP_BASE_DATE = "2026-11-03"
 SITEMAP_FILE = ROOT_DIR.parent / "frontend" / "public" / "sitemap.xml"
 
 
@@ -2560,28 +2562,39 @@ def _xml_escape(s: str) -> str:
 
 
 async def build_sitemap() -> str:
-    """URL-only sitemap (loc + lastmod), canonical https://puff2door.com URLs only, no image/external data."""
-    prods = await db.products.find({"active": True}, {"slug": 1, "categorySlug": 1, "brand": 1, "brandName": 1, "name": 1, "updatedAt": 1}).sort("id", 1).to_list(5000)
-    today = now_utc().date().isoformat()
+    """URL-only sitemap (loc + lastmod), canonical https://puff2door.com URLs only, no image/external data.
+    lastmod is the real last change (Google ignores sitemaps whose dates always say today), and
+    sold-out products are left out while the shop hides them, so crawling goes to pages people can buy from."""
+    query = {"active": True}
+    if (await get_settings()).get("hideOutOfStock", True):
+        query["stock"] = {"$gt": 0}
+    prods = await db.products.find(query, {"slug": 1, "categorySlug": 1, "brand": 1, "brandName": 1, "name": 1, "updatedAt": 1}).sort("id", 1).to_list(5000)
     entries = []
     seen = set()
 
-    def add(path, lastmod=today):
+    def day(value):
+        return value.date().isoformat() if isinstance(value, datetime) else None
+
+    def newest(rows):
+        days = [d for d in (day(r.get("updatedAt")) for r in rows) if d]
+        return max(days) if days else SITEMAP_BASE_DATE
+
+    def add(path, lastmod):
         loc = SITE_URL + path
         if loc in seen:
             return
         seen.add(loc)
         entries.append(f"  <url>\n    <loc>{_xml_escape(loc)}</loc>\n    <lastmod>{lastmod}</lastmod>\n  </url>")
 
+    catalog_day = newest(prods)
     for path in SITEMAP_STATIC:
-        add(path)
+        add(path, catalog_day if path in ("/", "/shop", "/brands") else SITEMAP_BASE_DATE)
     for cat in sorted({p.get("categorySlug") for p in prods if p.get("categorySlug")}):
-        add(f"/product-category/{cat}")
+        add(f"/product-category/{cat}", newest([p for p in prods if p.get("categorySlug") == cat]))
     for brand in sorted({brand_slug(p) for p in prods if brand_slug(p)}):
-        add(f"/brand/{brand}")
+        add(f"/brand/{brand}", newest([p for p in prods if brand_slug(p) == brand]))
     for p in prods:
-        upd = p.get("updatedAt")
-        add(f"/shop/{p['slug']}", upd.date().isoformat() if isinstance(upd, datetime) else today)
+        add(f"/shop/{p['slug']}", day(p.get("updatedAt")) or SITEMAP_BASE_DATE)
     return ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
             + "\n".join(entries) + "\n</urlset>\n")
 
@@ -4790,11 +4803,11 @@ SEO_STATIC_META = {
     ),
     "shop": (
         "Shop Smoke Shop Accessories Online – HD Smoke Shop",
-        "Browse vaporizers, hookah, glass and smoke shop accessories at HD Smoke Shop in Altamonte Springs. Local delivery or in-store pickup. 21+ only.",
+        "Browse disposable vapes, hookah, glass and smoke shop accessories at HD Smoke Shop in Altamonte Springs. Shop in store or order for local delivery. 21+ only.",
     ),
     "brands": (
         "Vape & Smoke Shop Brands | HD Smoke Shop",
-        "Browse vape and smoke shop brands carried by HD Smoke Shop in Altamonte Springs. Shop in store, pick up, or order for local delivery. 21+ only.",
+        "Browse vape and smoke shop brands carried by HD Smoke Shop in Altamonte Springs. Shop in store or order for local delivery. 21+ only.",
     ),
     "delivery-area": (
         "Smoke Shop Delivery in Altamonte Springs 32714 – HD Smoke Shop",
@@ -4913,7 +4926,7 @@ async def _seo_meta_for_path(path: str) -> dict:
             name = _seo_display_name(product.get("name") or slug.replace("-", " "))
             brand = str(product.get("brandName") or "").strip()
             category = _seo_display_name(product.get("category") or "Smoke shop products")
-            description = _seo_clean_text(f"{name}{f' from {brand}' if brand else ''} at HD Smoke Shop, Altamonte Springs. Check availability and order for local delivery or store pickup. 21+ only, ID required.")
+            description = _seo_clean_text(f"{name}{f' from {brand}' if brand else ''} at HD Smoke Shop, Altamonte Springs. Check availability and order for local delivery{' or store pickup' if (await get_settings()).get('pickupEnabled') else ''}. 21+ only, ID required.")
             image = str(product.get("image") or "").strip()
             image = image if image.startswith("http") else SITE_URL + (image if image.startswith("/") else "/" + image) if image else SITE_URL + "/img/og-image.jpg"
             price = product.get("salePrice") if product.get("salePrice") is not None else product.get("price")
@@ -4997,11 +5010,22 @@ async def _seo_body_html(path: str, meta: dict) -> str:
     headline = re.split(r"\s[|–]\s", meta.get("title", ""), maxsplit=1)[0]
     main = f"<h1>{_h(headline)}</h1><p>{_h(meta.get('description'))}</p>"
     if normalized == "":
+        pickup = "order online for store pickup, or get local delivery" if (await get_settings()).get("pickupEnabled") else "or order online for local delivery"
         main = ("<h1>HD Smoke Shop – Smoke &amp; Vape Shop in Altamonte Springs, FL</h1>"
                 "<p>Locally owned smoke shop on SR 434 in Altamonte Springs, open 10 AM–10 PM every day. Disposable vapes, pods, "
-                "hookah, glass pipes, rolling papers and cones, cigars and wraps, lighters, kratom and hemp products. Walk in, order "
-                "online for store pickup, or get local delivery within ZIP 32714. Adults 21+ only.</p>"
+                f"hookah, glass pipes, rolling papers and cones, cigars and wraps, lighters, kratom and hemp products. Walk in, {pickup} "
+                "within ZIP 32714. Adults 21+ only.</p>"
                 "<p>Close to Longwood, Casselberry, Maitland, Winter Springs, Forest City and Apopka.</p>")
+        bcounts = await brand_counts()
+        top_brands = sorted(((slug, n) for slug, n in bcounts.items() if slug and n), key=lambda x: -x[1])[:16]
+        bmap = await get_brand_map()
+        if top_brands:
+            main += "<h2>Popular brands</h2><ul>" + "".join(
+                f'<li><a href="/brand/{_h(slug)}">{_h((bmap.get(slug) or {}).get("displayName") or slug.upper())}</a></li>'
+                for slug, _n in top_brands) + "</ul>"
+        picks = await db.products.find({"active": True, "stock": {"$gt": 0}}, {"name": 1, "slug": 1, "price": 1, "salePrice": 1}).sort("updatedAt", -1).to_list(24)
+        if picks:
+            main += "<h2>Recently updated in store</h2>" + _seo_product_list(picks)
     elif normalized.startswith("product-category/"):
         slug = normalized.split("/", 1)[1]
         if CATEGORY_INTROS.get(slug):
@@ -5020,6 +5044,14 @@ async def _seo_body_html(path: str, meta: dict) -> str:
                     f"{(' · Brand: ' + _h(product.get('brandName'))) if product.get('brandName') else ''}"
                     f" · Category: <a href=\"/product-category/{_h(product.get('categorySlug'))}\">{_h(_seo_display_name(product.get('category')))}</a></p>"
                     f"<p>{_h(meta.get('description'))}</p>")
+            related_q = {"categorySlug": product.get("categorySlug"), "slug": {"$ne": product.get("slug")}}
+            if product.get("brand"):
+                same_brand = await _seo_visible_products({**related_q, "brand": product.get("brand")}, limit=8)
+                if same_brand:
+                    main += f"<h2>More from {_h(product.get('brandName') or 'this brand')}</h2>" + _seo_product_list(same_brand)
+            more = await _seo_visible_products({**related_q, "brand": {"$ne": product.get("brand") or "__none"}}, limit=8)
+            if more:
+                main += f"<h2>More {_h(_seo_display_name(product.get('category')))}</h2>" + _seo_product_list(more)
     elif normalized in ("shop", "brands"):
         if normalized == "brands":
             brands = sorted((b for b in (await get_brand_map()).values() if b.get("active", True)), key=lambda b: str(b.get("displayName") or b.get("name") or "").lower())
