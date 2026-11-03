@@ -4464,6 +4464,26 @@ def replace_legacy_brand_copy(value):
     return value
 
 
+# Products imported without a brand whose names clearly start with a saved brand's
+# shop spelling. Only exact, known prefixes; anything else stays as it is.
+BRANDLESS_NAME_PREFIXES = {"hookalit": "hookah-lit"}
+
+
+async def assign_known_brandless_products():
+    bm = await get_brand_map()
+    for prefix, slug in BRANDLESS_NAME_PREFIXES.items():
+        brand = bm.get(slug)
+        if not brand:
+            continue
+        res = await db.products.update_many(
+            {"$or": [{"brand": ""}, {"brand": None}, {"brand": {"$exists": False}}],
+             "name": {"$regex": f"^{re.escape(prefix)}\\b", "$options": "i"}},
+            {"$set": {"brand": slug, "brandName": brand.get("displayName") or brand.get("name") or slug.upper(), "updatedAt": now_utc()}},
+        )
+        if res.modified_count:
+            logger.info("Assigned brand %s to %s brandless products", slug, res.modified_count)
+
+
 async def migrate_legacy_brand_copy():
     """Update editable storefront copy already saved in MongoDB after the rename."""
     global _settings_cache
@@ -4683,6 +4703,7 @@ async def seed_data():
     await seed_brands()
     await seed_categories()
     await migrate_legacy_brand_copy()
+    await assign_known_brandless_products()
     await refresh_static_sitemap()
 
 
