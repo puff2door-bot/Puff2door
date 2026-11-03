@@ -28,7 +28,7 @@ const ProductDetail = () => {
     setDirect({ slug, product: null, done: false });
     api.get(`/products/${slug}`)
       .then(({ data }) => { if (live) setDirect({ slug, product: data, done: true }); })
-      .catch(() => { if (live) setDirect({ slug, product: null, done: true }); });
+      .catch((err) => { if (live) setDirect({ slug, product: null, done: true, missing: err?.response?.status === 404 }); });
     return () => { live = false; };
   }, [slug, listed, loading]); // eslint-disable-line react-hooks/exhaustive-deps
   const product = listed || (direct.slug === slug ? direct.product : null);
@@ -50,7 +50,8 @@ const ProductDetail = () => {
   if (!product) {
     return (
       <div className="max-w-[1280px] mx-auto px-4 py-24 text-center">
-        <Seo noindex title="Product not found | HD Smoke Shop" description="This product is no longer available." />
+        {/* Only tell search engines "noindex" when the product is really gone, not on a network hiccup. */}
+        {(listed || direct.missing) && <Seo noindex title="Product not found | HD Smoke Shop" description="This product is no longer available." />}
         <h1 className="font-heading text-3xl mb-3">Product not found</h1>
         <Link to="/shop" className="text-emerald-600 font-bold">Back to Shop</Link>
       </div>
