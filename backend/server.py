@@ -4746,6 +4746,112 @@ async def migrate_legacy_brand_copy():
             await db.products.update_one({"_id": product["_id"]}, {"$set": updates})
 
 
+ORPHAN_UPLOAD_CLEANUP_TOKEN = "385:310691623"
+ORPHAN_UPLOAD_CLEANUP_CUTOFF = datetime(2026, 11, 3, 18, 40, 2, 229000, tzinfo=timezone.utc)
+
+
+def _gridfs_path(value) -> Optional[str]:
+    """Return the GridFS filename from a stored /api/files URL or filename."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    value = value.strip()
+    marker = "/api/files/"
+    if marker in value:
+        value = value.split(marker, 1)[1]
+    return value if value.startswith(f"{APP_NAME}/products/") else None
+
+
+async def _referenced_product_uploads() -> set[str]:
+    """Collect every product-upload path still used by editable storefront data."""
+    referenced: set[str] = set()
+
+    def keep(value):
+        path = _gridfs_path(value)
+        if path:
+            referenced.add(path)
+
+    async for row in db.products.find({}, {
+        "image": 1, "image2": 1, "storePhotoPreviousImage": 1,
+        "imageOriginal": 1, "image2Original": 1,
+    }):
+        for field in ("image", "image2", "storePhotoPreviousImage", "imageOriginal", "image2Original"):
+            keep(row.get(field))
+
+    async for row in db.brands.find({}, {"logo": 1, "image": 1}):
+        keep(row.get("logo"))
+        keep(row.get("image"))
+
+    async for row in db.categories.find({}, {"image": 1, "logo": 1}):
+        keep(row.get("image"))
+        keep(row.get("logo"))
+
+    async for row in db.site_content.find({}, {"heroSlides.image": 1, "promoBlocks.image": 1}):
+        for slide in row.get("heroSlides") or []:
+            keep(slide.get("image"))
+        for block in row.get("promoBlocks") or []:
+            keep(block.get("image"))
+
+    async for row in db.integrations.find({}, {"categoryPlaceholders": 1}):
+        placeholders = row.get("categoryPlaceholders") or {}
+        if isinstance(placeholders, dict):
+            for value in placeholders.values():
+                keep(value)
+
+    return referenced
+
+
+@app.on_event("startup")
+async def cleanup_confirmed_orphan_uploads():
+    """One-time, fingerprint-guarded cleanup for the confirmed November 3 orphan set."""
+    if os.environ.get("CLEANUP_ORPHAN_UPLOADS_ON_STARTUP", "").strip() != ORPHAN_UPLOAD_CLEANUP_TOKEN:
+        return
+
+    referenced = await _referenced_product_uploads()
+    query = {
+        "storage_path": {"$regex": f"^{re.escape(APP_NAME)}/products/"},
+        "created_at": {"$lte": ORPHAN_UPLOAD_CLEANUP_CUTOFF},
+        "is_deleted": {"$ne": True},
+    }
+    candidates = [
+        row async for row in db.files.find(query, {"storage_path": 1, "size": 1, "created_at": 1})
+        if row.get("storage_path") not in referenced
+    ]
+    candidate_bytes = sum(int(row.get("size") or 0) for row in candidates)
+
+    # The first run must match the reviewed Atlas result exactly. A smaller set is
+    # accepted only to let an interrupted cleanup safely resume within the same
+    # fixed time boundary; newly uploaded files cannot enter this set.
+    exact_match = len(candidates) == 385 and candidate_bytes == 310691623
+    safe_resume = 0 < len(candidates) < 385 and candidate_bytes < 310691623
+    if not (exact_match or safe_resume):
+        logger.error(
+            "Orphan upload cleanup aborted: expected 385 files/310691623 bytes, found %s files/%s bytes",
+            len(candidates), candidate_bytes,
+        )
+        return
+
+    deleted_files = 0
+    deleted_bytes = 0
+    failures = 0
+    for row in candidates:
+        path = row["storage_path"]
+        try:
+            gridfs_rows = await db["uploads.files"].find({"filename": path}, {"_id": 1}).to_list(None)
+            for gridfs_row in gridfs_rows:
+                await file_bucket.delete(gridfs_row["_id"])
+            await db.files.delete_one({"_id": row["_id"], "storage_path": path})
+            deleted_files += 1
+            deleted_bytes += int(row.get("size") or 0)
+        except Exception as exc:
+            failures += 1
+            logger.error("Orphan upload cleanup failed for %s: %s", path, exc)
+
+    logger.warning(
+        "Orphan upload cleanup complete: deleted %s files/%s bytes; failures=%s",
+        deleted_files, deleted_bytes, failures,
+    )
+
+
 @app.on_event("startup")
 async def create_indexes():
     await db.users.create_index("email", unique=True)
