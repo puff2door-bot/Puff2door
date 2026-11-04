@@ -16,6 +16,8 @@ import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, HOME_FAQS, faqJsonLd, titleCase } f
 import PersonalizedShelf from "../components/PersonalizedShelf";
 import VisitStore from "../components/VisitStore";
 import { useToast } from "../hooks/use-toast";
+import HomeConceptHero from "../components/HomeConceptHero";
+import { resolveSiteTheme } from "../lib/siteTheme";
 
 const tabCats = [
   { name: "Disposable Vapes", slug: "disposable" },
@@ -85,7 +87,9 @@ const Home = () => {
   });
   const tabProducts = getProductsByCategory(activeTab).slice(0, 12);
   const tabs = tabCats.filter((t) => activeCategories.some((c) => c.slug === t.slug));
-  const layout = presentation?.homepageLayout || "classic";
+  const savedLayout = presentation?.homepageLayout || "classic";
+  const layout = resolveSiteTheme(savedLayout);
+  const conceptLayout = layout === "neon" || layout === "blue";
   const intro = (
     <section className="home-intro bg-white border-b" data-testid="home-intro">
       <div className="max-w-[1280px] mx-auto px-4 py-8">
@@ -109,9 +113,19 @@ const Home = () => {
       <Seo title={DEFAULT_TITLE} description={DEFAULT_DESCRIPTION} path="/" jsonLd={faqJsonLd(homeFaqs)} />
       <DeliveryBanner />
       <DeliveryCountdown />
-      {layout === "minimal" && intro}
-      <div className="home-hero"><HeroSlider /></div>
-      {layout === "showcase" ? <>{featureBar}{intro}</> : <>{layout !== "minimal" && intro}{featureBar}</>}
+      {conceptLayout ? (
+        <>
+          <HomeConceptHero layout={layout} products={newProducts} categories={activeCategories} sameDayEnabled={delivery.sameDayEnabled === true} />
+          {featureBar}
+          {intro}
+        </>
+      ) : (
+        <>
+          {layout === "minimal" && intro}
+          <div className="home-hero"><HeroSlider /></div>
+          {layout === "showcase" ? <>{featureBar}{intro}</> : <>{layout !== "minimal" && intro}{featureBar}</>}
+        </>
+      )}
 
       <DealOfTheDay />
       <PersonalizedShelf />

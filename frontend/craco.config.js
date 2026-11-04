@@ -28,6 +28,20 @@ function makeDevServerV5Compatible(devServerConfig) {
     "Cross-Origin-Resource-Policy": "same-origin",
   };
 
+  // Private theme reviews can use the live read-only storefront data through
+  // the local dev server. This avoids browser CORS restrictions without
+  // changing production behavior or publishing the preview.
+  if (process.env.PREVIEW_LIVE_DATA === "true") {
+    compatibleConfig.proxy = [
+      {
+        context: ["/api", "/uploads"],
+        target: "https://puff2door.com",
+        changeOrigin: true,
+        secure: true,
+      },
+    ];
+  }
+
   if (onBeforeSetupMiddleware || setupMiddlewares) {
     compatibleConfig.setupMiddlewares = (middlewares, devServer) => {
       if (onBeforeSetupMiddleware) {

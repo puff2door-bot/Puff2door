@@ -80,21 +80,29 @@ const AdminSettings = () => {
       </div>
 
       <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-homepage-layout">
-        <div className="flex items-center gap-2 mb-1"><LayoutTemplate className="h-4 w-4 text-emerald-600" /><label className="text-sm font-bold text-neutral-900">Homepage layout</label></div>
-        <p className="text-xs text-neutral-500 mb-4">Choose the storefront style visitors see. Products, prices, banners and settings stay shared across every layout.</p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="flex items-center gap-2 mb-1"><LayoutTemplate className="h-4 w-4 text-emerald-600" /><label className="text-sm font-bold text-neutral-900">Website theme &amp; homepage layout</label></div>
+        <p className="text-xs text-neutral-500 mb-4">Choose the customer-facing look. Neon and Cool Blue style the entire website—including the logo, header, product cards, checkout, account, tracking, footer and mobile navigation. Products, prices and functions stay shared.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
           {[
-            ["classic", "Classic Store", "The current familiar storefront with balanced product sections."],
-            ["showcase", "Modern Showcase", "Bold cards, immersive hero presentation and energetic spacing."],
-            ["minimal", "Premium Minimal", "Clean editorial spacing and a restrained high-end presentation."],
-          ].map(([value, title, description]) => {
+            ["classic", "Classic Store", "The current familiar storefront with balanced product sections.", "Emerald · White"],
+            ["showcase", "Modern Showcase", "A complete energetic glass-and-gradient identity across every customer page.", "Soft green · Glass"],
+            ["minimal", "Premium Minimal", "A complete restrained editorial identity with refined type and quiet luxury.", "Editorial · Airy"],
+            ["neon", "Neon After Dark", "A complete electric identity across every customer page, with stacked drops and neon motion.", "Onyx · Electric green"],
+            ["blue", "Cool Blue", "A complete calm-futurist identity with icy gradients, glass cards and cobalt controls.", "Ice · Cobalt"],
+          ].map(([value, title, description, palette]) => {
             const selected = f.homepageLayout === value;
-            return <button type="button" key={value} data-testid={`homepage-layout-${value}`} onClick={() => setF({ ...f, homepageLayout: value })} className={`text-left rounded-xl border-2 p-4 transition-all ${selected ? "border-emerald-600 bg-emerald-50 shadow-sm" : "border-neutral-200 hover:border-emerald-300"}`}>
-              <span className="flex items-center justify-between gap-2"><strong className="text-sm text-neutral-900">{title}</strong><span className={`h-4 w-4 rounded-full border-2 ${selected ? "border-emerald-600 bg-emerald-600 shadow-[inset_0_0_0_3px_white]" : "border-neutral-300"}`} /></span>
-              <span className="block text-xs text-neutral-500 mt-2 leading-relaxed">{description}</span>
-            </button>;
+            return <div key={value} className={`homepage-theme-option rounded-xl border-2 overflow-hidden transition-all ${selected ? "border-emerald-600 bg-emerald-50 shadow-sm" : "border-neutral-200 hover:border-emerald-300"}`}>
+              <button type="button" data-testid={`homepage-layout-${value}`} onClick={() => setF({ ...f, homepageLayout: value })} className="w-full text-left p-3 pb-2">
+                <span className={`homepage-theme-swatch homepage-theme-swatch-${value}`} aria-hidden="true"><i /><i /><i /></span>
+                <span className="flex items-center justify-between gap-2 mt-3"><strong className="text-sm text-neutral-900">{title}</strong><span className={`h-4 w-4 rounded-full border-2 shrink-0 ${selected ? "border-emerald-600 bg-emerald-600 shadow-[inset_0_0_0_3px_white]" : "border-neutral-300"}`} /></span>
+                <span className="block text-xs text-neutral-500 mt-2 leading-relaxed min-h-[3.75rem]">{description}</span>
+                <span className="block text-[10px] uppercase tracking-[0.14em] text-neutral-400 mt-2">{palette}</span>
+              </button>
+              <a href={`/?homepagePreview=${value}`} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-1 border-t border-neutral-200 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-neutral-600 hover:bg-neutral-900 hover:text-white transition-colors"><Eye className="h-3.5 w-3.5" /> Preview</a>
+            </div>;
           })}
         </div>
+        <p className="text-[11px] text-neutral-500 mt-3">Preview opens a private full-site view without saving and keeps the theme while you browse other pages. Select an option and click <strong>Save Settings</strong> only when you want customers to see it. <strong>Classic Store always remains available</strong> to restore the current website.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">

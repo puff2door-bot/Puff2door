@@ -573,7 +573,7 @@ class StoreSettingsInput(BaseModel):
     @field_validator("homepageLayout")
     @classmethod
     def _homepage_layout(cls, v):
-        if v not in {"classic", "showcase", "minimal"}:
+        if v not in {"classic", "showcase", "minimal", "neon", "blue"}:
             raise ValueError("Choose a valid homepage layout")
         return v
 

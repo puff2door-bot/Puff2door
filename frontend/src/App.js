@@ -51,6 +51,8 @@ import PwaExperience from "./components/PwaExperience";
 import ServiceWakeBanner from "./components/ServiceWakeBanner";
 import { storeJsonLd, websiteJsonLd } from "./seo/config";
 import { PrivacyPolicy, TermsPage, DeliveryPolicy, RefundPolicy, AgeIdPolicy } from "./pages/LegalPages";
+import { useCart } from "./context/CartContext";
+import { getThemePreview, resolveSiteTheme, SITE_THEMES, themeLabel } from "./lib/siteTheme";
 
 const GSC_TOKEN = (process.env.REACT_APP_GOOGLE_SITE_VERIFICATION || "").trim();
 
@@ -78,6 +80,27 @@ const ScrollToTop = () => {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
   return null;
+};
+
+const SiteTheme = () => {
+  const { presentation } = useCart();
+  const { search } = useLocation();
+  const preview = getThemePreview(search);
+  const theme = resolveSiteTheme(presentation?.homepageLayout, search);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    SITE_THEMES.forEach((name) => root.classList.remove(`site-theme-${name}`));
+    root.classList.add(`site-theme-${theme}`);
+    root.dataset.siteTheme = theme;
+    return () => {
+      SITE_THEMES.forEach((name) => root.classList.remove(`site-theme-${name}`));
+      delete root.dataset.siteTheme;
+    };
+  }, [theme]);
+
+  if (!preview) return null;
+  return <div className="site-preview-ribbon" role="status">Private full-site preview · {themeLabel(theme)} · Nothing is published</div>;
 };
 
 const AppRoutes = () => {
@@ -143,6 +166,7 @@ function App() {
               <Analytics />
               <ScrollToTop />
               <AgeGate />
+              <SiteTheme />
               <Header />
               <ServiceWakeBanner />
               <main>
