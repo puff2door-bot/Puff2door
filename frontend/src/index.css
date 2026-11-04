@@ -688,6 +688,12 @@ html.site-theme-showcase .site-preview-ribbon { background: linear-gradient(90de
 html.site-theme-showcase:not(.p2d-dark) .bg-white { background-color: rgb(255 255 255 / .88) !important; }
 html.site-theme-showcase:not(.p2d-dark) .bg-neutral-50 { background-color: rgb(240 253 250 / .8) !important; }
 html.site-theme-showcase:not(.p2d-dark) .bg-neutral-100 { background-color: #e6f7f0 !important; }
+html.site-theme-showcase:not(.p2d-dark) .text-neutral-600,
+html.site-theme-showcase:not(.p2d-dark) .text-neutral-500,
+html.site-theme-showcase:not(.p2d-dark) .text-neutral-400 { color: #4f6b61 !important; }
+html.site-theme-showcase:not(.p2d-dark) .bg-neutral-900 .text-neutral-600,
+html.site-theme-showcase:not(.p2d-dark) .bg-neutral-900 .text-neutral-500,
+html.site-theme-showcase:not(.p2d-dark) .bg-neutral-900 .text-neutral-400 { color: #a8c7b7 !important; }
 html.site-theme-showcase:not(.p2d-dark) .border-neutral-100,
 html.site-theme-showcase:not(.p2d-dark) .border-neutral-200,
 html.site-theme-showcase:not(.p2d-dark) .border-neutral-300 { border-color: rgb(5 150 105 / .18) !important; }
@@ -704,8 +710,10 @@ html.site-theme-showcase button.rounded-full,
 html.site-theme-showcase a.rounded-full { box-shadow: 0 8px 22px rgb(5 150 105 / .14); }
 html.site-theme-showcase .mobile-bottom-nav { background: rgb(248 255 252 / .9); border-color: rgb(5 150 105 / .2); box-shadow: 0 -14px 40px rgb(6 78 59 / .1); }
 html.site-theme-showcase footer { background: linear-gradient(145deg, #071c16, #102d25 60%, #15372d) !important; }
-html.site-theme-showcase .p2d-logo__image { filter: drop-shadow(0 7px 13px rgb(5 150 105 / .28)) saturate(1.12); }
-html.site-theme-showcase .p2d-logo__halo { border-top-color: #34d399; border-left-color: #fb923c; }
+html.site-theme-showcase .p2d-logo__image { filter: saturate(1.24) brightness(1.02) drop-shadow(0 7px 13px rgb(5 150 105 / .3)); }
+html.site-theme-showcase .p2d-logo__halo { border-color: rgb(52 211 153 / .72); border-right-color: rgb(5 150 105 / .08); box-shadow: 0 0 14px rgb(52 211 153 / .14); }
+html.site-theme-showcase .p2d-logo__puff { background: #d1fae5; border-color: #34d399; }
+html.site-theme-showcase .p2d-logo-accent { color: #059669 !important; }
 
 /* Premium Minimal — quiet luxury, warm paper and sharp editorial structure. */
 html.site-theme-minimal:not(.p2d-dark) body,
@@ -717,14 +725,45 @@ html.site-theme-minimal .concept-copy h1 { font-family: Georgia, 'Times New Roma
 html.site-theme-minimal:not(.p2d-dark) .bg-white { background-color: #fbfaf7 !important; }
 html.site-theme-minimal:not(.p2d-dark) .bg-neutral-50 { background-color: #f1eee5 !important; }
 html.site-theme-minimal:not(.p2d-dark) .bg-neutral-100 { background-color: #e9e4d9 !important; }
+html.site-theme-minimal:not(.p2d-dark) .text-neutral-600,
+html.site-theme-minimal:not(.p2d-dark) .text-neutral-500 { color: #5b5549 !important; }
+html.site-theme-minimal:not(.p2d-dark) header nav .text-emerald-400,
+html.site-theme-minimal:not(.p2d-dark) header nav .text-emerald-500,
+html.site-theme-minimal:not(.p2d-dark) header nav .text-emerald-600,
+html.site-theme-minimal:not(.p2d-dark) header nav .text-emerald-700 { color: #d7bd76 !important; }
+html.site-theme-minimal:not(.p2d-dark) footer .text-neutral-600,
+html.site-theme-minimal:not(.p2d-dark) footer .text-neutral-500,
+html.site-theme-minimal:not(.p2d-dark) footer .text-neutral-400 { color: #bdb7aa !important; }
+html.site-theme-minimal:not(.p2d-dark) .bg-neutral-900 .text-neutral-600,
+html.site-theme-minimal:not(.p2d-dark) .bg-neutral-900 .text-neutral-500,
+html.site-theme-minimal:not(.p2d-dark) .bg-neutral-900 .text-neutral-400 { color: #bdb7aa !important; }
 html.site-theme-minimal:not(.p2d-dark) .border-neutral-100,
 html.site-theme-minimal:not(.p2d-dark) .border-neutral-200,
 html.site-theme-minimal:not(.p2d-dark) .border-neutral-300 { border-color: #d9d1c1 !important; }
-html.site-theme-minimal .bg-emerald-600 { background-color: #75613b !important; }
+html.site-theme-minimal .bg-emerald-400 { background-color: #bca369 !important; }
+html.site-theme-minimal .bg-emerald-500 { background-color: #8f7645 !important; }
+html.site-theme-minimal .bg-emerald-600,
+html.site-theme-minimal .bg-emerald-700 { background-color: #75613b !important; }
+html.site-theme-minimal:not(.p2d-dark) .bg-emerald-100 { background-color: #e8dfc9 !important; }
+html.site-theme-minimal:not(.p2d-dark) .bg-emerald-50,
+html.site-theme-minimal:not(.p2d-dark) .bg-emerald-50\/40,
+html.site-theme-minimal:not(.p2d-dark) .bg-emerald-50\/50,
+html.site-theme-minimal:not(.p2d-dark) .bg-emerald-50\/60 { background-color: #f4efe4 !important; }
+html.site-theme-minimal .hover\:bg-emerald-600:hover,
 html.site-theme-minimal .hover\:bg-emerald-700:hover { background-color: #554426 !important; }
+html.site-theme-minimal .text-emerald-400,
+html.site-theme-minimal .text-emerald-500,
 html.site-theme-minimal .text-emerald-600,
-html.site-theme-minimal .text-emerald-700 { color: #75613b !important; }
-html.site-theme-minimal .border-emerald-600 { border-color: #75613b !important; }
+html.site-theme-minimal .text-emerald-700,
+html.site-theme-minimal .text-emerald-800,
+html.site-theme-minimal .text-emerald-900 { color: #75613b !important; }
+html.site-theme-minimal .border-emerald-100,
+html.site-theme-minimal .border-emerald-200,
+html.site-theme-minimal .border-emerald-300,
+html.site-theme-minimal .border-emerald-400,
+html.site-theme-minimal .border-emerald-500,
+html.site-theme-minimal .border-emerald-600,
+html.site-theme-minimal .border-emerald-700 { border-color: #a88d57 !important; }
 html.site-theme-minimal header nav { background: #1b1a17 !important; border-top: 1px solid #37332c; }
 html.site-theme-minimal header > div:nth-child(2) { box-shadow: none !important; border-bottom: 1px solid #d9d1c1; }
 html.site-theme-minimal .group.relative.bg-white.border {
@@ -739,7 +778,7 @@ html.site-theme-minimal .mobile-bottom-nav { background: rgb(247 245 239 / .96);
 html.site-theme-minimal .mobile-bottom-nav a.active { color: #75613b; }
 html.site-theme-minimal footer { background: #1b1a17 !important; }
 html.site-theme-minimal footer > div:first-child { background: #75613b !important; }
-html.site-theme-minimal .p2d-logo__image { filter: grayscale(.72) sepia(.25) contrast(1.08) drop-shadow(0 3px 5px rgb(47 38 22 / .16)); }
+html.site-theme-minimal .p2d-logo__image { filter: grayscale(.78) sepia(.62) saturate(1.18) brightness(.96) contrast(1.08) drop-shadow(0 3px 5px rgb(47 38 22 / .18)); }
 html.site-theme-minimal .p2d-logo__halo { border-color: rgb(143 118 69 / .55); border-right-color: transparent; }
 html.site-theme-minimal .p2d-logo__puff { border-color: rgb(143 118 69 / .7); }
 html.site-theme-minimal .p2d-logo-accent { color: #8f7645 !important; }
@@ -794,7 +833,7 @@ html.site-theme-neon .mobile-bottom-nav a { color: #87a691; }
 html.site-theme-neon .mobile-bottom-nav a.active { color: #42ff82; text-shadow: 0 0 14px rgb(66 255 130 / .45); }
 html.site-theme-neon footer { background: #020503 !important; border-top: 1px solid #1b5c32; }
 html.site-theme-neon footer > div:first-child { background: linear-gradient(90deg, #0d7a38, #21e769) !important; color: #021006; }
-html.site-theme-neon .p2d-logo__image { filter: saturate(1.35) contrast(1.05) drop-shadow(0 0 12px rgb(50 255 124 / .45)); }
+html.site-theme-neon .p2d-logo__image { filter: saturate(1.55) brightness(1.06) contrast(1.08) drop-shadow(0 0 13px rgb(50 255 124 / .5)); }
 html.site-theme-neon .p2d-logo__halo { border-color: #3dff84; border-right-color: rgb(61 255 132 / .12); box-shadow: 0 0 18px rgb(61 255 132 / .22); }
 html.site-theme-neon .p2d-logo__puff { background: #87ffad; border-color: #32ff7b; box-shadow: 0 0 8px #32ff7b; }
 html.site-theme-neon .p2d-logo-accent { color: #39ff7e !important; text-shadow: 0 0 14px rgb(57 255 126 / .55); }
@@ -811,6 +850,12 @@ html.site-theme-blue .site-preview-ribbon { background: linear-gradient(90deg, #
 html.site-theme-blue:not(.p2d-dark) .bg-white { background-color: rgb(255 255 255 / .88) !important; }
 html.site-theme-blue:not(.p2d-dark) .bg-neutral-50 { background-color: rgb(235 246 255 / .9) !important; }
 html.site-theme-blue:not(.p2d-dark) .bg-neutral-100 { background-color: #dceeff !important; }
+html.site-theme-blue:not(.p2d-dark) .text-neutral-600,
+html.site-theme-blue:not(.p2d-dark) .text-neutral-500,
+html.site-theme-blue:not(.p2d-dark) .text-neutral-400 { color: #52708c !important; }
+html.site-theme-blue:not(.p2d-dark) .bg-neutral-900 .text-neutral-600,
+html.site-theme-blue:not(.p2d-dark) .bg-neutral-900 .text-neutral-500,
+html.site-theme-blue:not(.p2d-dark) .bg-neutral-900 .text-neutral-400 { color: #a8c7e6 !important; }
 html.site-theme-blue .bg-emerald-400 { background-color: #42c8ee !important; }
 html.site-theme-blue .bg-emerald-500 { background-color: #208fe8 !important; }
 html.site-theme-blue .bg-emerald-600,
@@ -866,19 +911,124 @@ html.site-theme-blue .mobile-bottom-nav { background: rgb(244 250 255 / .94); bo
 html.site-theme-blue .mobile-bottom-nav a.active { color: #0f6fff; }
 html.site-theme-blue footer { background: linear-gradient(145deg, #03162b, #082a4e 65%, #073663) !important; }
 html.site-theme-blue footer > div:first-child { background: linear-gradient(90deg, #0f6fff, #20bfe1) !important; }
-html.site-theme-blue .p2d-logo__image { filter: hue-rotate(92deg) saturate(1.18) drop-shadow(0 5px 10px rgb(15 111 255 / .25)); }
+html.site-theme-blue .p2d-logo__image { filter: hue-rotate(72deg) saturate(1.42) brightness(1.02) drop-shadow(0 5px 10px rgb(15 111 255 / .28)); }
 html.site-theme-blue .p2d-logo__halo { border-color: rgb(32 181 255 / .66); border-right-color: rgb(15 111 255 / .08); box-shadow: 0 0 16px rgb(15 111 255 / .18); }
 html.site-theme-blue .p2d-logo__puff { background: #e9f8ff; border-color: #25bfff; }
 html.site-theme-blue .p2d-logo-accent { color: #0f6fff !important; text-shadow: 0 0 12px rgb(15 111 255 / .32); }
 
 /* Retain each selected theme's accent language when the customer also enables dark mode. */
+html.site-theme-showcase.p2d-dark body,
+html.site-theme-showcase.p2d-dark .App,
+html.site-theme-showcase.p2d-dark main {
+  background-color: #071410 !important;
+  background-image: radial-gradient(circle at 12% 8%, rgb(52 211 153 / .09), transparent 28rem), radial-gradient(circle at 90% 34%, rgb(249 115 22 / .05), transparent 30rem);
+}
+html.site-theme-showcase.p2d-dark .bg-white,
+html.site-theme-showcase.p2d-dark .bg-neutral-50 { background-color: #0f211b !important; }
+html.site-theme-showcase.p2d-dark .bg-neutral-100 { background-color: #183128 !important; }
+html.site-theme-showcase.p2d-dark .text-neutral-600,
+html.site-theme-showcase.p2d-dark .text-neutral-500,
+html.site-theme-showcase.p2d-dark .text-neutral-400 { color: #a8c7b7 !important; }
+html.site-theme-showcase.p2d-dark header > div:nth-child(2),
+html.site-theme-showcase.p2d-dark .mobile-bottom-nav { background: rgb(10 30 24 / .95) !important; border-color: #285242; }
+html.site-theme-showcase.p2d-dark .mobile-bottom-nav a { color: #a8c7b7; }
+html.site-theme-showcase.p2d-dark .mobile-bottom-nav a.active,
 html.site-theme-showcase.p2d-dark .p2d-logo-accent { color: #34d399 !important; }
+
+html.site-theme-minimal.p2d-dark body,
+html.site-theme-minimal.p2d-dark .App,
+html.site-theme-minimal.p2d-dark main { background: #11100e !important; }
+html.site-theme-minimal.p2d-dark .bg-white,
+html.site-theme-minimal.p2d-dark .bg-neutral-50 { background-color: #1b1a17 !important; }
+html.site-theme-minimal.p2d-dark .bg-neutral-100 { background-color: #29261f !important; }
+html.site-theme-minimal.p2d-dark .text-neutral-600,
+html.site-theme-minimal.p2d-dark .text-neutral-500,
+html.site-theme-minimal.p2d-dark .text-neutral-400 { color: #c4bfb5 !important; }
 html.site-theme-minimal.p2d-dark .p2d-logo-accent { color: #d7bd76 !important; }
 html.site-theme-minimal.p2d-dark .bg-emerald-600 { background-color: #75613b !important; }
+html.site-theme-minimal.p2d-dark .text-emerald-400,
+html.site-theme-minimal.p2d-dark .text-emerald-500,
+html.site-theme-minimal.p2d-dark .text-emerald-600,
+html.site-theme-minimal.p2d-dark .text-emerald-700,
+html.site-theme-minimal.p2d-dark .text-emerald-800,
+html.site-theme-minimal.p2d-dark .text-emerald-900 { color: #d7bd76 !important; }
+html.site-theme-minimal.p2d-dark header > div:nth-child(2),
+html.site-theme-minimal.p2d-dark .mobile-bottom-nav { background: rgb(27 26 23 / .96) !important; border-color: #4b463e; }
+html.site-theme-minimal.p2d-dark .mobile-bottom-nav a { color: #c4bfb5; }
+html.site-theme-minimal.p2d-dark .mobile-bottom-nav a.active { color: #d7bd76; }
+
+html.site-theme-blue.p2d-dark body,
+html.site-theme-blue.p2d-dark .App,
+html.site-theme-blue.p2d-dark main {
+  background-color: #06111f !important;
+  background-image: radial-gradient(circle at 10% 5%, rgb(15 111 255 / .13), transparent 28rem), radial-gradient(circle at 92% 30%, rgb(32 199 231 / .09), transparent 30rem);
+}
+html.site-theme-blue.p2d-dark .bg-white,
+html.site-theme-blue.p2d-dark .bg-neutral-50 { background-color: #0c2238 !important; }
+html.site-theme-blue.p2d-dark .bg-neutral-100 { background-color: #12304b !important; }
+html.site-theme-blue.p2d-dark .text-neutral-600,
+html.site-theme-blue.p2d-dark .text-neutral-500,
+html.site-theme-blue.p2d-dark .text-neutral-400 { color: #a8c7e6 !important; }
 html.site-theme-blue.p2d-dark .p2d-logo-accent,
 html.site-theme-blue.p2d-dark .text-emerald-600,
 html.site-theme-blue.p2d-dark .text-emerald-700 { color: #69b7ff !important; }
 html.site-theme-blue.p2d-dark .bg-emerald-600 { background-color: #0f6fff !important; }
+html.site-theme-blue.p2d-dark header > div:nth-child(2),
+html.site-theme-blue.p2d-dark .mobile-bottom-nav { background: rgb(7 27 49 / .96) !important; border-color: #24557d; }
+html.site-theme-blue.p2d-dark .mobile-bottom-nav a { color: #a8c7e6; }
+html.site-theme-blue.p2d-dark .mobile-bottom-nav a.active { color: #69b7ff; }
+
+/* Cool Blue dark mode keeps its blue identity while restoring readable
+   contrast on the homepage's custom light glass surfaces. */
+html.site-theme-blue.p2d-dark .home-layout-blue {
+  color-scheme: dark;
+  background: radial-gradient(circle at 90% 12%, rgb(15 111 255 / .18) 0, transparent 30rem), linear-gradient(180deg, #06111f 0, #071b31 45rem, #050d18 100%);
+}
+html.site-theme-blue.p2d-dark .concept-hero-blue {
+  --concept-accent: #58b8ff;
+  --concept-ink: #f2f8ff;
+  --concept-muted: #a8c7e6;
+  background: radial-gradient(circle at 78% 26%, #123b63 0, #0a2139 38%, #06111f 76%);
+  box-shadow: 0 28px 80px rgb(0 0 0 / .38), inset 0 0 0 1px rgb(88 184 255 / .24);
+}
+html.site-theme-blue.p2d-dark .concept-hero-blue .concept-copy h1 {
+  background: linear-gradient(120deg, #f5faff 8%, #69b7ff 58%, #4ee7f2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+html.site-theme-blue.p2d-dark .concept-hero-blue .concept-button-secondary,
+html.site-theme-blue.p2d-dark .concept-hero-blue .concept-stage-label,
+html.site-theme-blue.p2d-dark .concept-hero-blue .concept-product,
+html.site-theme-blue.p2d-dark .concept-hero-blue .concept-category-links a { color: #f2f8ff; }
+html.site-theme-blue.p2d-dark .concept-hero-blue .concept-button-secondary,
+html.site-theme-blue.p2d-dark .concept-hero-blue .concept-stage-label,
+html.site-theme-blue.p2d-dark .concept-hero-blue .concept-product,
+html.site-theme-blue.p2d-dark .concept-hero-blue .concept-category-links a,
+html.site-theme-blue.p2d-dark .concept-hero-blue .concept-category-rail {
+  border-color: rgb(105 183 255 / .28);
+  background: rgb(7 28 49 / .72);
+}
+html.site-theme-blue.p2d-dark .concept-hero-blue .concept-stage::before {
+  border-color: rgb(105 183 255 / .28);
+  background: linear-gradient(145deg, rgb(13 48 80 / .92), rgb(6 24 43 / .82));
+  box-shadow: inset 0 1px rgb(255 255 255 / .08), 0 30px 70px rgb(0 0 0 / .34);
+}
+html.site-theme-blue.p2d-dark .home-layout-blue .home-feature {
+  border-color: #24557d;
+  background: #0c2238;
+  box-shadow: 0 12px 35px rgb(0 0 0 / .22);
+}
+html.site-theme-blue.p2d-dark .home-layout-blue .home-intro {
+  border-color: #24557d;
+  background: linear-gradient(135deg, #0c2238, #0a1a2b);
+  box-shadow: 0 18px 50px rgb(0 0 0 / .24);
+}
+html.site-theme-blue.p2d-dark .home-layout-blue section > div.border.rounded-xl,
+html.site-theme-blue.p2d-dark .home-layout-blue [data-testid="home-faq"] > div {
+  border-color: #24557d;
+  background: #0c2238;
+}
 
 @media (prefers-reduced-motion: no-preference) {
   html.site-theme-showcase .group.relative.bg-white.border,
@@ -914,6 +1064,9 @@ html.site-theme-neon:not(.p2d-dark) .text-neutral-700 { color: #102116 !importan
 html.site-theme-neon:not(.p2d-dark) .text-neutral-600,
 html.site-theme-neon:not(.p2d-dark) .text-neutral-500,
 html.site-theme-neon:not(.p2d-dark) .text-neutral-400 { color: #5b7161 !important; }
+html.site-theme-neon:not(.p2d-dark) .bg-neutral-900 .text-neutral-600,
+html.site-theme-neon:not(.p2d-dark) .bg-neutral-900 .text-neutral-500,
+html.site-theme-neon:not(.p2d-dark) .bg-neutral-900 .text-neutral-400 { color: #9db5a5 !important; }
 html.site-theme-neon:not(.p2d-dark) .border-neutral-100,
 html.site-theme-neon:not(.p2d-dark) .border-neutral-200,
 html.site-theme-neon:not(.p2d-dark) .border-neutral-300 { border-color: #cce3c2 !important; }

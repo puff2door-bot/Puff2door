@@ -91,15 +91,21 @@ const SiteTheme = () => {
   useEffect(() => {
     const root = document.documentElement;
     SITE_THEMES.forEach((name) => root.classList.remove(`site-theme-${name}`));
-    root.classList.add(`site-theme-${theme}`);
-    root.dataset.siteTheme = theme;
+    if (theme !== "classic") {
+      root.classList.add(`site-theme-${theme}`);
+      root.dataset.siteTheme = theme;
+    } else {
+      delete root.dataset.siteTheme;
+    }
     return () => {
       SITE_THEMES.forEach((name) => root.classList.remove(`site-theme-${name}`));
       delete root.dataset.siteTheme;
     };
   }, [theme]);
 
-  if (!preview) return null;
+  // Classic is the original storefront and must remain pixel-for-pixel free of
+  // preview or theme-system decoration.
+  if (!preview || theme === "classic") return null;
   return <div className="site-preview-ribbon" role="status">Private full-site preview · {themeLabel(theme)} · Nothing is published</div>;
 };
 
