@@ -37,8 +37,10 @@ ALLOWED_GRAPH_VERSIONS = {f"v{major}.0" for major in range(20, 40)}
 # httpx emits complete request URLs at INFO. Some Meta token endpoints require
 # credentials in their query string, so keep these libraries above INFO even if
 # the application later configures the root logger at INFO.
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
+for _logger_name in ("httpx", "httpcore"):
+    _http_logger = logging.getLogger(_logger_name)
+    _http_logger.setLevel(logging.WARNING)
+    _http_logger.disabled = True
 SAFE_TOPICS = (
     ("Local & Independent", "Proudly serving Altamonte Springs every day.", "Community-first service, seven days a week."),
     ("Open Daily", "Friendly help from 10 AM to 10 PM.", "Plan your visit when it works for you."),
@@ -394,6 +396,10 @@ class InstagramIntegration:
         }
 
     async def exchange_code(self, code: str, state: str) -> dict:
+        # Re-assert this at the credential boundary in case a process logging
+        # configuration was applied after this module was imported.
+        logging.getLogger("httpx").disabled = True
+        logging.getLogger("httpcore").disabled = True
         state_hash = hashlib.sha256(str(state or "").encode()).hexdigest()
         saved = await self.db.instagram_oauth_states.find_one_and_delete({
             "stateHash": state_hash, "expiresAt": {"$gt": utcnow()},

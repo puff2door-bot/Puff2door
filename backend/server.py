@@ -4859,8 +4859,10 @@ app.add_middleware(
 )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
+for _logger_name in ("httpx", "httpcore"):
+    _http_logger = logging.getLogger(_logger_name)
+    _http_logger.setLevel(logging.WARNING)
+    _http_logger.disabled = True
 logger = logging.getLogger(__name__)
 
 
