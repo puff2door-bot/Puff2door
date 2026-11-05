@@ -30,7 +30,7 @@ const agentDefinitions = [
   { id: "support", name: "Customer support", description: "Verified answer drafts with uncertain questions escalated.", icon: Users, tone: "blue" },
   { id: "competitors", name: "Competitor watch", description: "Owner-supplied public snapshots without account access.", icon: Store, tone: "slate" },
   { id: "delivery", name: "Delivery readiness", description: "ZIP, age, ID, and payment readiness—never dispatches.", icon: Truck, tone: "lime" },
-  { id: "social", name: "Daily social studio", description: "A new theme, image, and caption daily for Instagram and TikTok, with policy screening.", icon: Share2, tone: "violet" },
+  { id: "social", name: "Daily social studio", description: "A different topic, layout, image, and caption every day, with seven rotating visual themes and policy screening.", icon: Share2, tone: "violet" },
 ];
 
 const toneClass = {
@@ -50,12 +50,81 @@ const AdminAgents = () => {
   const [notice, setNotice] = useState("Integrated preview loaded. No live changes are enabled.");
   const [activity, setActivity] = useState([]);
   const [approvals, setApprovals] = useState([]);
+  const [socialStatus, setSocialStatus] = useState(null);
+  const [socialDraft, setSocialDraft] = useState(null);
+  const [socialBusy, setSocialBusy] = useState("");
 
   useEffect(() => {
     api.get("/products", { params: { limit: 1000 } })
       .then(({ data }) => setProducts(data.products || []))
       .catch(() => setNotice("Catalog data is temporarily unavailable. All write actions remain blocked."));
+    api.get("/admin/social/status")
+      .then(({ data }) => {
+        setSocialStatus(data);
+        if (data.latestDraft?.id) setSocialDraft(data.latestDraft);
+      })
+      .catch(() => setSocialStatus(null));
   }, []);
+
+  const socialError = (error) => error?.response?.data?.detail || "Agent 12 could not complete that request.";
+
+  const connectInstagram = async () => {
+    setSocialBusy("connect");
+    try {
+      const { data } = await api.post("/admin/social/connect-url");
+      window.location.assign(data.url);
+    } catch (error) {
+      setNotice(socialError(error));
+      setSocialBusy("");
+    }
+  };
+
+  const createSocialDraft = async () => {
+    setSocialBusy("draft");
+    try {
+      const { data } = await api.post("/admin/social/drafts");
+      setSocialDraft(data.draft);
+      setNotice(`${data.draft.themeName || "New"} theme created. Nothing has been posted.`);
+    } catch (error) {
+      setNotice(socialError(error));
+    } finally {
+      setSocialBusy("");
+    }
+  };
+
+  const publishSocialTest = async () => {
+    if (!socialDraft?.id || !window.confirm(`Publish this approved test to @${socialStatus?.username || "hdsmokeshop.altamonte"}?`)) return;
+    setSocialBusy("publish");
+    try {
+      const { data } = await api.post(`/admin/social/drafts/${socialDraft.id}/publish`);
+      setSocialDraft(data.draft);
+      const { data: status } = await api.get("/admin/social/status");
+      setSocialStatus(status);
+      setNotice("The approved Instagram test was published and recorded in the audit history.");
+    } catch (error) {
+      setNotice(socialError(error));
+    } finally {
+      setSocialBusy("");
+    }
+  };
+
+  const setDailyPublishing = async (enabled) => {
+    const confirmed = enabled ? window.prompt("To enable daily publishing, type the exact Instagram username: hdsmokeshop.altamonte") : "";
+    if (enabled && confirmed === null) return;
+    if (!window.confirm(enabled ? "Turn on one compliant Instagram post every day at 9:00 AM?" : "Pause daily Instagram publishing?")) return;
+    setSocialBusy("settings");
+    try {
+      const { data } = await api.put("/admin/social/settings", {
+        autoPublishEnabled: enabled, confirmUsername: confirmed || "", scheduleHour: 9, scheduleMinute: 0,
+      });
+      setSocialStatus(data);
+      setNotice(enabled ? "Daily Instagram publishing is on for 9:00 AM Eastern." : "Daily Instagram publishing is paused.");
+    } catch (error) {
+      setNotice(socialError(error));
+    } finally {
+      setSocialBusy("");
+    }
+  };
 
   const metrics = useMemo(() => {
     const needsReview = products.filter((p) => !p.description || !p.image || (!p.sku && !p.barcode));
@@ -77,7 +146,9 @@ const AdminAgents = () => {
       support: "Support drafting workspace ready; nothing sent",
       competitors: "Awaiting an owner-supplied public competitor snapshot",
       delivery: "Delivery readiness workspace ready; no dispatch created",
-      social: "Daily Instagram + TikTok campaign preview ready; accounts not connected and nothing posted",
+      social: socialStatus?.connected
+        ? `Instagram @${socialStatus.username} verified; ${socialStatus.autoPublishEnabled ? "daily 9 AM publishing is on" : "daily publishing is off"}`
+        : "Daily Instagram creative preview ready; account connection is still required",
     };
     return results[id] || "Read-only check completed";
   };
@@ -128,14 +199,31 @@ const AdminAgents = () => {
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         {[
-          ["12", "Active agents"], ["8", "Auto schedules"], [String(approvals.filter((r) => r.status === "Pending").length), "Pending approvals"], ["0", "External writes"],
+          ["12", "Active agents"], ["8", "Auto schedules"], [String(approvals.filter((r) => r.status === "Pending").length), "Pending approvals"], [socialStatus?.autoPublishEnabled ? "1/day" : "0", "External writes"],
         ].map(([value, label]) => <div key={label} className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"><p className="text-2xl md:text-3xl font-black tracking-tight text-neutral-900">{value}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[.12em] text-neutral-500">{label}</p></div>)}
       </div>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">{notice}</div>
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {["Instagram", "TikTok"].map((platform) => <div key={platform} className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"><div><p className="font-extrabold text-neutral-900">{platform}</p><p className="mt-1 text-xs text-neutral-500">One-time secure login required before publishing</p></div><span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[.1em] text-neutral-600">Not connected</span></div>)}
+        <div className="rounded-2xl border border-violet-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3"><div><p className="font-extrabold text-neutral-900">Instagram</p><p className="mt-1 text-xs text-neutral-500">{socialStatus?.connected ? `Verified @${socialStatus.username}` : "One-time secure Meta connection required"}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[.1em] ${socialStatus?.connected ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-600"}`}>{socialStatus?.connected ? "Connected" : "Not connected"}</span></div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {!socialStatus?.connected && <button onClick={connectInstagram} disabled={Boolean(socialBusy)} className="rounded-lg bg-violet-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{socialBusy === "connect" ? "Opening…" : "Connect Instagram"}</button>}
+            <button onClick={createSocialDraft} disabled={Boolean(socialBusy)} className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 disabled:opacity-50">{socialBusy === "draft" ? "Creating…" : "Create today’s demo"}</button>
+            {socialStatus?.connected && socialDraft?.status !== "published" && <button onClick={publishSocialTest} disabled={!socialDraft?.id || Boolean(socialBusy)} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 disabled:opacity-50">Publish approved test</button>}
+            {socialStatus?.connected && <button onClick={() => setDailyPublishing(!socialStatus.autoPublishEnabled)} disabled={Boolean(socialBusy)} className={`rounded-lg px-3 py-2 text-xs font-bold ${socialStatus.autoPublishEnabled ? "bg-rose-50 text-rose-700" : "bg-neutral-900 text-white"}`}>{socialStatus.autoPublishEnabled ? "Pause daily posts" : "Enable daily posts"}</button>}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3"><div><p className="font-extrabold text-neutral-900">TikTok</p><p className="mt-1 text-xs text-neutral-500">Planned after Instagram is verified and tested</p></div><span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[.1em] text-neutral-600">Later</span></div>
+          <p className="mt-4 text-xs leading-5 text-neutral-500">No TikTok permissions, login, or posting are enabled yet.</p>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50 to-fuchsia-50 p-5 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><p className="text-[10px] font-extrabold uppercase tracking-[.14em] text-violet-600">Agent 12 creative rotation</p><h2 className="mt-1 text-xl font-black tracking-tight text-neutral-900">A visibly different post every day</h2><p className="mt-1 text-sm text-neutral-600">The calendar rotation prevents consecutive days from reusing a theme or topic.</p></div><div className="flex flex-wrap gap-1.5">{(socialStatus?.dailyThemes || ["Emerald Glow", "Neon Violet", "Warm Local", "Electric Blue", "Bold Magenta", "Modern Teal", "Premium Gold"]).map((theme) => <span key={theme} className="rounded-full border border-white/80 bg-white/75 px-2.5 py-1 text-[10px] font-bold text-violet-700">{theme}</span>)}</div></div>
+        {socialDraft?.imageUrl && <div className="mt-5 grid gap-4 md:grid-cols-[180px_1fr]"><img src={socialDraft.imageUrl} alt={`${socialDraft.themeName || "Daily"} Instagram preview`} className="aspect-square w-full max-w-[180px] rounded-2xl object-cover shadow-md" /><div><p className="font-extrabold text-neutral-900">{socialDraft.themeName || "Today’s theme"} · {socialDraft.topic || "Daily business story"}</p><p className="mt-2 text-xs leading-5 text-neutral-500">Preview only until you use “Publish approved test.” The automatic schedule cannot turn on before that test succeeds.</p></div></div>}
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-b from-white to-emerald-50/40 shadow-sm">
@@ -143,7 +231,7 @@ const AdminAgents = () => {
           <div>
             <span className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[.12em] ${autopilot ? "bg-emerald-100 text-emerald-800" : "bg-neutral-100 text-neutral-600"}`}><Zap className="h-3.5 w-3.5" /> Autopilot {autopilot ? "running" : "paused"}</span>
             <h2 className="mt-3 text-2xl font-black tracking-tight text-neutral-900">Safe autonomous checks</h2>
-            <p className="mt-1 text-sm text-neutral-500">Read-only schedules create findings and proposals. They cannot execute external changes.</p>
+            <p className="mt-1 text-sm text-neutral-500">Routine checks stay read-only. Agent 12 can publish only after account verification, a successful approved test, and the daily-post switch.</p>
           </div>
           <div className="flex gap-2">
             <button onClick={runAll} disabled={running === "all"} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${running === "all" ? "animate-spin" : ""}`} /> Run all now</button>
@@ -153,7 +241,7 @@ const AdminAgents = () => {
         <div className="overflow-x-auto">
           <table className="min-w-[760px] w-full text-sm">
             <thead className="bg-emerald-50/80 text-left text-[10px] uppercase tracking-[.12em] text-neutral-500"><tr><th className="px-5 py-3">Job</th><th className="px-5 py-3">Schedule</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Protection</th></tr></thead>
-            <tbody className="divide-y divide-neutral-100">{schedules.map((job) => <tr key={job.id} className="bg-white/70"><td className="px-5 py-3.5"><span className="flex items-center gap-3 font-semibold text-neutral-800"><span className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-50 text-emerald-700"><job.icon className="h-4 w-4" /></span>{job.name}</span></td><td className="px-5 py-3.5 text-neutral-500">Every {job.every}</td><td className="px-5 py-3.5"><span className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold"><CheckCircle2 className="h-4 w-4" /> Ready</span></td><td className="px-5 py-3.5 text-neutral-500">Read-only</td></tr>)}</tbody>
+            <tbody className="divide-y divide-neutral-100">{schedules.map((job) => <tr key={job.id} className="bg-white/70"><td className="px-5 py-3.5"><span className="flex items-center gap-3 font-semibold text-neutral-800"><span className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-50 text-emerald-700"><job.icon className="h-4 w-4" /></span>{job.name}</span></td><td className="px-5 py-3.5 text-neutral-500">Every {job.every}</td><td className="px-5 py-3.5"><span className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold"><CheckCircle2 className="h-4 w-4" /> Ready</span></td><td className="px-5 py-3.5 text-neutral-500">{job.id === "social" ? (socialStatus?.autoPublishEnabled ? "Verified auto-post" : "Approval gated") : "Read-only"}</td></tr>)}</tbody>
           </table>
         </div>
       </section>

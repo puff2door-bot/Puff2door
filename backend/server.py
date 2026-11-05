@@ -32,6 +32,7 @@ from zoneinfo import ZoneInfo
 import jwt
 from passlib.context import CryptContext
 from clover import CloverError, CloverIntegration, order_should_sync_stock
+from instagram import InstagramError, InstagramIntegration, normalize_username
 from guides import GUIDES, GUIDES_BY_SLUG, GUIDES_INDEX_META, guide_summary
 
 try:
@@ -2508,6 +2509,20 @@ CLOVER_SYNC_INTERVAL_SECONDS = 12 * 60
 CLOVER_API_TOKEN = os.environ.get("CLOVER_API_TOKEN", "").strip()
 CLOVER_MERCHANT_ID = os.environ.get("CLOVER_MERCHANT_ID", "").strip()
 
+INSTAGRAM_APP_ID = os.environ.get("INSTAGRAM_APP_ID", "").strip()
+INSTAGRAM_APP_SECRET = os.environ.get("INSTAGRAM_APP_SECRET", "").strip()
+INSTAGRAM_CONFIG_ID = os.environ.get("INSTAGRAM_CONFIG_ID", "").strip()
+INSTAGRAM_BUSINESS_ID = os.environ.get("INSTAGRAM_BUSINESS_ID", "").strip()
+INSTAGRAM_GRAPH_VERSION = os.environ.get("INSTAGRAM_GRAPH_VERSION", "v27.0").strip()
+INSTAGRAM_REDIRECT_URI = os.environ.get(
+    "INSTAGRAM_REDIRECT_URI", "https://puff2door.com/api/instagram/oauth/callback"
+).strip()
+INSTAGRAM_EXPECTED_USERNAME = normalize_username(
+    os.environ.get("INSTAGRAM_EXPECTED_USERNAME", "hdsmokeshop.altamonte")
+)
+INSTAGRAM_TOKEN_ENCRYPTION_KEY = os.environ.get("INSTAGRAM_TOKEN_ENCRYPTION_KEY", "")
+AGENT12_CRON_SECRET = os.environ.get("AGENT12_CRON_SECRET", "").strip()
+
 
 def clover_integration() -> CloverIntegration:
     return CloverIntegration(
@@ -2528,6 +2543,21 @@ def clover_integration() -> CloverIntegration:
         create_items=CLOVER_CREATE_ITEMS,
         category_writeback=CLOVER_CATEGORY_WRITEBACK_ENABLED,
         import_new_items=CLOVER_IMPORT_NEW_ITEMS,
+    )
+
+
+def instagram_integration() -> InstagramIntegration:
+    return InstagramIntegration(
+        db,
+        app_id=INSTAGRAM_APP_ID,
+        app_secret=INSTAGRAM_APP_SECRET,
+        config_id=INSTAGRAM_CONFIG_ID,
+        business_id=INSTAGRAM_BUSINESS_ID,
+        redirect_uri=INSTAGRAM_REDIRECT_URI,
+        public_url=SITE_URL,
+        encryption_secret=INSTAGRAM_TOKEN_ENCRYPTION_KEY,
+        expected_username=INSTAGRAM_EXPECTED_USERNAME,
+        graph_version=INSTAGRAM_GRAPH_VERSION,
     )
 
 
@@ -3243,6 +3273,149 @@ async def admin_revert_enhanced_photos(admin: dict = Depends(get_admin_user)):
         })
         reverted += 1
     return {"reverted": reverted}
+
+
+# ---- Agent 12: Instagram daily social publisher ----
+class InstagramSettingsInput(BaseModel):
+    autoPublishEnabled: bool
+    confirmUsername: str = Field(default="", max_length=80)
+    scheduleHour: int = Field(default=9, ge=0, le=23)
+    scheduleMinute: int = Field(default=0, ge=0, le=59)
+
+
+def instagram_error_detail(exc: Exception) -> str:
+    message = str(exc).strip()
+    return message if message else "Instagram could not complete that request."
+
+
+@api_router.get("/social/media/{media_id}.png")
+async def social_media_image(media_id: str):
+    if not re.fullmatch(r"[a-f0-9]{32}", media_id):
+        raise HTTPException(status_code=404, detail="Social image not found")
+    media = await db.social_media.find_one({"id": media_id})
+    if not media or not isinstance(media.get("bytes"), bytes):
+        raise HTTPException(status_code=404, detail="Social image not found")
+    return Response(
+        content=media["bytes"],
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@api_router.get("/admin/social/status")
+async def admin_social_status(admin: dict = Depends(get_admin_user)):
+    status = await instagram_integration().status()
+    missing = []
+    if not INSTAGRAM_APP_ID:
+        missing.append("Meta App ID")
+    if not INSTAGRAM_APP_SECRET:
+        missing.append("Meta App Secret")
+    if not INSTAGRAM_CONFIG_ID:
+        missing.append("Meta login configuration ID")
+    if not INSTAGRAM_BUSINESS_ID:
+        missing.append("Meta business portfolio ID")
+    if len(INSTAGRAM_TOKEN_ENCRYPTION_KEY.encode("utf-8")) < 32:
+        missing.append("Instagram token encryption key")
+    if not AGENT12_CRON_SECRET:
+        missing.append("Agent 12 daily trigger secret")
+    return {
+        **status,
+        "missingSetup": missing,
+        "redirectUri": INSTAGRAM_REDIRECT_URI,
+        "graphVersion": INSTAGRAM_GRAPH_VERSION,
+        "dailyThemes": [
+            "Emerald Glow", "Neon Violet", "Warm Local", "Electric Blue",
+            "Bold Magenta", "Modern Teal", "Premium Gold",
+        ],
+    }
+
+
+@api_router.get("/admin/social/logs")
+async def admin_social_logs(admin: dict = Depends(get_admin_user)):
+    rows = await db.social_audit_logs.find({}, {"_id": 0}).sort("createdAt", -1).to_list(100)
+    return {"logs": rows}
+
+
+@api_router.post("/admin/social/connect-url")
+async def admin_social_connect_url(admin: dict = Depends(get_admin_user)):
+    try:
+        return {"url": await instagram_integration().create_authorization_url(admin["id"])}
+    except InstagramError as exc:
+        raise HTTPException(status_code=400, detail=instagram_error_detail(exc))
+
+
+@api_router.get("/instagram/oauth/callback")
+async def instagram_oauth_callback(code: str = "", state: str = "", error: str = ""):
+    if error or not code or not state:
+        return RedirectResponse(f"{SITE_URL}/admin/agents?instagram=error", status_code=303)
+    try:
+        await instagram_integration().exchange_code(code, state)
+        return RedirectResponse(f"{SITE_URL}/admin/agents?instagram=connected", status_code=303)
+    except InstagramError:
+        logger.error("Instagram authorization failed")
+        return RedirectResponse(f"{SITE_URL}/admin/agents?instagram=error", status_code=303)
+
+
+@api_router.post("/admin/social/drafts")
+async def admin_social_create_draft(admin: dict = Depends(get_admin_user)):
+    try:
+        draft = await instagram_integration().generate_draft(source="admin")
+        return {"draft": {key: value for key, value in draft.items() if key != "_id"}}
+    except (InstagramError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=instagram_error_detail(exc))
+
+
+@api_router.post("/admin/social/drafts/{draft_id}/publish")
+async def admin_social_publish_draft(draft_id: str, admin: dict = Depends(get_admin_user)):
+    if not re.fullmatch(r"[a-f0-9]{24}", draft_id):
+        raise HTTPException(status_code=404, detail="Social draft not found")
+    try:
+        result = await instagram_integration().publish_draft(draft_id, source=f"admin:{admin['id']}")
+        return {"published": True, "draft": {key: value for key, value in result.items() if key != "_id"}}
+    except InstagramError as exc:
+        raise HTTPException(status_code=400, detail=instagram_error_detail(exc))
+
+
+@api_router.put("/admin/social/settings")
+async def admin_social_settings(inp: InstagramSettingsInput, admin: dict = Depends(get_admin_user)):
+    integration = instagram_integration()
+    config = await integration.config()
+    if inp.autoPublishEnabled:
+        if normalize_username(inp.confirmUsername) != INSTAGRAM_EXPECTED_USERNAME:
+            raise HTTPException(status_code=400, detail=f"Type @{INSTAGRAM_EXPECTED_USERNAME} to enable daily publishing.")
+        if not config.get("verified") or normalize_username(config.get("username")) != INSTAGRAM_EXPECTED_USERNAME:
+            raise HTTPException(status_code=409, detail=f"Connect and verify @{INSTAGRAM_EXPECTED_USERNAME} first.")
+        tested = await db.social_drafts.find_one({"status": "published", "publishSource": {"$regex": "^admin:"}})
+        if not tested:
+            raise HTTPException(status_code=409, detail="Publish and verify the first test post before enabling daily publishing.")
+    updates = {
+        "autoPublishEnabled": inp.autoPublishEnabled,
+        "scheduleHour": inp.scheduleHour,
+        "scheduleMinute": inp.scheduleMinute,
+        "timezone": "America/New_York",
+        "updatedAt": now_utc(),
+        "updatedBy": admin["id"],
+    }
+    await db.integrations.update_one({"key": "instagram"}, {"$set": updates}, upsert=True)
+    await integration.log(
+        "autopublish_enabled" if inp.autoPublishEnabled else "autopublish_disabled",
+        "success", username=config.get("username", ""), schedule=f"{inp.scheduleHour:02d}:{inp.scheduleMinute:02d}",
+    )
+    return await integration.status()
+
+
+@api_router.post("/internal/agent12/daily")
+async def agent12_daily_trigger(request: Request):
+    if not AGENT12_CRON_SECRET:
+        raise HTTPException(status_code=503, detail="Agent 12 daily trigger is not configured")
+    supplied = request.headers.get("X-Agent-Secret", "")
+    if not supplied or not secrets.compare_digest(supplied, AGENT12_CRON_SECRET):
+        raise HTTPException(status_code=401, detail="Invalid Agent 12 trigger")
+    try:
+        return await instagram_integration().run_daily()
+    except InstagramError as exc:
+        logger.error("Agent 12 daily publish failed")
+        raise HTTPException(status_code=502, detail=instagram_error_detail(exc))
 
 
 # ---- Clover inventory sync ----
@@ -4999,6 +5172,21 @@ async def pickup_expiry_schedule():
 
 
 @app.on_event("startup")
+async def agent12_social_schedule():
+    """Fallback scheduler; the protected GitHub trigger also wakes free hosting."""
+    async def loop():
+        await asyncio.sleep(90)
+        while True:
+            try:
+                await instagram_integration().run_daily()
+            except Exception:
+                logger.error("Agent 12 scheduler check failed")
+            await asyncio.sleep(900)
+
+    asyncio.create_task(loop())
+
+
+@app.on_event("startup")
 async def configure_emails():
     emails.configure(db, os.environ.get("PUBLIC_URL", ""))
     logger.info("Email %s (from %s)", "enabled" if emails.EMAIL_ENABLED else "disabled", emails.EMAIL_FROM or "-")
@@ -5006,6 +5194,11 @@ async def configure_emails():
 
 @app.on_event("startup")
 async def seed_data():
+    await db.instagram_oauth_states.create_index("expiresAt", expireAfterSeconds=0)
+    await db.social_media.create_index("id", unique=True)
+    await db.social_drafts.create_index("id", unique=True)
+    await db.social_drafts.create_index([("dateKey", 1), ("platform", 1), ("status", 1)])
+    await db.social_audit_logs.create_index("createdAt")
     if await db.products.count_documents({}) == 0:
         seed_path = ROOT_DIR / "seed_products.json"
         if seed_path.exists():

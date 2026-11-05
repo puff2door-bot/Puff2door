@@ -1,0 +1,28 @@
+name: Agent 12 daily Instagram check
+
+on:
+  schedule:
+    # 9 AM America/New_York is 13:00 UTC during daylight time and 14:00 UTC
+    # during standard time. The API checks local time and is idempotent, so the
+    # extra call is safe and never creates a second daily post.
+    - cron: "5 13,14 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run-agent-12:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wake the free service and run the due check
+        env:
+          AGENT12_CRON_SECRET: ${{ secrets.AGENT12_CRON_SECRET }}
+        run: |
+          test -n "$AGENT12_CRON_SECRET"
+          curl --fail --silent --show-error \
+            --retry 8 --retry-delay 15 --retry-all-errors --max-time 180 \
+            -X POST \
+            -H "X-Agent-Secret: $AGENT12_CRON_SECRET" \
+            https://puff2door.onrender.com/api/internal/agent12/daily
