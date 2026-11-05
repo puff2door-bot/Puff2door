@@ -15,7 +15,7 @@ const schedules = [
   { id: "briefing", name: "Owner daily briefing", every: "24 hours", icon: Sparkles },
   { id: "compliance", name: "Age, ID, category, and claim signals", every: "24 hours", icon: ShieldCheck },
   { id: "photos", name: "Missing and duplicate images", every: "24 hours", icon: Image },
-  { id: "social", name: "Branded neutral-business social draft", every: "7 days", icon: Share2 },
+  { id: "social", name: "Instagram + TikTok creative campaign", every: "24 hours", icon: Share2 },
 ];
 
 const agentDefinitions = [
@@ -30,7 +30,7 @@ const agentDefinitions = [
   { id: "support", name: "Customer support", description: "Verified answer drafts with uncertain questions escalated.", icon: Users, tone: "blue" },
   { id: "competitors", name: "Competitor watch", description: "Owner-supplied public snapshots without account access.", icon: Store, tone: "slate" },
   { id: "delivery", name: "Delivery readiness", description: "ZIP, age, ID, and payment readiness—never dispatches.", icon: Truck, tone: "lime" },
-  { id: "social", name: "Social content studio", description: "Branded image and caption drafts with regulated-content screening.", icon: Share2, tone: "violet" },
+  { id: "social", name: "Daily social studio", description: "A new theme, image, and caption daily for Instagram and TikTok, with policy screening.", icon: Share2, tone: "violet" },
 ];
 
 const toneClass = {
@@ -77,7 +77,7 @@ const AdminAgents = () => {
       support: "Support drafting workspace ready; nothing sent",
       competitors: "Awaiting an owner-supplied public competitor snapshot",
       delivery: "Delivery readiness workspace ready; no dispatch created",
-      social: "Branded image and caption workspace ready; nothing posted",
+      social: "Daily Instagram + TikTok campaign preview ready; accounts not connected and nothing posted",
     };
     return results[id] || "Read-only check completed";
   };
@@ -106,8 +106,8 @@ const AdminAgents = () => {
   const runAll = () => {
     setRunning("all");
     window.setTimeout(() => {
-      setActivity((rows) => [{ id: `autopilot-${Date.now()}`, agent: "Autopilot", result: "Seven safe scheduled checks completed; external writes: 0", time: formatTime() }, ...rows].slice(0, 8));
-      setNotice("Autopilot completed seven safe checks. External writes remain blocked.");
+      setActivity((rows) => [{ id: `autopilot-${Date.now()}`, agent: "Autopilot", result: "Eight safe scheduled checks completed; external writes: 0", time: formatTime() }, ...rows].slice(0, 8));
+      setNotice("Autopilot completed eight safe checks. External writes remain blocked.");
       setRunning("");
     }, 650);
   };
@@ -122,7 +122,7 @@ const AdminAgents = () => {
             <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold"><span className="h-2 w-2 rounded-full bg-emerald-300" /> Private admin only</span>
           </div>
           <h1 className="mt-5 max-w-3xl text-3xl md:text-5xl font-black tracking-[-.045em] leading-[1.04]">Every agent, task, and approval in one crisp control center.</h1>
-          <p className="mt-4 max-w-2xl text-sm md:text-base text-emerald-50/80">Eleven agents prepare the work. Autopilot handles routine checks. You stay in control of anything external.</p>
+          <p className="mt-4 max-w-2xl text-sm md:text-base text-emerald-50/80">Twelve agents prepare the work. Autopilot handles routine checks. You stay in control of anything external.</p>
         </div>
       </section>
 
@@ -133,6 +133,10 @@ const AdminAgents = () => {
       </div>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">{notice}</div>
+
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {["Instagram", "TikTok"].map((platform) => <div key={platform} className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"><div><p className="font-extrabold text-neutral-900">{platform}</p><p className="mt-1 text-xs text-neutral-500">One-time secure login required before publishing</p></div><span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[.1em] text-neutral-600">Not connected</span></div>)}
+      </section>
 
       <section className="overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-b from-white to-emerald-50/40 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-5 md:p-6 border-b border-emerald-100">
