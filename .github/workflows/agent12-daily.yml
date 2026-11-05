@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   run-agent-12:
+    if: ${{ secrets.AGENT12_CRON_SECRET != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
