@@ -55,6 +55,7 @@ class FakeHttpClient:
     def __init__(self, pages, business_accounts=None):
         self.pages = pages
         self.business_accounts = business_accounts or []
+        self.requests = []
 
     async def __aenter__(self):
         return self
@@ -63,8 +64,11 @@ class FakeHttpClient:
         return False
 
     async def get(self, url, **kwargs):
+        self.requests.append((url, kwargs))
         if url.endswith("/me/accounts"):
             return FakeResponse({"data": self.pages})
+        if url.endswith("/instagram_accounts"):
+            return FakeResponse({"data": self.business_accounts})
         if url.endswith("/owned_instagram_accounts"):
             return FakeResponse({"data": self.business_accounts})
         return FakeResponse({})
@@ -194,11 +198,15 @@ def test_profile_verification_rejects_wrong_instagram_account():
 def test_profile_verification_supports_instagram_only_asset_grant():
     account = {"id": "ig-3", "username": "hdsmokeshop.altamonte", "name": "HD Smoke Shop"}
     agent = integration()
-    agent.http_client_factory = lambda **kwargs: FakeHttpClient([], [account])
+    client = FakeHttpClient([], [account])
+    agent.http_client_factory = lambda **kwargs: client
 
     async def go():
         profile = await agent._get_profile("system-token")
         assert profile["instagram"]["id"] == "ig-3"
         assert profile["pageToken"] == "system-token"
+        assert any(url.endswith("/instagram_accounts") for url, _ in client.requests)
+        assert all("access_token" not in kwargs.get("params", {}) for _, kwargs in client.requests)
+        assert all(kwargs.get("headers", {}).get("Authorization") == "Bearer system-token" for _, kwargs in client.requests)
 
     asyncio.run(go())

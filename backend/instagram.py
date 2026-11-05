@@ -273,11 +273,16 @@ class InstagramIntegration:
 
     async def _get_profile(self, token: str) -> dict:
         fields = "id,name,access_token,tasks,instagram_business_account{id,username,name,profile_picture_url}"
+        graph_headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "HD-Agent-12/1.0",
+        }
         async with self.http_client_factory(timeout=30) as client:
             response = await client.get(
                 f"{GRAPH_HOST}/{self.graph_version}/me/accounts",
-                params={"fields": fields, "access_token": token, "limit": 100},
-                headers={"Accept": "application/json", "User-Agent": "HD-Agent-12/1.0"},
+                params={"fields": fields, "limit": 100},
+                headers=graph_headers,
             )
             payload = await self._json(response, "Meta did not return the managed Pages.")
             pages = payload.get("data") or []
@@ -289,31 +294,43 @@ class InstagramIntegration:
                     if not ig.get("username"):
                         detail_response = await client.get(
                             f"{GRAPH_HOST}/{self.graph_version}/{ig['id']}",
-                            params={"fields": "id,username,name,profile_picture_url", "access_token": page_token},
-                            headers={"Accept": "application/json", "User-Agent": "HD-Agent-12/1.0"},
+                            params={"fields": "id,username,name,profile_picture_url"},
+                            headers={
+                                "Accept": "application/json",
+                                "Authorization": f"Bearer {page_token}",
+                                "User-Agent": "HD-Agent-12/1.0",
+                            },
                         )
                         ig.update(await self._json(detail_response, "Meta could not verify the Instagram profile."))
                     candidates.append((page, ig, page_token))
             if not candidates:
                 # A least-privilege Business Login configuration can grant the
-                # Instagram asset without granting the linked Page asset. Meta
-                # supports system-user tokens for Instagram API calls, so verify
-                # the account through the owning business and use that token.
-                business_response = await client.get(
-                    f"{GRAPH_HOST}/{self.graph_version}/{self.business_id}/owned_instagram_accounts",
-                    params={
-                        "fields": "id,username,name,profile_picture_url",
-                        "access_token": token,
-                        "limit": 100,
-                    },
-                    headers={"Accept": "application/json", "User-Agent": "HD-Agent-12/1.0"},
-                )
-                business_payload = await self._json(
-                    business_response, "Meta did not return the business Instagram accounts."
-                )
-                for ig in business_payload.get("data") or []:
-                    if ig.get("id"):
-                        candidates.append(({"id": "", "name": "HD Smoke Shop"}, ig, token))
+                # Instagram asset without granting the linked Page asset. The
+                # /instagram_accounts edge returns accounts this business can
+                # access, including an account explicitly selected in Business
+                # Login. /owned_instagram_accounts is a compatibility fallback
+                # for older configurations that grant the ownership edge.
+                business_errors = []
+                for edge in ("instagram_accounts", "owned_instagram_accounts"):
+                    business_response = await client.get(
+                        f"{GRAPH_HOST}/{self.graph_version}/{self.business_id}/{edge}",
+                        params={"fields": "id,username,name,profile_picture_url", "limit": 100},
+                        headers=graph_headers,
+                    )
+                    try:
+                        business_payload = await self._json(
+                            business_response, "Meta did not return the business Instagram accounts."
+                        )
+                    except InstagramError as exc:
+                        business_errors.append(str(exc))
+                        continue
+                    for ig in business_payload.get("data") or []:
+                        if ig.get("id"):
+                            candidates.append(({"id": "", "name": "HD Smoke Shop"}, ig, token))
+                    if candidates:
+                        break
+                if not candidates and business_errors:
+                    raise InstagramError(business_errors[0])
         for page, ig, page_token in candidates:
             if normalize_username(ig.get("username")) == self.expected_username:
                 return {"page": page, "instagram": ig, "pageToken": page_token}

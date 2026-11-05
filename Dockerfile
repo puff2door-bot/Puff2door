@@ -28,4 +28,4 @@ RUN python scripts/install_photo_model.py
 COPY --from=frontend-build /app/frontend/build /app/frontend/build
 
 EXPOSE 10000
-CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-10000}"]
+CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-10000} --no-access-log"]
