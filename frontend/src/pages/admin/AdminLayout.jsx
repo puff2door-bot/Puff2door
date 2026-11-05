@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { NavLink, Link, Outlet } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle, Truck, ShieldCheck, BarChart3, Store, Camera } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle, Truck, ShieldCheck, BarChart3, Store, Camera, Bot } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import api from "../../api";
 
 const nav = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/admin/agents", label: "Agents", icon: Bot },
   { to: "/admin/products", label: "Products", icon: Package },
   { to: "/admin/inventory-capture", label: "Store Photos", icon: Images },
   { to: "/admin/missing-photos", label: "Missing Photos", icon: Camera },
