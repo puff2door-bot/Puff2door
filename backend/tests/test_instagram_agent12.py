@@ -39,6 +39,19 @@ class FakeCollection:
                 self.rows[index] = row
                 break
 
+    async def find_one_and_delete(self, query):
+        for index, row in enumerate(self.rows):
+            matched = True
+            for key, expected in query.items():
+                actual = row.get(key)
+                if isinstance(expected, dict) and "$gt" in expected:
+                    matched = matched and actual is not None and actual > expected["$gt"]
+                else:
+                    matched = matched and actual == expected
+            if matched:
+                return self.rows.pop(index)
+        return None
+
 
 class FakeResponse:
     def __init__(self, payload, status_code=200):
@@ -74,6 +87,35 @@ class FakeHttpClient:
         return FakeResponse({})
 
 
+class FakeInstagramLoginClient:
+    def __init__(self):
+        self.requests = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def post(self, url, **kwargs):
+        self.requests.append(("POST", url, kwargs))
+        if url.endswith("/oauth/access_token"):
+            return FakeResponse({"access_token": "short-token", "user_id": "scoped-1"})
+        return FakeResponse({}, 404)
+
+    async def get(self, url, **kwargs):
+        self.requests.append(("GET", url, kwargs))
+        if url.endswith("/access_token"):
+            return FakeResponse({"access_token": "long-token", "expires_in": 5_000_000})
+        if url.endswith("/me"):
+            return FakeResponse({
+                "user_id": "ig-professional-1",
+                "username": "hdsmokeshop.altamonte",
+                "name": "HD Smoke Shop",
+            })
+        return FakeResponse({}, 404)
+
+
 class FakeDB:
     def __init__(self):
         self.instagram_oauth_states = FakeCollection()
@@ -83,7 +125,7 @@ class FakeDB:
         self.integrations = FakeCollection()
 
 
-def integration(db=None):
+def integration(db=None, auth_mode="facebook"):
     return InstagramIntegration(
         db or FakeDB(),
         app_id="1145283828055613",
@@ -95,6 +137,7 @@ def integration(db=None):
         encryption_secret="separate-test-encryption-key-that-is-long-enough",
         expected_username="@hdsmokeshop.altamonte",
         graph_version="v27.0",
+        auth_mode=auth_mode,
     )
 
 
@@ -143,6 +186,50 @@ def test_authorization_url_uses_configuration_without_leaking_secret():
         assert "server-only-secret" not in url
         assert len(db.instagram_oauth_states.rows) == 1
         assert "state" not in db.instagram_oauth_states.rows[0]
+
+    asyncio.run(go())
+
+
+def test_instagram_login_authorization_url_uses_current_business_scopes():
+    db = FakeDB()
+    agent = integration(db, auth_mode="instagram")
+
+    async def go():
+        url = await agent.create_authorization_url("admin-1")
+        parsed = urlsplit(url)
+        query = parse_qs(parsed.query)
+        assert parsed.netloc == "www.instagram.com"
+        assert parsed.path == "/oauth/authorize"
+        assert query["scope"] == ["instagram_business_basic,instagram_business_content_publish"]
+        assert query["enable_fb_login"] == ["false"]
+        assert "config_id" not in query
+        assert "server-only-secret" not in url
+
+    asyncio.run(go())
+
+
+def test_instagram_login_exchange_verifies_account_and_uses_post_for_secret():
+    db = FakeDB()
+    agent = integration(db, auth_mode="instagram")
+    client = FakeInstagramLoginClient()
+    agent.http_client_factory = lambda **kwargs: client
+
+    async def go():
+        url = await agent.create_authorization_url("admin-1")
+        state = parse_qs(urlsplit(url).query)["state"][0]
+        doc = await agent.exchange_code("authorization-code", state)
+        assert doc["username"] == "hdsmokeshop.altamonte"
+        assert doc["instagramUserId"] == "ig-professional-1"
+        assert doc["authMode"] == "instagram"
+        assert doc["autoPublishEnabled"] is False
+        token_request = client.requests[0]
+        assert token_request[0] == "POST"
+        assert token_request[1] == "https://api.instagram.com/oauth/access_token"
+        assert "client_secret" not in token_request[1]
+        assert token_request[2]["data"]["client_secret"] == "server-only-secret"
+        profile_request = next(row for row in client.requests if row[1].endswith("/me"))
+        assert profile_request[2]["headers"]["Authorization"] == "Bearer long-token"
+        assert all("short-token" not in row[1] and "long-token" not in row[1] for row in client.requests)
 
     asyncio.run(go())
 

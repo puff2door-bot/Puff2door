@@ -1,8 +1,9 @@
 """Instagram publishing integration for Agent 12.
 
-The integration uses Meta's Facebook Login for Business flow.  Credentials are
-encrypted before storage, every state token is single-use, and the daily job is
-disabled until an administrator explicitly enables it for the verified account.
+The integration supports Meta's Instagram Login flow and the legacy Facebook
+Login for Business flow. Credentials are encrypted before storage, every state
+token is single-use, and the daily job is disabled until an administrator
+explicitly enables it for the verified account.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import asyncio
 import base64
 import hashlib
 import io
+import logging
 import re
 import secrets
 import textwrap
@@ -26,8 +28,17 @@ from PIL import Image, ImageDraw, ImageFont
 
 GRAPH_HOST = "https://graph.facebook.com"
 LOGIN_HOST = "https://www.facebook.com"
+INSTAGRAM_GRAPH_HOST = "https://graph.instagram.com"
+INSTAGRAM_LOGIN_HOST = "https://www.instagram.com"
+INSTAGRAM_TOKEN_HOST = "https://api.instagram.com"
 DEFAULT_TIMEZONE = "America/New_York"
 ALLOWED_GRAPH_VERSIONS = {f"v{major}.0" for major in range(20, 40)}
+
+# httpx emits complete request URLs at INFO. Some Meta token endpoints require
+# credentials in their query string, so keep these libraries above INFO even if
+# the application later configures the root logger at INFO.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 SAFE_TOPICS = (
     ("Local & Independent", "Proudly serving Altamonte Springs every day.", "Community-first service, seven days a week."),
     ("Open Daily", "Friendly help from 10 AM to 10 PM.", "Plan your visit when it works for you."),
@@ -188,6 +199,7 @@ class InstagramIntegration:
         encryption_secret: str,
         expected_username: str,
         graph_version: str = "v27.0",
+        auth_mode: str = "facebook",
         http_client_factory=None,
     ):
         self.db = db
@@ -199,6 +211,7 @@ class InstagramIntegration:
         self.public_url = str(public_url or "").strip().rstrip("/")
         self.expected_username = normalize_username(expected_username)
         self.graph_version = graph_version if graph_version in ALLOWED_GRAPH_VERSIONS else "v27.0"
+        self.auth_mode = "instagram" if str(auth_mode or "").strip().lower() == "instagram" else "facebook"
         self.http_client_factory = http_client_factory or (lambda **kwargs: httpx.AsyncClient(**kwargs))
         secret = str(encryption_secret or "")
         self.cipher = None
@@ -208,11 +221,14 @@ class InstagramIntegration:
 
     @property
     def configured(self) -> bool:
-        return bool(
-            self.app_id and self.app_secret and self.config_id and self.business_id and self.cipher
+        common = bool(
+            self.app_id and self.app_secret and self.cipher
             and valid_https_url(self.redirect_uri) and valid_https_url(self.public_url)
             and self.expected_username
         )
+        if self.auth_mode == "instagram":
+            return common
+        return bool(common and self.config_id and self.business_id)
 
     def encrypt(self, value: str) -> str:
         if not self.cipher:
@@ -251,6 +267,16 @@ class InstagramIntegration:
             "createdAt": utcnow(),
             "expiresAt": utcnow() + timedelta(minutes=15),
         })
+        if self.auth_mode == "instagram":
+            query = urlencode({
+                "client_id": self.app_id,
+                "redirect_uri": self.redirect_uri,
+                "state": state,
+                "response_type": "code",
+                "scope": "instagram_business_basic,instagram_business_content_publish",
+                "enable_fb_login": "false",
+            })
+            return f"{INSTAGRAM_LOGIN_HOST}/oauth/authorize?{query}"
         query = urlencode({
             "client_id": self.app_id,
             "redirect_uri": self.redirect_uri,
@@ -338,6 +364,35 @@ class InstagramIntegration:
         suffix = f" Meta returned: {found}." if found else " No linked professional Instagram account was returned."
         raise InstagramError(f"Expected @{self.expected_username}, but it was not authorized.{suffix}")
 
+    async def _get_instagram_login_profile(self, token: str) -> dict:
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "HD-Agent-12/1.0",
+        }
+        async with self.http_client_factory(timeout=30) as client:
+            response = await client.get(
+                f"{INSTAGRAM_GRAPH_HOST}/{self.graph_version}/me",
+                params={"fields": "user_id,username,name,profile_picture_url,account_type"},
+                headers=headers,
+            )
+            payload = await self._json(response, "Instagram did not return the authorized profile.")
+        row = payload
+        if isinstance(payload.get("data"), list) and payload["data"]:
+            row = payload["data"][0]
+        username = normalize_username(row.get("username"))
+        if username != self.expected_username:
+            found = f"@{username}" if username else "an unknown account"
+            raise InstagramError(f"Expected @{self.expected_username}, but Instagram authorized {found}.")
+        user_id = str(row.get("user_id") or row.get("id") or "")
+        if not user_id:
+            raise InstagramError("Instagram returned an incomplete professional-account profile.")
+        return {
+            "page": {"id": "", "name": "Instagram Login"},
+            "instagram": {**row, "id": user_id, "username": username},
+            "pageToken": token,
+        }
+
     async def exchange_code(self, code: str, state: str) -> dict:
         state_hash = hashlib.sha256(str(state or "").encode()).hexdigest()
         saved = await self.db.instagram_oauth_states.find_one_and_delete({
@@ -347,22 +402,58 @@ class InstagramIntegration:
             raise InstagramError("The Instagram connection link expired. Start again from the admin panel.")
         if not self.configured:
             raise InstagramError("Instagram server settings are incomplete.")
-        async with self.http_client_factory(timeout=30) as client:
-            response = await client.get(
-                f"{GRAPH_HOST}/{self.graph_version}/oauth/access_token",
-                params={
-                    "client_id": self.app_id,
-                    "client_secret": self.app_secret,
-                    "redirect_uri": self.redirect_uri,
-                    "code": code,
-                },
-                headers={"Accept": "application/json", "User-Agent": "HD-Agent-12/1.0"},
-            )
-            payload = await self._json(response, "Meta did not accept the authorization code.")
-        user_token = str(payload.get("access_token") or "")
-        if not user_token:
-            raise InstagramError("Meta returned an incomplete authorization response.")
-        profile = await self._get_profile(user_token)
+        headers = {"Accept": "application/json", "User-Agent": "HD-Agent-12/1.0"}
+        if self.auth_mode == "instagram":
+            async with self.http_client_factory(timeout=30) as client:
+                response = await client.post(
+                    f"{INSTAGRAM_TOKEN_HOST}/oauth/access_token",
+                    data={
+                        "client_id": self.app_id,
+                        "client_secret": self.app_secret,
+                        "grant_type": "authorization_code",
+                        "redirect_uri": self.redirect_uri,
+                        "code": code,
+                    },
+                    headers=headers,
+                )
+                payload = await self._json(response, "Instagram did not accept the authorization code.")
+                token_row = payload
+                if isinstance(payload.get("data"), list) and payload["data"]:
+                    token_row = payload["data"][0]
+                short_token = str(token_row.get("access_token") or "")
+                if not short_token:
+                    raise InstagramError("Instagram returned an incomplete authorization response.")
+                long_response = await client.get(
+                    f"{INSTAGRAM_GRAPH_HOST}/access_token",
+                    params={
+                        "grant_type": "ig_exchange_token",
+                        "client_secret": self.app_secret,
+                        "access_token": short_token,
+                    },
+                    headers=headers,
+                )
+                long_payload = await self._json(long_response, "Instagram could not create a long-lived token.")
+            user_token = str(long_payload.get("access_token") or "")
+            if not user_token:
+                raise InstagramError("Instagram returned an incomplete long-lived token response.")
+            profile = await self._get_instagram_login_profile(user_token)
+        else:
+            async with self.http_client_factory(timeout=30) as client:
+                response = await client.post(
+                    f"{GRAPH_HOST}/{self.graph_version}/oauth/access_token",
+                    data={
+                        "client_id": self.app_id,
+                        "client_secret": self.app_secret,
+                        "redirect_uri": self.redirect_uri,
+                        "code": code,
+                    },
+                    headers=headers,
+                )
+                payload = await self._json(response, "Meta did not accept the authorization code.")
+            user_token = str(payload.get("access_token") or "")
+            if not user_token:
+                raise InstagramError("Meta returned an incomplete authorization response.")
+            profile = await self._get_profile(user_token)
         ig = profile["instagram"]
         page = profile["page"]
         now = utcnow()
@@ -374,6 +465,7 @@ class InstagramIntegration:
             "pageName": str(page.get("name") or "")[:200],
             "encryptedSystemUserToken": self.encrypt(user_token),
             "encryptedPageToken": self.encrypt(profile["pageToken"]),
+            "authMode": self.auth_mode,
             "verified": True,
             "connectedAt": now,
             "connectedBy": saved.get("adminId"),
@@ -428,11 +520,17 @@ class InstagramIntegration:
             raise InstagramError("The social image must have a public HTTPS URL.")
         page_token = self.decrypt(config.get("encryptedPageToken", ""))
         ig_id = str(config.get("instagramUserId") or "")
+        graph_host = INSTAGRAM_GRAPH_HOST if config.get("authMode") == "instagram" else GRAPH_HOST
+        graph_headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {page_token}",
+            "User-Agent": "HD-Agent-12/1.0",
+        }
         async with self.http_client_factory(timeout=45) as client:
             create_response = await client.post(
-                f"{GRAPH_HOST}/{self.graph_version}/{ig_id}/media",
-                data={"image_url": draft["imageUrl"], "caption": draft["caption"], "access_token": page_token},
-                headers={"Accept": "application/json", "User-Agent": "HD-Agent-12/1.0"},
+                f"{graph_host}/{self.graph_version}/{ig_id}/media",
+                data={"image_url": draft["imageUrl"], "caption": draft["caption"]},
+                headers=graph_headers,
             )
             created = await self._json(create_response, "Meta could not create the Instagram media container.")
             creation_id = str(created.get("id") or "")
@@ -441,9 +539,9 @@ class InstagramIntegration:
             ready = False
             for attempt in range(12):
                 status_response = await client.get(
-                    f"{GRAPH_HOST}/{self.graph_version}/{creation_id}",
-                    params={"fields": "status_code,status", "access_token": page_token},
-                    headers={"Accept": "application/json", "User-Agent": "HD-Agent-12/1.0"},
+                    f"{graph_host}/{self.graph_version}/{creation_id}",
+                    params={"fields": "status_code,status"},
+                    headers=graph_headers,
                 )
                 container_status = await self._json(
                     status_response, "Meta could not check the Instagram media container."
@@ -459,18 +557,18 @@ class InstagramIntegration:
             if not ready:
                 raise InstagramError("The Instagram image was not ready before the publishing timeout.")
             publish_response = await client.post(
-                f"{GRAPH_HOST}/{self.graph_version}/{ig_id}/media_publish",
-                data={"creation_id": creation_id, "access_token": page_token},
-                headers={"Accept": "application/json", "User-Agent": "HD-Agent-12/1.0"},
+                f"{graph_host}/{self.graph_version}/{ig_id}/media_publish",
+                data={"creation_id": creation_id},
+                headers=graph_headers,
             )
             published = await self._json(publish_response, "Meta could not publish the Instagram post.")
             media_id = str(published.get("id") or "")
             permalink = ""
             if media_id:
                 detail_response = await client.get(
-                    f"{GRAPH_HOST}/{self.graph_version}/{media_id}",
-                    params={"fields": "id,permalink,timestamp", "access_token": page_token},
-                    headers={"Accept": "application/json", "User-Agent": "HD-Agent-12/1.0"},
+                    f"{graph_host}/{self.graph_version}/{media_id}",
+                    params={"fields": "id,permalink,timestamp"},
+                    headers=graph_headers,
                 )
                 detail = await self._json(detail_response, "Meta could not return the published post details.")
                 permalink = str(detail.get("permalink") or "")
