@@ -2511,7 +2511,7 @@ CLOVER_MERCHANT_ID = os.environ.get("CLOVER_MERCHANT_ID", "").strip()
 
 INSTAGRAM_APP_ID = os.environ.get("INSTAGRAM_APP_ID", "").strip()
 INSTAGRAM_APP_SECRET = os.environ.get("INSTAGRAM_APP_SECRET", "").strip()
-INSTAGRAM_AUTH_MODE = os.environ.get("INSTAGRAM_AUTH_MODE", "facebook").strip().lower()
+INSTAGRAM_AUTH_MODE = os.environ.get("INSTAGRAM_AUTH_MODE", "unified").strip().lower()
 INSTAGRAM_CONFIG_ID = os.environ.get("INSTAGRAM_CONFIG_ID", "").strip()
 INSTAGRAM_BUSINESS_ID = os.environ.get("INSTAGRAM_BUSINESS_ID", "").strip()
 INSTAGRAM_GRAPH_VERSION = os.environ.get("INSTAGRAM_GRAPH_VERSION", "v27.0").strip()

@@ -213,7 +213,8 @@ class InstagramIntegration:
         self.public_url = str(public_url or "").strip().rstrip("/")
         self.expected_username = normalize_username(expected_username)
         self.graph_version = graph_version if graph_version in ALLOWED_GRAPH_VERSIONS else "v27.0"
-        self.auth_mode = "instagram" if str(auth_mode or "").strip().lower() == "instagram" else "facebook"
+        requested_mode = str(auth_mode or "").strip().lower()
+        self.auth_mode = requested_mode if requested_mode in {"unified", "instagram"} else "facebook"
         self.http_client_factory = http_client_factory or (lambda **kwargs: httpx.AsyncClient(**kwargs))
         secret = str(encryption_secret or "")
         self.cipher = None
@@ -230,6 +231,8 @@ class InstagramIntegration:
         )
         if self.auth_mode == "instagram":
             return common
+        if self.auth_mode == "unified":
+            return bool(common and self.config_id)
         return bool(common and self.config_id and self.business_id)
 
     def encrypt(self, value: str) -> str:
@@ -279,6 +282,18 @@ class InstagramIntegration:
                 "enable_fb_login": "false",
             })
             return f"{INSTAGRAM_LOGIN_HOST}/oauth/authorize?{query}"
+        if self.auth_mode == "unified":
+            query = urlencode({
+                "client_id": self.app_id,
+                "config_id": self.config_id,
+                "display": "popup",
+                "override_default_response_type": "true",
+                "redirect_uri": self.redirect_uri,
+                "response_type": "code",
+                "state": state,
+                "prompt": "login",
+            })
+            return f"{LOGIN_HOST}/dialog/oauth?{query}"
         query = urlencode({
             "client_id": self.app_id,
             "redirect_uri": self.redirect_uri,
@@ -395,6 +410,44 @@ class InstagramIntegration:
             "pageToken": token,
         }
 
+    async def _get_unified_profile(self, token: str) -> dict:
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "HD-Agent-12/1.0",
+        }
+        async with self.http_client_factory(timeout=30) as client:
+            business_response = await client.get(
+                f"{GRAPH_HOST}/{self.graph_version}/me",
+                params={"fields": "client_business_id"},
+                headers=headers,
+            )
+            business_payload = await self._json(
+                business_response, "Meta did not return the connected business portfolio."
+            )
+            accounts_response = await client.get(
+                f"{GRAPH_HOST}/{self.graph_version}/me/assigned_instagram_accounts",
+                params={"fields": "id,username,name,profile_picture_url", "limit": 100},
+                headers=headers,
+            )
+            accounts_payload = await self._json(
+                accounts_response, "Meta did not return the assigned Instagram accounts."
+            )
+        accounts = accounts_payload.get("data") or []
+        for account in accounts:
+            if normalize_username(account.get("username")) == self.expected_username:
+                return {
+                    "page": {"id": "", "name": "Unified Login"},
+                    "instagram": account,
+                    "pageToken": token,
+                    "clientBusinessId": str(business_payload.get("client_business_id") or ""),
+                }
+        found = ", ".join(sorted({
+            normalize_username(account.get("username")) for account in accounts if account.get("username")
+        }))
+        suffix = f" Meta returned: {found}." if found else " No assigned Instagram account was returned."
+        raise InstagramError(f"Expected @{self.expected_username}, but it was not authorized.{suffix}")
+
     async def exchange_code(self, code: str, state: str) -> dict:
         # Re-assert this at the credential boundary in case a process logging
         # configuration was applied after this module was imported.
@@ -459,7 +512,11 @@ class InstagramIntegration:
             user_token = str(payload.get("access_token") or "")
             if not user_token:
                 raise InstagramError("Meta returned an incomplete authorization response.")
-            profile = await self._get_profile(user_token)
+            profile = (
+                await self._get_unified_profile(user_token)
+                if self.auth_mode == "unified"
+                else await self._get_profile(user_token)
+            )
         ig = profile["instagram"]
         page = profile["page"]
         now = utcnow()
@@ -472,6 +529,7 @@ class InstagramIntegration:
             "encryptedSystemUserToken": self.encrypt(user_token),
             "encryptedPageToken": self.encrypt(profile["pageToken"]),
             "authMode": self.auth_mode,
+            "clientBusinessId": str(profile.get("clientBusinessId") or ""),
             "verified": True,
             "connectedAt": now,
             "connectedBy": saved.get("adminId"),

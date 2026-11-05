@@ -116,6 +116,32 @@ class FakeInstagramLoginClient:
         return FakeResponse({}, 404)
 
 
+class FakeUnifiedLoginClient:
+    def __init__(self):
+        self.requests = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def post(self, url, **kwargs):
+        self.requests.append(("POST", url, kwargs))
+        if url.endswith("/oauth/access_token"):
+            return FakeResponse({"access_token": "system-user-token"})
+        return FakeResponse({}, 404)
+
+    async def get(self, url, **kwargs):
+        self.requests.append(("GET", url, kwargs))
+        if url.endswith("/me"):
+            return FakeResponse({"client_business_id": "business-client-1", "id": "system-user-1"})
+        if url.endswith("/me/assigned_instagram_accounts"):
+            return FakeResponse({"data": [
+                {"id": "ig-unified-1", "username": "hdsmokeshop.altamonte", "name": "HD Smoke Shop"}
+            ]})
+        return FakeResponse({}, 404)
+
 class FakeDB:
     def __init__(self):
         self.instagram_oauth_states = FakeCollection()
@@ -230,6 +256,46 @@ def test_instagram_login_exchange_verifies_account_and_uses_post_for_secret():
         profile_request = next(row for row in client.requests if row[1].endswith("/me"))
         assert profile_request[2]["headers"]["Authorization"] == "Bearer long-token"
         assert all("short-token" not in row[1] and "long-token" not in row[1] for row in client.requests)
+
+    asyncio.run(go())
+
+
+def test_unified_login_uses_meta_configuration_url():
+    db = FakeDB()
+    agent = integration(db, auth_mode="unified")
+
+    async def go():
+        url = await agent.create_authorization_url("admin-1")
+        parsed = urlsplit(url)
+        query = parse_qs(parsed.query)
+        assert parsed.netloc == "www.facebook.com"
+        assert parsed.path == "/dialog/oauth"
+        assert query["config_id"] == ["4461075690813851"]
+        assert query["display"] == ["popup"]
+        assert query["prompt"] == ["login"]
+        assert query["override_default_response_type"] == ["true"]
+        assert "server-only-secret" not in url
+
+    asyncio.run(go())
+
+
+def test_unified_login_reads_assigned_instagram_accounts():
+    db = FakeDB()
+    agent = integration(db, auth_mode="unified")
+    client = FakeUnifiedLoginClient()
+    agent.http_client_factory = lambda **kwargs: client
+
+    async def go():
+        url = await agent.create_authorization_url("admin-1")
+        state = parse_qs(urlsplit(url).query)["state"][0]
+        doc = await agent.exchange_code("authorization-code", state)
+        assert doc["username"] == "hdsmokeshop.altamonte"
+        assert doc["instagramUserId"] == "ig-unified-1"
+        assert doc["clientBusinessId"] == "business-client-1"
+        assert doc["authMode"] == "unified"
+        assigned = next(row for row in client.requests if row[1].endswith("/me/assigned_instagram_accounts"))
+        assert assigned[2]["headers"]["Authorization"] == "Bearer system-user-token"
+        assert all("system-user-token" not in row[1] for row in client.requests)
 
     asyncio.run(go())
 
