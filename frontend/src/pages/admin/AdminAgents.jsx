@@ -3,6 +3,7 @@ import {
   Activity, Bot, Camera, CheckCircle2, ChevronRight, CirclePause, CirclePlay,
   ClipboardCheck, Globe2, HeartHandshake, Image, Megaphone, PackageSearch,
   RefreshCw, Route, ShieldCheck, Sparkles, Store, Truck, Users, Zap,
+  Share2,
 } from "lucide-react";
 import api from "../../api";
 
@@ -14,6 +15,7 @@ const schedules = [
   { id: "briefing", name: "Owner daily briefing", every: "24 hours", icon: Sparkles },
   { id: "compliance", name: "Age, ID, category, and claim signals", every: "24 hours", icon: ShieldCheck },
   { id: "photos", name: "Missing and duplicate images", every: "24 hours", icon: Image },
+  { id: "social", name: "Branded neutral-business social draft", every: "7 days", icon: Share2 },
 ];
 
 const agentDefinitions = [
@@ -28,6 +30,7 @@ const agentDefinitions = [
   { id: "support", name: "Customer support", description: "Verified answer drafts with uncertain questions escalated.", icon: Users, tone: "blue" },
   { id: "competitors", name: "Competitor watch", description: "Owner-supplied public snapshots without account access.", icon: Store, tone: "slate" },
   { id: "delivery", name: "Delivery readiness", description: "ZIP, age, ID, and payment readiness—never dispatches.", icon: Truck, tone: "lime" },
+  { id: "social", name: "Social content studio", description: "Branded image and caption drafts with regulated-content screening.", icon: Share2, tone: "violet" },
 ];
 
 const toneClass = {
@@ -74,6 +77,7 @@ const AdminAgents = () => {
       support: "Support drafting workspace ready; nothing sent",
       competitors: "Awaiting an owner-supplied public competitor snapshot",
       delivery: "Delivery readiness workspace ready; no dispatch created",
+      social: "Branded image and caption workspace ready; nothing posted",
     };
     return results[id] || "Read-only check completed";
   };
@@ -84,9 +88,9 @@ const AdminAgents = () => {
       const result = resultFor(agent.id);
       const nextActivity = { id: `${agent.id}-${Date.now()}`, agent: agent.name, result, time: formatTime() };
       setActivity((rows) => [nextActivity, ...rows].slice(0, 8));
-      if (["operations", "inventory", "photos", "reputation", "delivery"].includes(agent.id)) {
+      if (["operations", "inventory", "photos", "reputation", "delivery", "social"].includes(agent.id)) {
         setApprovals((rows) => rows.some((r) => r.agentId === agent.id) ? rows : [{
-          id: Date.now(), agentId: agent.id, agent: agent.name, summary: result, risk: ["inventory", "reputation", "delivery"].includes(agent.id) ? "High" : "Medium", status: "Pending",
+          id: Date.now(), agentId: agent.id, agent: agent.name, summary: result, risk: ["inventory", "reputation", "delivery", "social"].includes(agent.id) ? "High" : "Medium", status: "Pending",
         }, ...rows]);
       }
       setNotice(`${agent.name} completed a read-only preview at ${formatTime()}. External writes: 0.`);
@@ -124,7 +128,7 @@ const AdminAgents = () => {
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         {[
-          ["11", "Active agents"], ["7", "Auto schedules"], [String(approvals.filter((r) => r.status === "Pending").length), "Pending approvals"], ["0", "External writes"],
+          ["12", "Active agents"], ["8", "Auto schedules"], [String(approvals.filter((r) => r.status === "Pending").length), "Pending approvals"], ["0", "External writes"],
         ].map(([value, label]) => <div key={label} className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"><p className="text-2xl md:text-3xl font-black tracking-tight text-neutral-900">{value}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[.12em] text-neutral-500">{label}</p></div>)}
       </div>
 
