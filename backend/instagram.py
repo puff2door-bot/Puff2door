@@ -433,14 +433,61 @@ class InstagramIntegration:
             accounts_payload = await self._json(
                 accounts_response, "Meta did not return the assigned Instagram accounts."
             )
-        accounts = accounts_payload.get("data") or []
+            accounts = list(accounts_payload.get("data") or [])
+
+            # Unified Login can return an empty assigned_instagram_accounts
+            # edge when the selected Instagram asset is owned by the same
+            # business portfolio that owns the app. The OAuth review still
+            # identifies the client portfolio, so inspect that portfolio's
+            # Instagram edges before treating the connection as unauthorized.
+            client_business_id = str(business_payload.get("client_business_id") or "")
+            business_ids = []
+            for business_id in (client_business_id, self.business_id):
+                if business_id and business_id not in business_ids:
+                    business_ids.append(business_id)
+            seen_ids = {str(account.get("id")) for account in accounts if account.get("id")}
+            for business_id in business_ids:
+                for edge in ("instagram_accounts", "owned_instagram_accounts"):
+                    response = await client.get(
+                        f"{GRAPH_HOST}/{self.graph_version}/{business_id}/{edge}",
+                        params={"fields": "id,username,name,profile_picture_url", "limit": 100},
+                        headers=headers,
+                    )
+                    try:
+                        payload = await self._json(
+                            response, "Meta did not return the business Instagram accounts."
+                        )
+                    except InstagramError:
+                        continue
+                    for account in payload.get("data") or []:
+                        account_id = str(account.get("id") or "")
+                        if account_id and account_id not in seen_ids:
+                            accounts.append(account)
+                            seen_ids.add(account_id)
+
+            # Some portfolio edges return only an ID even when profile fields
+            # were requested. Verify those IDs directly with the same scoped
+            # token instead of rejecting a legitimately selected account.
+            for account in accounts:
+                if account.get("id") and not account.get("username"):
+                    detail_response = await client.get(
+                        f"{GRAPH_HOST}/{self.graph_version}/{account['id']}",
+                        params={"fields": "id,username,name,profile_picture_url"},
+                        headers=headers,
+                    )
+                    try:
+                        account.update(await self._json(
+                            detail_response, "Meta could not verify the Instagram profile."
+                        ))
+                    except InstagramError:
+                        continue
         for account in accounts:
             if normalize_username(account.get("username")) == self.expected_username:
                 return {
                     "page": {"id": "", "name": "Unified Login"},
                     "instagram": account,
                     "pageToken": token,
-                    "clientBusinessId": str(business_payload.get("client_business_id") or ""),
+                    "clientBusinessId": client_business_id,
                 }
         found = ", ".join(sorted({
             normalize_username(account.get("username")) for account in accounts if account.get("username")

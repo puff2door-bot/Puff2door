@@ -117,8 +117,12 @@ class FakeInstagramLoginClient:
 
 
 class FakeUnifiedLoginClient:
-    def __init__(self):
+    def __init__(self, assigned_accounts=None, business_accounts=None):
         self.requests = []
+        self.assigned_accounts = assigned_accounts if assigned_accounts is not None else [
+            {"id": "ig-unified-1", "username": "hdsmokeshop.altamonte", "name": "HD Smoke Shop"}
+        ]
+        self.business_accounts = business_accounts or []
 
     async def __aenter__(self):
         return self
@@ -137,9 +141,13 @@ class FakeUnifiedLoginClient:
         if url.endswith("/me"):
             return FakeResponse({"client_business_id": "business-client-1", "id": "system-user-1"})
         if url.endswith("/me/assigned_instagram_accounts"):
-            return FakeResponse({"data": [
-                {"id": "ig-unified-1", "username": "hdsmokeshop.altamonte", "name": "HD Smoke Shop"}
-            ]})
+            return FakeResponse({"data": self.assigned_accounts})
+        if url.endswith("/instagram_accounts") or url.endswith("/owned_instagram_accounts"):
+            return FakeResponse({"data": self.business_accounts})
+        if url.endswith("/ig-unified-1"):
+            return FakeResponse({
+                "id": "ig-unified-1", "username": "hdsmokeshop.altamonte", "name": "HD Smoke Shop"
+            })
         return FakeResponse({}, 404)
 
 class FakeDB:
@@ -296,6 +304,48 @@ def test_unified_login_reads_assigned_instagram_accounts():
         assigned = next(row for row in client.requests if row[1].endswith("/me/assigned_instagram_accounts"))
         assert assigned[2]["headers"]["Authorization"] == "Bearer system-user-token"
         assert all("system-user-token" not in row[1] for row in client.requests)
+
+    asyncio.run(go())
+
+
+def test_unified_login_falls_back_to_portfolio_owned_account():
+    db = FakeDB()
+    agent = integration(db, auth_mode="unified")
+    client = FakeUnifiedLoginClient(
+        assigned_accounts=[],
+        business_accounts=[
+            {"id": "ig-unified-1", "username": "hdsmokeshop.altamonte", "name": "HD Smoke Shop"}
+        ],
+    )
+    agent.http_client_factory = lambda **kwargs: client
+
+    async def go():
+        url = await agent.create_authorization_url("admin-1")
+        state = parse_qs(urlsplit(url).query)["state"][0]
+        doc = await agent.exchange_code("authorization-code", state)
+        assert doc["username"] == "hdsmokeshop.altamonte"
+        assert doc["instagramUserId"] == "ig-unified-1"
+        assert any(row[1].endswith("/business-client-1/instagram_accounts") for row in client.requests)
+        assert all("system-user-token" not in row[1] for row in client.requests)
+
+    asyncio.run(go())
+
+
+def test_unified_login_hydrates_portfolio_account_without_username():
+    db = FakeDB()
+    agent = integration(db, auth_mode="unified")
+    client = FakeUnifiedLoginClient(
+        assigned_accounts=[],
+        business_accounts=[{"id": "ig-unified-1"}],
+    )
+    agent.http_client_factory = lambda **kwargs: client
+
+    async def go():
+        url = await agent.create_authorization_url("admin-1")
+        state = parse_qs(urlsplit(url).query)["state"][0]
+        doc = await agent.exchange_code("authorization-code", state)
+        assert doc["username"] == "hdsmokeshop.altamonte"
+        assert any(row[1].endswith("/ig-unified-1") for row in client.requests)
 
     asyncio.run(go())
 
