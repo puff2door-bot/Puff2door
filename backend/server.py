@@ -3353,8 +3353,11 @@ async def instagram_oauth_callback(code: str = "", state: str = "", error: str =
     try:
         await instagram_integration().exchange_code(code, state)
         return RedirectResponse(f"{SITE_URL}/admin/agents?instagram=connected", status_code=303)
-    except InstagramError:
-        logger.error("Instagram authorization failed")
+    except InstagramError as exc:
+        # InstagramError messages are deliberately constructed without
+        # credentials. Keep the provider's reason so failed OAuth callbacks
+        # can be diagnosed without enabling verbose HTTP client logging.
+        logger.error("Instagram authorization failed: %s", instagram_error_detail(exc))
         return RedirectResponse(f"{SITE_URL}/admin/agents?instagram=error", status_code=303)
 
 
