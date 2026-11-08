@@ -70,7 +70,8 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
   const [busy, setBusy] = useState(false);
   const [confirmCloverPrice, setConfirmCloverPrice] = useState(false);
   const [confirmCloverStock, setConfirmCloverStock] = useState(false);
-  const [createInClover, setCreateInClover] = useState(false);
+  // New products go to Clover by default so both systems stay in step.
+  const [createInClover, setCreateInClover] = useState(!initial?.id);
   const { toast } = useToast();
   const set = (k, v) => setF((prev) => ({ ...prev, [k]: v }));
   const [brandList, setBrandList] = useState([]);
