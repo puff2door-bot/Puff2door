@@ -410,6 +410,74 @@ class InstagramIntegration:
             "pageToken": token,
         }
 
+    async def _unified_fallback_accounts(self, client, token: str, headers: dict, seen_ids: set) -> tuple:
+        """Find the selected Instagram account when the assigned/portfolio
+        edges come back empty. Meta always records the assets a person picked
+        in the consent dialog as granular-scope target IDs on the token, so
+        debug_token is the most reliable source; Page-linked accounts are
+        checked too. Returns (accounts, diagnostic notes without secrets)."""
+        notes: list = []
+        candidate_ids: list = []
+        try:
+            response = await client.get(
+                f"{GRAPH_HOST}/{self.graph_version}/debug_token",
+                params={"input_token": token, "access_token": f"{self.app_id}|{self.app_secret}"},
+                headers={"Accept": "application/json", "User-Agent": "HD-Agent-12/1.0"},
+            )
+            data = (await self._json(response, "debug_token failed")).get("data") or {}
+            scopes = data.get("granular_scopes") or []
+            notes.append("scopes=" + ",".join(sorted(str(s.get("scope")) for s in scopes)))
+            notes.append(f"tokenType={data.get('type')}")
+            for scope in scopes:
+                if str(scope.get("scope", "")).startswith("instagram"):
+                    for target in scope.get("target_ids") or []:
+                        if str(target) not in candidate_ids:
+                            candidate_ids.append(str(target))
+            notes.append(f"igTargets={len(candidate_ids)}")
+        except InstagramError as exc:
+            notes.append(f"debug_token error: {exc}")
+        except Exception as exc:  # network or parse failure
+            notes.append(f"debug_token exception: {type(exc).__name__}")
+
+        found: list = []
+        try:
+            response = await client.get(
+                f"{GRAPH_HOST}/{self.graph_version}/me/accounts",
+                params={"fields": "id,instagram_business_account{id,username,name,profile_picture_url}", "limit": 100},
+                headers=headers,
+            )
+            pages = (await self._json(response, "pages failed")).get("data") or []
+            notes.append(f"pages={len(pages)}")
+            for page in pages:
+                ig = page.get("instagram_business_account") or {}
+                if ig.get("id") and str(ig["id"]) not in seen_ids:
+                    found.append(dict(ig))
+                    seen_ids.add(str(ig["id"]))
+        except InstagramError as exc:
+            notes.append(f"me/accounts error: {exc}")
+        except Exception as exc:
+            notes.append(f"me/accounts exception: {type(exc).__name__}")
+
+        for account_id in candidate_ids:
+            if account_id in seen_ids:
+                continue
+            try:
+                response = await client.get(
+                    f"{GRAPH_HOST}/{self.graph_version}/{account_id}",
+                    params={"fields": "id,username,name,profile_picture_url"},
+                    headers=headers,
+                )
+                account = await self._json(response, "Meta could not verify the Instagram profile.")
+                if account.get("id"):
+                    found.append(account)
+                    seen_ids.add(account_id)
+            except InstagramError as exc:
+                notes.append(f"target {account_id} error: {exc}")
+            except Exception as exc:
+                notes.append(f"target lookup exception: {type(exc).__name__}")
+        notes.append(f"fallbackFound={','.join(normalize_username(a.get('username')) for a in found) or 'none'}")
+        return found, notes
+
     async def _get_unified_profile(self, token: str) -> dict:
         headers = {
             "Accept": "application/json",
@@ -481,6 +549,16 @@ class InstagramIntegration:
                         ))
                     except InstagramError:
                         continue
+
+            if not any(
+                normalize_username(a.get("username")) == self.expected_username for a in accounts
+            ):
+                extra, notes = await self._unified_fallback_accounts(client, token, headers, seen_ids)
+                accounts.extend(extra)
+                if notes:
+                    logging.getLogger("server").warning(
+                        "Instagram unified lookup notes: %s", "; ".join(notes)[:1500]
+                    )
         for account in accounts:
             if normalize_username(account.get("username")) == self.expected_username:
                 return {
