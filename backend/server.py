@@ -5359,6 +5359,47 @@ async def pickup_expiry_schedule():
     asyncio.create_task(loop())
 
 
+# ---- HD AgentOS: real read-only store checks (backend/agents.py) ----
+import agents as hd_agents
+
+
+def agents_ctx() -> "hd_agents.Ctx":
+    async def clover_status():
+        return await admin_clover_status({"id": "agents"})
+
+    async def instagram_status():
+        return await instagram_integration().status()
+
+    return hd_agents.Ctx(db, os.environ.get("PUBLIC_URL", "https://puff2door.com"), get_settings, clover_status, instagram_status)
+
+
+@api_router.get("/admin/agents")
+async def admin_agents_overview(admin: dict = Depends(get_admin_user)):
+    latest = await hd_agents.latest_results(db)
+    return {"agents": [{**a, "latest": latest.get(a["id"])} for a in hd_agents.AGENTS]}
+
+
+@api_router.post("/admin/agents/{agent_id}/run")
+async def admin_agents_run(agent_id: str, email: bool = False, admin: dict = Depends(get_admin_user)):
+    if agent_id not in hd_agents.RUNNERS:
+        raise HTTPException(status_code=404, detail="Unknown agent")
+    result = await hd_agents.run_agent(agents_ctx(), agent_id)
+    if email:
+        await hd_agents.send_email(f"Test: {result['headline']}", [result], f"agent_test_{agent_id}")
+    return result
+
+
+@api_router.get("/admin/agents/{agent_id}/history")
+async def admin_agents_history(agent_id: str, admin: dict = Depends(get_admin_user)):
+    rows = await db.agent_runs.find({"agent": agent_id}, {"_id": 0}).sort("ranAt", -1).to_list(30)
+    return {"runs": rows}
+
+
+@app.on_event("startup")
+async def hd_agents_schedule():
+    asyncio.create_task(hd_agents.scheduler_loop(agents_ctx(), logger))
+
+
 @app.on_event("startup")
 async def agent12_social_schedule():
     """Fallback scheduler; the protected GitHub trigger also wakes free hosting."""
