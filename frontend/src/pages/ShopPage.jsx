@@ -42,10 +42,14 @@ const ShopPage = () => {
       list = slug ? getProductsByCategory(slug) : [...products];
     }
     if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      list = products.filter(
-        (p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)
-      );
+      // Every word must appear somewhere in the name, category or brand, so
+      // "royal honey" also finds "VVIP Honey" from the Royal Honey brand.
+      const words = searchQuery.toLowerCase().split(/\s+/).filter(Boolean);
+      list = products.filter((p) => {
+        const hay = [p.name, p.category, p.categorySlug, p.brandName, (p.brand || "").replace(/-/g, " ")]
+          .filter(Boolean).join(" ").toLowerCase();
+        return words.every((w) => hay.includes(w));
+      });
     }
     return list;
   }, [slug, searchQuery, isBrand, products, getProductsByCategory]);
