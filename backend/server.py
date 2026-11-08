@@ -5507,6 +5507,66 @@ async def admin_descriptions_skip(inp: DescriptionDecision, admin: dict = Depend
     return {"skipped": res.modified_count}
 
 
+# ---- Missing barcodes (backend/barcodes.py): Clover items the register can't scan ----
+import barcodes as hd_barcodes
+
+
+class BarcodeSaveInput(BaseModel):
+    cloverItemId: str = Field(min_length=1, max_length=40)
+    code: str = Field(min_length=1, max_length=40)
+    allowBadChecksum: bool = False
+
+
+class BarcodeItemInput(BaseModel):
+    cloverItemId: str = Field(min_length=1, max_length=40)
+    name: str = Field(default="", max_length=300)
+    ignored: bool = True
+
+
+def _barcode_http(exc: Exception):
+    if isinstance(exc, hd_barcodes.BarcodeError):
+        return HTTPException(status_code=exc.status, detail={"message": str(exc), **exc.extra})
+    return HTTPException(status_code=502, detail={"message": clover_error_detail(exc)})
+
+
+@api_router.get("/admin/barcodes/missing")
+async def admin_barcodes_missing(admin: dict = Depends(get_admin_user)):
+    try:
+        return await hd_barcodes.missing_report(db, clover_integration())
+    except (hd_barcodes.BarcodeError, CloverError) as exc:
+        raise _barcode_http(exc)
+
+
+@api_router.post("/admin/barcodes/save")
+async def admin_barcodes_save(inp: BarcodeSaveInput, admin: dict = Depends(get_admin_user)):
+    try:
+        return await hd_barcodes.save_code(db, clover_integration(), inp.cloverItemId, inp.code,
+                                           admin.get("email", ""), inp.allowBadChecksum)
+    except (hd_barcodes.BarcodeError, CloverError) as exc:
+        raise _barcode_http(exc)
+
+
+@api_router.post("/admin/barcodes/undo")
+async def admin_barcodes_undo(inp: BarcodeItemInput, admin: dict = Depends(get_admin_user)):
+    try:
+        return await hd_barcodes.undo_code(db, clover_integration(), inp.cloverItemId, admin.get("email", ""))
+    except (hd_barcodes.BarcodeError, CloverError) as exc:
+        raise _barcode_http(exc)
+
+
+@api_router.post("/admin/barcodes/ignore")
+async def admin_barcodes_ignore(inp: BarcodeItemInput, admin: dict = Depends(get_admin_user)):
+    return await hd_barcodes.set_ignored(db, inp.cloverItemId, inp.ignored, inp.name, admin.get("email", ""))
+
+
+@api_router.post("/admin/barcodes/store-code")
+async def admin_barcodes_store_code(admin: dict = Depends(get_admin_user)):
+    try:
+        return {"code": await hd_barcodes.new_store_code(db, clover_integration())}
+    except (hd_barcodes.BarcodeError, CloverError) as exc:
+        raise _barcode_http(exc)
+
+
 @app.on_event("startup")
 async def hd_agents_schedule():
     asyncio.create_task(hd_agents.scheduler_loop(agents_ctx(), logger))
