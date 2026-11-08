@@ -5395,6 +5395,40 @@ async def admin_agents_history(agent_id: str, admin: dict = Depends(get_admin_us
     return {"runs": rows}
 
 
+# ---- Read-only sales history for the agents (backend/sales.py) ----
+import sales as hd_sales
+_sales_job: dict = {"running": False, "result": None, "startedAt": None}
+
+
+async def _run_sales_sync(days: Optional[int] = None):
+    if _sales_job["running"]:
+        return
+    _sales_job.update(running=True, startedAt=now_utc())
+    try:
+        _sales_job["result"] = await hd_sales.sync_sales(db, clover_integration(), days, logger)
+    except Exception as exc:
+        _sales_job["result"] = {"error": str(exc)[:300]}
+        logger.error("Sales sync failed: %s", exc)
+    finally:
+        _sales_job["running"] = False
+
+
+@api_router.post("/admin/sales/sync")
+async def admin_sales_sync(admin: dict = Depends(get_admin_user)):
+    asyncio.create_task(_run_sales_sync())
+    return {"started": True}
+
+
+@api_router.get("/admin/sales/status")
+async def admin_sales_status(admin: dict = Depends(get_admin_user)):
+    from datetime import date as _date
+    days = await db.sales_days.find({}, {"_id": 0}).sort("date", -1).to_list(14)
+    today = datetime.now(hd_sales.ET).date()
+    top = await hd_sales.top_sellers(db, today - timedelta(days=7), today - timedelta(days=1), 10)
+    return {"job": _sales_job, "historyStart": await hd_sales.history_start(db),
+            "dayCount": await db.sales_days.count_documents({}), "recentDays": days, "topLast7Days": top}
+
+
 @app.on_event("startup")
 async def hd_agents_schedule():
     asyncio.create_task(hd_agents.scheduler_loop(agents_ctx(), logger))
