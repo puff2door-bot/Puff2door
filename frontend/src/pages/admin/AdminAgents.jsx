@@ -108,17 +108,21 @@ const AdminAgents = () => {
     }
   };
 
+  const postHour = Number.isInteger(socialStatus?.scheduleHour) ? socialStatus.scheduleHour : 11;
+  const postMinute = Number.isInteger(socialStatus?.scheduleMinute) ? socialStatus.scheduleMinute : 0;
+  const postTime = new Date(2000, 0, 1, postHour, postMinute).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
   const setDailyPublishing = async (enabled) => {
     const confirmed = enabled ? window.prompt("To enable daily publishing, type the exact Instagram username: hdsmokeshop.altamonte") : "";
     if (enabled && confirmed === null) return;
-    if (!window.confirm(enabled ? "Turn on one compliant Instagram post every day at 9:00 AM?" : "Pause daily Instagram publishing?")) return;
+    if (!window.confirm(enabled ? `Turn on one compliant Instagram post every day at ${postTime}?` : "Pause daily Instagram publishing?")) return;
     setSocialBusy("settings");
     try {
       const { data } = await api.put("/admin/social/settings", {
-        autoPublishEnabled: enabled, confirmUsername: confirmed || "", scheduleHour: 9, scheduleMinute: 0,
+        autoPublishEnabled: enabled, confirmUsername: confirmed || "", scheduleHour: postHour, scheduleMinute: postMinute,
       });
       setSocialStatus(data);
-      setNotice(enabled ? "Daily Instagram publishing is on for 9:00 AM Eastern." : "Daily Instagram publishing is paused.");
+      setNotice(enabled ? `Daily Instagram publishing is on for ${postTime} Eastern.` : "Daily Instagram publishing is paused.");
     } catch (error) {
       setNotice(socialError(error));
     } finally {
@@ -147,7 +151,7 @@ const AdminAgents = () => {
       competitors: "Awaiting an owner-supplied public competitor snapshot",
       delivery: "Delivery readiness workspace ready; no dispatch created",
       social: socialStatus?.connected
-        ? `Instagram @${socialStatus.username} verified; ${socialStatus.autoPublishEnabled ? "daily 9 AM publishing is on" : "daily publishing is off"}`
+        ? `Instagram @${socialStatus.username} verified; ${socialStatus.autoPublishEnabled ? `daily ${postTime} publishing is on` : "daily publishing is off"}`
         : "Daily Instagram creative preview ready; account connection is still required",
     };
     return results[id] || "Read-only check completed";

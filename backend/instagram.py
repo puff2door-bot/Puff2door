@@ -13,6 +13,7 @@ import base64
 import hashlib
 import io
 import logging
+import random
 import re
 import secrets
 import textwrap
@@ -69,6 +70,20 @@ THEMES = (
 THEME_NAMES = (
     "Emerald Glow", "Neon Violet", "Warm Local", "Electric Blue",
     "Bold Magenta", "Modern Teal", "Premium Gold",
+)
+
+
+# Product features for the daily post. THC/delta and kratom are never featured on Instagram.
+FEATURES = (
+    {"categories": ("disposable",), "title": "Disposables Wall", "sub": "Fresh flavors on the shelf this week.", "kicker": "NEW ON THE SHELF"},
+    {"categories": ("hookah",), "title": "Hookah Night", "sub": "Hookahs, coals and shisha in store.", "kicker": "HOOKAH CORNER"},
+    {"categories": ("e-liquids",), "title": "Pod Lineup", "sub": "Pods and kits in store now.", "kicker": "IN STOCK NOW"},
+    {"categories": ("glass-pipes",), "title": "Glass Gallery", "sub": "Pieces worth a closer look.", "kicker": "GLASS CASE"},
+    {"categories": ("paper-cones", "hemp-wraps"), "title": "Roll Call", "sub": "Papers, cones and wraps.", "kicker": "ROLLING ESSENTIALS"},
+    {"categories": ("disposable",), "title": "Cool Down", "sub": "Icy flavors for warm Florida nights.", "kicker": "FLAVOR OF THE WEEK"},
+    {"categories": ("cigars",), "title": "Cigar Shelf", "sub": "Wraps, minis and classics.", "kicker": "STAFF PICKS"},
+    {"categories": ("lighter", "smoke-accessories"), "title": "Gear Up", "sub": "Torches, trays, grinders and more.", "kicker": "ACCESSORIES"},
+    {"categories": ("disposable", "e-liquids"), "title": "This Week’s Lineup", "sub": "Big names, in stock in Altamonte Springs.", "kicker": "IN STOCK NOW"},
 )
 
 
@@ -682,27 +697,104 @@ class InstagramIntegration:
         await self.log("connect", "success", username=doc["username"], instagramUserId=doc["instagramUserId"])
         return doc
 
-    async def generate_draft(self, for_date: Optional[str] = None, source: str = "admin") -> dict:
+    async def _feature_products(self, categories: tuple, seed: int, count: int = 4) -> tuple[list, list]:
+        """Pick in-stock products with real photos from one of the given categories, one per
+        brand where possible. Returns (PIL images, product docs)."""
+        from motor.motor_asyncio import AsyncIOMotorGridFSBucket
+        rows = await self.db.products.find(
+            {"active": {"$ne": False}, "stock": {"$gt": 0}, "categorySlug": {"$in": list(categories)},
+             "image": {"$regex": r"^/api/files/"}},
+            {"_id": 0, "id": 1, "name": 1, "brand": 1, "brandName": 1, "image": 1, "categorySlug": 1},
+        ).to_list(2000)
+        usage: dict = {}
+        for r in rows:
+            usage[r["image"]] = usage.get(r["image"], 0) + 1
+        rows = [r for r in rows if usage[r["image"]] == 1 and not re.search(r"f[uc]+k", r.get("name", ""), re.I)]
+        rng = random.Random(seed)
+        rng.shuffle(rows)
+        picked, brands = [], set()
+        for r in rows:
+            key = r.get("brand") or r["name"].split()[0].lower()
+            if key in brands:
+                continue
+            picked.append(r)
+            brands.add(key)
+            if len(picked) == count:
+                break
+        for r in rows:
+            if len(picked) == count:
+                break
+            if r not in picked:
+                picked.append(r)
+        bucket = AsyncIOMotorGridFSBucket(self.db, bucket_name="uploads")
+        images, docs = [], []
+        for r in picked:
+            try:
+                stream = await bucket.open_download_stream_by_name(r["image"].replace("/api/files/", "", 1))
+                photo = Image.open(io.BytesIO(await stream.read()))
+                photo.load()
+                photo.info = {"brand": r.get("brandName") or ""}
+                images.append(photo)
+                docs.append(r)
+            except Exception:
+                continue
+        return images, docs
+
+    async def generate_draft(self, for_date: Optional[str] = None, source: str = "admin", layout: Optional[str] = None) -> dict:
+        import social_art
         zone = ZoneInfo(DEFAULT_TIMEZONE)
         date_key = for_date or utcnow().astimezone(zone).date().isoformat()
-        # Calendar-based rotation guarantees that consecutive days never reuse
-        # the same topic or visual theme, while still cycling indefinitely.
+        # Calendar rotation: consecutive days never repeat a layout, palette or feature.
         ordinal = date.fromisoformat(date_key).toordinal()
-        topic_index = ordinal % len(SAFE_TOPICS)
-        theme_index = ordinal % len(THEMES)
-        topic = SAFE_TOPICS[topic_index]
-        image = render_social_image(topic, theme_index)
+        layout = layout if layout in social_art.LAYOUTS else social_art.LAYOUTS[(ordinal + 3) % len(social_art.LAYOUTS)]
+        palette = (ordinal * 3) % len(social_art.PALETTES)
+        seed = ordinal * 7919 + (secrets.randbelow(1000) if source == "admin" else 0)
+        if layout == "stack":
+            topic = SAFE_TOPICS[ordinal % len(SAFE_TOPICS)]
+            title, sub, kick = topic[0], topic[1], "HD SMOKE SHOP"
+            images, docs, caption_topic = [], [], topic
+        else:
+            feature = FEATURES[ordinal % len(FEATURES)]
+            images, docs = await self._feature_products(feature["categories"], seed, 4 if layout == "grid" else 3)
+            if len(images) < (1 if layout in ("neon", "magazine") else 3):
+                layout = "stack"
+                topic = SAFE_TOPICS[ordinal % len(SAFE_TOPICS)]
+                title, sub, kick, caption_topic = topic[0], topic[1], "HD SMOKE SHOP", topic
+            else:
+                title, sub, kick = feature["title"], feature["sub"], feature["kicker"]
+                brands = []
+                for d in docs:
+                    name = d.get("brandName") or ""
+                    if name and name.title() not in brands:
+                        brands.append(name.title())
+                if layout == "grid" and brands:
+                    sub = " · ".join(brands[:4])
+                detail = ("In store now: " + ", ".join(brands[:4]) + ".") if brands else feature["sub"]
+                caption_topic = (feature["title"], feature["sub"], detail)
+        try:
+            caption = safe_caption(caption_topic)
+        except InstagramError:  # e.g. a brand name trips the regulated-word check
+            caption = safe_caption((caption_topic[0], caption_topic[1], "Stop by HD Smoke Shop to see the full selection."))
+        image = social_art.render_post(layout, palette, title, sub, kick, images, seed=seed)
         media_id = secrets.token_hex(16)
-        image_url = f"{self.public_url}/api/social/media/{media_id}.png"
+        image_url = f"{self.public_url}/api/social/media/{media_id}.jpg"
         draft_id = secrets.token_hex(12)
         now = utcnow()
         await self.db.social_media.insert_one({
-            "id": media_id, "bytes": image, "contentType": "image/png", "createdAt": now,
+            "id": media_id, "bytes": image, "contentType": "image/jpeg", "createdAt": now,
         })
+        # Keep storage small: drop images of old unpublished drafts after two weeks.
+        old_cutoff = now - timedelta(days=14)
+        stale = await self.db.social_drafts.find({"status": {"$ne": "published"}, "createdAt": {"$lt": old_cutoff}}, {"imageUrl": 1}).to_list(500)
+        for row in stale:
+            mid = str(row.get("imageUrl", "")).rsplit("/", 1)[-1].split(".")[0]
+            if mid:
+                await self.db.social_media.delete_one({"id": mid})
         draft = {
             "id": draft_id, "dateKey": date_key, "platform": "instagram",
-            "topic": topic[0], "caption": safe_caption(topic), "imageUrl": image_url,
-            "themeIndex": theme_index, "themeName": THEME_NAMES[theme_index],
+            "topic": title, "caption": caption, "imageUrl": image_url,
+            "themeIndex": palette, "themeName": social_art.PALETTES[palette]["name"], "layout": layout,
+            "designVersion": 2, "productIds": [d["id"] for d in docs],
             "status": "draft", "source": source,
             "createdAt": now, "updatedAt": now,
         }
@@ -805,7 +897,7 @@ class InstagramIntegration:
         existing = await self.db.social_drafts.find_one({"dateKey": date_key, "status": "published"})
         if existing:
             return {"status": "already_published", "published": False, "draftId": existing.get("id")}
-        draft = await self.db.social_drafts.find_one({"dateKey": date_key, "platform": "instagram", "status": "draft"})
+        draft = await self.db.social_drafts.find_one({"dateKey": date_key, "platform": "instagram", "status": "draft", "designVersion": 2})
         if not draft:
             draft = await self.generate_draft(date_key, source="agent12")
         result = await self.publish_draft(draft["id"], source="agent12")
