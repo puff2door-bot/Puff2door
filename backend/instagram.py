@@ -712,6 +712,19 @@ class InstagramIntegration:
         rows = [r for r in rows if usage[r["image"]] == 1 and not re.search(r"f[uc]+k", r.get("name", ""), re.I)]
         rng = random.Random(seed)
         rng.shuffle(rows)
+        # Feature what is actually selling (store + website, last 4 weeks) and skip items
+        # down to their last unit, so a post never promotes something about to run out.
+        try:
+            import sales
+            velocity = await sales.item_velocity(self.db, 28)
+        except Exception:
+            velocity = {}
+        stock = {r["id"]: int(r.get("stock") or 0) async for r in self.db.products.find({"id": {"$in": [x["id"] for x in rows]}}, {"_id": 0, "id": 1, "stock": 1})}
+        rows = [r for r in rows if stock.get(r["id"], 0) > 1] or rows
+        rows.sort(key=lambda r: -float((velocity.get(r["id"]) or {}).get("perWeek") or 0))
+        top = rows[:12]
+        rng.shuffle(top)
+        rows = top + rows[12:]
         picked, brands = [], set()
         for r in rows:
             key = r.get("brand") or r["name"].split()[0].lower()

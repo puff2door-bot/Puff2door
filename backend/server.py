@@ -5370,7 +5370,8 @@ def agents_ctx() -> "hd_agents.Ctx":
     async def instagram_status():
         return await instagram_integration().status()
 
-    return hd_agents.Ctx(db, os.environ.get("PUBLIC_URL", "https://puff2door.com"), get_settings, clover_status, instagram_status)
+    return hd_agents.Ctx(db, os.environ.get("PUBLIC_URL", "https://puff2door.com"), get_settings, clover_status, instagram_status,
+                         clover_integration)
 
 
 @api_router.get("/admin/agents")
@@ -5427,6 +5428,83 @@ async def admin_sales_status(admin: dict = Depends(get_admin_user)):
     top = await hd_sales.top_sellers(db, today - timedelta(days=7), today - timedelta(days=1), 10)
     return {"job": _sales_job, "historyStart": await hd_sales.history_start(db),
             "dayCount": await db.sales_days.count_documents({}), "recentDays": days, "topLast7Days": top}
+
+
+class AgentIgnoreInput(BaseModel):
+    item: str = Field(min_length=1, max_length=600)
+
+
+@api_router.post("/admin/agents/{agent_id}/ignore")
+async def admin_agents_ignore(agent_id: str, inp: AgentIgnoreInput, admin: dict = Depends(get_admin_user)):
+    key = hd_agents.issue_key(inp.item)
+    await db.agent_ignores.update_one({"agent": agent_id, "key": key},
+                                      {"$set": {"agent": agent_id, "key": key, "text": inp.item[:300], "at": now_utc()}}, upsert=True)
+    return {"ok": True}
+
+
+@api_router.post("/admin/agents/{agent_id}/unignore-all")
+async def admin_agents_unignore(agent_id: str, admin: dict = Depends(get_admin_user)):
+    res = await db.agent_ignores.delete_many({"agent": agent_id})
+    return {"restored": res.deleted_count}
+
+
+# ---- Product description drafts (backend/descriptions.py); owner approves before anything changes ----
+import descriptions as hd_descriptions
+
+
+class DescriptionDecision(BaseModel):
+    ids: List[str] = Field(min_length=1, max_length=200)
+    edits: Dict[str, str] = Field(default_factory=dict)
+
+
+@api_router.post("/admin/descriptions/generate")
+async def admin_descriptions_generate(admin: dict = Depends(get_admin_user)):
+    return await hd_descriptions.generate(db, hd_agents.CLAIM_WORDS)
+
+
+@api_router.get("/admin/descriptions")
+async def admin_descriptions_list(admin: dict = Depends(get_admin_user)):
+    rows = await db.description_drafts.find({"status": "pending"}).sort("createdAt", 1).to_list(60)
+    total = await db.description_drafts.count_documents({"status": "pending"})
+    approved = await db.description_drafts.count_documents({"status": "approved"})
+    return {"pending": total, "approved": approved,
+            "drafts": [{"id": str(r["_id"]), "productId": r["productId"], "name": r["name"], "category": r.get("category"), "text": r["text"]} for r in rows]}
+
+
+@api_router.post("/admin/descriptions/approve")
+async def admin_descriptions_approve(inp: DescriptionDecision, admin: dict = Depends(get_admin_user)):
+    from bson import ObjectId
+    done = 0
+    for raw in inp.ids:
+        try:
+            oid = ObjectId(raw)
+        except Exception:
+            continue
+        draft = await db.description_drafts.find_one({"_id": oid, "status": "pending"})
+        if not draft:
+            continue
+        text = (inp.edits.get(raw) or draft["text"]).strip()[:2000]
+        if hd_agents.CLAIM_WORDS.search(text):
+            raise HTTPException(status_code=400, detail=f"“{draft['name']}”: remove health-claim wording before approving.")
+        await db.products.update_one({"id": draft["productId"]}, {"$set": {"description": text, "updatedAt": now_utc()}})
+        await db.description_drafts.update_one({"_id": oid}, {"$set": {"status": "approved", "text": text, "decidedAt": now_utc(), "decidedBy": admin["id"]}})
+        done += 1
+    if done:
+        asyncio.create_task(refresh_static_sitemap())
+    return {"approved": done}
+
+
+@api_router.post("/admin/descriptions/skip")
+async def admin_descriptions_skip(inp: DescriptionDecision, admin: dict = Depends(get_admin_user)):
+    from bson import ObjectId
+    ids = []
+    for raw in inp.ids:
+        try:
+            ids.append(ObjectId(raw))
+        except Exception:
+            continue
+    res = await db.description_drafts.update_many({"_id": {"$in": ids}, "status": "pending"}, {"$set": {"status": "skipped", "decidedAt": now_utc()}})
+    return {"skipped": res.modified_count}
 
 
 @app.on_event("startup")

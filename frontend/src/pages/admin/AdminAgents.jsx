@@ -168,6 +168,44 @@ const AdminAgents = () => {
     setNotice("All checks ran just now.");
   };
 
+  const ignoreItem = async (agent, item) => {
+    try {
+      await api.post(`/admin/agents/${agent.id}/ignore`, { item });
+      setAgents((rows) => rows.map((row) => row.id === agent.id && row.latest
+        ? { ...row, latest: { ...row.latest, items: row.latest.items.filter((x) => x !== item), ignoredCount: (row.latest.ignoredCount || 0) + 1 } }
+        : row));
+      setNotice("Hidden. That finding won't show or be emailed again.");
+    } catch { setNotice("Could not hide that finding."); }
+  };
+
+  const restoreIgnored = async (agent) => {
+    await api.post(`/admin/agents/${agent.id}/unignore-all`).catch(() => {});
+    runAgent(agent);
+  };
+
+  const [descs, setDescs] = useState({ pending: 0, approved: 0, drafts: [] });
+  const [edits, setEdits] = useState({});
+  const [descBusy, setDescBusy] = useState(false);
+  const loadDescs = async () => { try { const { data } = await api.get("/admin/descriptions"); setDescs(data); } catch { /* ignore */ } };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadDescs(); }, []);
+  const descAction = async (kind, ids) => {
+    if (!ids.length) return;
+    setDescBusy(true);
+    try {
+      const { data } = await api.post(`/admin/descriptions/${kind}`, { ids, edits: kind === "approve" ? Object.fromEntries(ids.filter((id) => edits[id]).map((id) => [id, edits[id]])) : {} });
+      setNotice(kind === "approve" ? `${data.approved} descriptions added to your website.` : `${data.skipped} skipped.`);
+      await loadDescs();
+    } catch (error) {
+      setNotice(error?.response?.data?.detail || "Could not save those descriptions.");
+    } finally { setDescBusy(false); }
+  };
+  const generateDescs = async () => {
+    setDescBusy(true);
+    try { const { data } = await api.post("/admin/descriptions/generate"); setNotice(`${data.created} new description drafts are ready for review.`); await loadDescs(); }
+    catch { setNotice("Could not create drafts."); } finally { setDescBusy(false); }
+  };
+
   const counts = agents.reduce((acc, a) => { const st = a.latest?.status; if (st) acc[st] = (acc[st] || 0) + 1; return acc; }, {});
 
   return (
@@ -241,8 +279,19 @@ const AdminAgents = () => {
                 ) : <p className="mt-3 rounded-xl bg-neutral-50 p-3 text-sm text-neutral-500">Not run yet.</p>}
                 {isOpen && agent.latest?.items?.length > 0 && (
                   <ul className="mt-3 max-h-64 space-y-1.5 overflow-y-auto text-xs leading-5 text-neutral-600">
-                    {agent.latest.items.map((item, i) => <li key={i} className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-400" />{item}</li>)}
+                    {agent.latest.items.map((item, i) => (
+                      <li key={i} className="group flex gap-2">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-400" />
+                        <span className="min-w-0 flex-1">{item}</span>
+                        {!["watchdog", "reputation", "briefing"].includes(agent.id) && (
+                          <button onClick={() => ignoreItem(agent, item)} className="shrink-0 text-[11px] font-semibold text-neutral-400 hover:text-rose-600" title="Stop showing this">Ignore</button>
+                        )}
+                      </li>
+                    ))}
                   </ul>
+                )}
+                {isOpen && agent.latest?.ignoredCount > 0 && (
+                  <button onClick={() => restoreIgnored(agent)} className="mt-2 text-[11px] font-semibold text-neutral-500 underline">{agent.latest.ignoredCount} ignored · show them again</button>
                 )}
                 {agent.id !== "support" && (
                   <div className="mt-4 flex flex-wrap gap-3">
@@ -253,6 +302,37 @@ const AdminAgents = () => {
               </article>
             );
           })}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-black tracking-tight">Product descriptions waiting for you</h2>
+            <p className="mt-1 text-sm text-neutral-500">Written from each product's name, brand and category. Nothing goes on the website until you approve it. {descs.approved > 0 && `${descs.approved} approved so far.`}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {descs.pending === 0 && <button onClick={generateDescs} disabled={descBusy} className="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Write drafts for products without one</button>}
+            {descs.drafts.length > 0 && <>
+              <button onClick={() => descAction("approve", descs.drafts.map((d) => d.id))} disabled={descBusy} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Approve all {descs.drafts.length} shown</button>
+              <button onClick={() => descAction("skip", descs.drafts.map((d) => d.id))} disabled={descBusy} className="rounded-lg border border-neutral-200 px-3 py-2 text-xs font-bold text-neutral-600 disabled:opacity-50">Skip all shown</button>
+            </>}
+          </div>
+        </div>
+        {descs.pending > 0 && <p className="mt-3 text-xs font-semibold text-neutral-500">{descs.pending} waiting · showing {descs.drafts.length} at a time, best-stocked products first. You can edit any text before approving.</p>}
+        <div className="mt-4 space-y-3">
+          {descs.drafts.map((d) => (
+            <div key={d.id} className="rounded-xl bg-neutral-50 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-bold text-neutral-800">{d.name}</p>
+                <div className="flex shrink-0 gap-2">
+                  <button onClick={() => descAction("approve", [d.id])} disabled={descBusy} className="rounded-lg bg-emerald-700 px-2.5 py-1 text-xs font-bold text-white disabled:opacity-50">Approve</button>
+                  <button onClick={() => descAction("skip", [d.id])} disabled={descBusy} className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-xs font-bold text-neutral-600 disabled:opacity-50">Skip</button>
+                </div>
+              </div>
+              <textarea value={edits[d.id] ?? d.text} onChange={(e) => setEdits((m) => ({ ...m, [d.id]: e.target.value }))} rows={3} className="mt-2 w-full rounded-lg border border-neutral-200 bg-white p-2 text-xs leading-5 text-neutral-700" />
+            </div>
+          ))}
         </div>
       </section>
 
