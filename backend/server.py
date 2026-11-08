@@ -3663,6 +3663,18 @@ async def admin_clover_category_writeback(inp: CloverWritebackInput, admin: dict
     return result
 
 
+class CloverAssignCategoriesInput(BaseModel):
+    productIds: List[int] = Field(min_length=1, max_length=200)
+
+
+@api_router.post("/admin/clover/assign-categories")
+async def admin_clover_assign_categories(inp: CloverAssignCategoriesInput, admin: dict = Depends(get_admin_user)):
+    try:
+        return await clover_integration().assign_categories(inp.productIds)
+    except CloverError as exc:
+        raise HTTPException(status_code=502, detail=clover_error_detail(exc))
+
+
 @api_router.post("/admin/clover/undo")
 async def admin_clover_undo(admin: dict = Depends(get_admin_user)):
     try:
