@@ -172,7 +172,7 @@ async def agent_operations(ctx: Ctx) -> dict:
     summary = st.get("lastSyncSummary") or {}
     data_fixes = len(issues) if sync_ok else 0
     headline = ("Clover sync healthy" if sync_ok else "Clover sync needs attention") + \
-        (f" · {data_fixes} product data fixes" if data_fixes else "") + \
+        (f" · product data to tidy up ({data_fixes})" if data_fixes else "") + \
         (f" · last sync {age_min} min ago" if age_min is not None else "") + \
         (f" · {summary.get('remoteItems')} Clover items" if summary.get("remoteItems") else "")
     return _result("operations", status, headline, issues, {"lastSyncMinutesAgo": age_min})
@@ -309,19 +309,21 @@ async def agent_inventory(ctx: Ctx) -> dict:
         stock = int(p.get("stock") or 0)
         v = velocity.get(p["id"]) or {}
         per_week = float(v.get("perWeek") or 0)
-        if per_week > 0:
-            days_left = stock / (per_week / 7) if per_week else 999
+        if per_week >= 0.5:
+            days_left = stock / (per_week / 7)
             if days_left <= 10:
                 qty = sales.reorder_suggestion(stock, per_week)
                 if qty > 0:
                     urgent.append((days_left, p, per_week, qty))
         sold = last.get(p["id"])
-        if start and (today - date.fromisoformat(start)).days >= 60:
+        created = _as_utc(p.get("createdAt"))
+        on_shelf_days = (_now() - created).days if created else 0
+        if start and (today - date.fromisoformat(start)).days >= 60 and on_shelf_days >= 60:
             if stock > 0 and (not sold or (today - date.fromisoformat(sold)).days >= 60):
                 dead.append(p)
             if stock <= 0 and (not sold or (today - date.fromisoformat(sold)).days >= 60):
                 skip.append(p)
-    urgent.sort(key=lambda r: (r[0], -r[2]))
+    urgent.sort(key=lambda r: (-r[2], r[0]))  # fastest sellers first
     items = []
     for days_left, p, per_week, qty in urgent[:30]:
         d = max(1, int(days_left))
