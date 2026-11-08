@@ -3869,6 +3869,72 @@ async def admin_storage_files(admin: dict = Depends(get_admin_user)):
             "inUseOver300KB": {"files": sum(1 for f in big if f["MB"] > 0.29), "MB": round(sum(f["MB"] for f in big if f["MB"] > 0.29), 1)}}
 
 
+_shrink_job: dict = {"running": False, "total": 0, "done": 0, "shrunk": 0, "skipped": 0, "failed": 0, "savedMB": 0.0, "startedAt": None, "finishedAt": None}
+
+
+def _shrink_image_bytes(data: bytes, max_side: int = 1200, quality: int = 85) -> Optional[bytes]:
+    from io import BytesIO
+    from PIL import Image
+    with Image.open(BytesIO(data)) as im:
+        if getattr(im, "is_animated", False):
+            return None
+        im.load()
+        if im.mode not in ("RGB", "RGBA"):
+            im = im.convert("RGBA" if "A" in im.getbands() else "RGB")
+        if max(im.size) > max_side:
+            im.thumbnail((max_side, max_side), Image.LANCZOS)
+        out = BytesIO()
+        im.save(out, "WEBP", quality=quality, method=4)
+        return out.getvalue()
+
+
+async def _run_shrink_job(min_mb: float):
+    _shrink_job.update(running=True, done=0, shrunk=0, skipped=0, failed=0, savedMB=0.0, startedAt=now_utc(), finishedAt=None)
+    try:
+        usage = await _uploaded_file_usage()
+        targets = [f for f in usage["files"] if f["status"] == "in_use" and f["MB"] > min_mb]
+        _shrink_job["total"] = len(targets)
+        for f in targets:
+            try:
+                stream = await file_bucket.open_download_stream(f["id"])
+                data = await stream.read()
+                content_type = (getattr(stream, "metadata", None) or {}).get("content_type", "image/webp")
+                new = await asyncio.to_thread(_shrink_image_bytes, data)
+                del data
+                if not new or len(new) >= f["MB"] * 1048576 * 0.9:
+                    _shrink_job["skipped"] += 1
+                else:
+                    # Same filename, so every product keeps its picture URL. GridFS serves the
+                    # newest upload for a name; the old one is removed once the new one is saved.
+                    await file_bucket.upload_from_stream(f["filename"], new, metadata={"content_type": content_type})
+                    await file_bucket.delete(f["id"])
+                    await db.files.update_many({"storage_path": f["filename"]}, {"$set": {"size": len(new)}})
+                    _shrink_job["shrunk"] += 1
+                    _shrink_job["savedMB"] = round(_shrink_job["savedMB"] + f["MB"] - len(new) / 1048576, 1)
+            except Exception as exc:
+                _shrink_job["failed"] += 1
+                logger.warning("Photo shrink failed for %s: %s", f["filename"], exc)
+            _shrink_job["done"] += 1
+            await asyncio.sleep(0.05)
+    finally:
+        _shrink_job.update(running=False, finishedAt=now_utc())
+        logger.info("Photo shrink finished: %s", {k: v for k, v in _shrink_job.items() if k not in ("startedAt", "finishedAt")})
+
+
+@api_router.post("/admin/storage/shrink-photos")
+async def admin_storage_shrink_photos(admin: dict = Depends(get_admin_user)):
+    """Re-save in-use photos over 300 KB at up to 1200 px (WebP q85), keeping their URLs."""
+    if _shrink_job["running"]:
+        return {"started": False, "status": _shrink_job}
+    asyncio.create_task(_run_shrink_job(0.29))
+    return {"started": True}
+
+
+@api_router.get("/admin/storage/shrink-photos")
+async def admin_storage_shrink_status(admin: dict = Depends(get_admin_user)):
+    return _shrink_job
+
+
 class StorageCleanupInput(BaseModel):
     includeUndo: bool = False
     confirm: bool = False
