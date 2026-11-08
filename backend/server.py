@@ -3802,6 +3802,36 @@ async def store_image(data: bytes, ext: str, filename: str, uploaded_by: str) ->
     return f"/api/files/{result['path']}"
 
 
+@api_router.get("/admin/storage-report")
+async def admin_storage_report(admin: dict = Depends(get_admin_user)):
+    """Read-only: how much space each MongoDB collection uses, biggest first,
+    plus a breakdown of uploaded files by folder. Used to stay under the
+    Atlas free-tier storage limit."""
+    stats = await db.command("dbStats")
+    rows = []
+    for name in await db.list_collection_names():
+        try:
+            cs = await db.command("collStats", name)
+        except Exception:
+            continue
+        rows.append({"name": name, "count": cs.get("count", 0), "dataMB": round(cs.get("size", 0) / 1048576, 1),
+                     "storageMB": round(cs.get("storageSize", 0) / 1048576, 1), "indexMB": round(cs.get("totalIndexSize", 0) / 1048576, 1)})
+    rows.sort(key=lambda r: r["dataMB"], reverse=True)
+    folders = {}
+    for bucket in ("uploads", "inventory_photos"):
+        async for f in db[f"{bucket}.files"].find({}, {"filename": 1, "length": 1, "uploadDate": 1}):
+            parts = str(f.get("filename") or "").split("/")
+            key = bucket + ":" + "/".join(parts[:2] if len(parts) > 2 else parts[:1])
+            row = folders.setdefault(key, {"files": 0, "MB": 0.0})
+            row["files"] += 1
+            row["MB"] += (f.get("length") or 0) / 1048576
+    for row in folders.values():
+        row["MB"] = round(row["MB"], 1)
+    return {"dataMB": round(stats.get("dataSize", 0) / 1048576, 1), "storageMB": round(stats.get("storageSize", 0) / 1048576, 1),
+            "indexMB": round(stats.get("indexSize", 0) / 1048576, 1), "collections": rows,
+            "fileFolders": dict(sorted(folders.items(), key=lambda kv: kv[1]["MB"], reverse=True))}
+
+
 @api_router.post("/admin/upload")
 async def admin_upload(file: UploadFile = File(...), admin: dict = Depends(get_admin_user)):
     ext = (file.filename.rsplit(".", 1)[-1] if "." in (file.filename or "") else "bin").lower()
