@@ -3832,6 +3832,72 @@ async def admin_storage_report(admin: dict = Depends(get_admin_user)):
             "fileFolders": dict(sorted(folders.items(), key=lambda kv: kv[1]["MB"], reverse=True))}
 
 
+_FILE_REF_RE = re.compile(r"puff2door/[A-Za-z0-9_\-]+/[A-Za-z0-9_\-]+\.(?:webp|png|jpe?g|gif)")
+
+
+async def _uploaded_file_usage() -> dict:
+    """Map every uploads/ file to whether anything in the database still points at it.
+    'kept_for_undo' means only the photo brighten/undo history references it."""
+    live, undo = set(), set()
+    skip = {"uploads.files", "uploads.chunks", "inventory_photos.files", "inventory_photos.chunks", "files"}
+    for name in await db.list_collection_names():
+        if name in skip:
+            continue
+        target = undo if name == "photo_enhance_pairs" else live
+        async for doc in db[name].find({}):
+            for match in _FILE_REF_RE.findall(json.dumps(doc, default=str)):
+                target.add(match)
+    files = []
+    async for f in db["uploads.files"].find({}, {"filename": 1, "length": 1, "uploadDate": 1}):
+        name = str(f.get("filename") or "")
+        status = "in_use" if name in live else ("kept_for_undo" if name in undo else "unused")
+        files.append({"id": f["_id"], "filename": name, "MB": (f.get("length") or 0) / 1048576, "status": status, "uploaded": f.get("uploadDate")})
+    return {"files": files}
+
+
+@api_router.get("/admin/storage-report/files")
+async def admin_storage_files(admin: dict = Depends(get_admin_user)):
+    usage = await _uploaded_file_usage()
+    summary = {}
+    for f in usage["files"]:
+        row = summary.setdefault(f["status"], {"files": 0, "MB": 0.0})
+        row["files"] += 1
+        row["MB"] += f["MB"]
+    big = sorted([f for f in usage["files"] if f["status"] == "in_use"], key=lambda f: f["MB"], reverse=True)
+    return {"summary": {k: {"files": v["files"], "MB": round(v["MB"], 1)} for k, v in summary.items()},
+            "largestInUse": [{"filename": f["filename"], "MB": round(f["MB"], 2)} for f in big[:15]],
+            "inUseOver300KB": {"files": sum(1 for f in big if f["MB"] > 0.29), "MB": round(sum(f["MB"] for f in big if f["MB"] > 0.29), 1)}}
+
+
+class StorageCleanupInput(BaseModel):
+    includeUndo: bool = False
+    confirm: bool = False
+
+
+@api_router.post("/admin/storage/cleanup")
+async def admin_storage_cleanup(inp: StorageCleanupInput, admin: dict = Depends(get_admin_user)):
+    """Delete uploaded files nothing points at (and, with includeUndo, the originals kept
+    only for undoing the photo brighten job). Without confirm it only reports."""
+    usage = await _uploaded_file_usage()
+    statuses = {"unused", "kept_for_undo"} if inp.includeUndo else {"unused"}
+    targets = [f for f in usage["files"] if f["status"] in statuses]
+    freed = round(sum(f["MB"] for f in targets), 1)
+    if not inp.confirm:
+        return {"deleted": 0, "wouldDelete": len(targets), "wouldFreeMB": freed}
+    deleted = 0
+    for f in targets:
+        try:
+            await file_bucket.delete(f["id"])
+            await db.files.update_many({"storage_path": f["filename"]}, {"$set": {"is_deleted": True}})
+            deleted += 1
+        except Exception as exc:
+            logger.warning("Storage cleanup could not delete %s: %s", f["filename"], exc)
+    if inp.includeUndo:
+        await db.photo_enhance_pairs.delete_many({})
+    logger.info("Storage cleanup by %s deleted %s files (%s MB)", admin["id"], deleted, freed)
+    return {"deleted": deleted, "freedMB": freed}
+
+
 @api_router.post("/admin/upload")
 async def admin_upload(file: UploadFile = File(...), admin: dict = Depends(get_admin_user)):
     ext = (file.filename.rsplit(".", 1)[-1] if "." in (file.filename or "") else "bin").lower()
