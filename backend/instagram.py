@@ -203,12 +203,14 @@ class InstagramIntegration:
         graph_version: str = "v27.0",
         auth_mode: str = "facebook",
         http_client_factory=None,
+        account_id: str = "",
     ):
         self.db = db
         self.app_id = str(app_id or "").strip()
         self.app_secret = str(app_secret or "").strip()
         self.config_id = str(config_id or "").strip()
         self.business_id = str(business_id or "").strip()
+        self.account_id = str(account_id or "").strip()
         self.redirect_uri = str(redirect_uri or "").strip()
         self.public_url = str(public_url or "").strip().rstrip("/")
         self.expected_username = normalize_username(expected_username)
@@ -438,6 +440,13 @@ class InstagramIntegration:
             notes.append(f"debug_token error: {exc}")
         except Exception as exc:  # network or parse failure
             notes.append(f"debug_token exception: {type(exc).__name__}")
+
+        # The Instagram account added to the app's use case (Meta app
+        # dashboard -> Instagram API -> Generate access tokens). The username
+        # check after lookup still guarantees only the expected account is
+        # accepted.
+        if self.account_id and self.account_id not in candidate_ids:
+            candidate_ids.append(self.account_id)
 
         found: list = []
         try:

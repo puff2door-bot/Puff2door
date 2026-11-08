@@ -2514,6 +2514,9 @@ INSTAGRAM_APP_SECRET = os.environ.get("INSTAGRAM_APP_SECRET", "").strip()
 INSTAGRAM_AUTH_MODE = os.environ.get("INSTAGRAM_AUTH_MODE", "unified").strip().lower()
 INSTAGRAM_CONFIG_ID = os.environ.get("INSTAGRAM_CONFIG_ID", "").strip()
 INSTAGRAM_BUSINESS_ID = os.environ.get("INSTAGRAM_BUSINESS_ID", "").strip()
+# @hdsmokeshop.altamonte's Instagram account ID as listed in the Meta app's
+# Instagram API setup; used when Unified Login returns no account edges.
+INSTAGRAM_ACCOUNT_ID = os.environ.get("INSTAGRAM_ACCOUNT_ID", "17841428473035468").strip()
 INSTAGRAM_GRAPH_VERSION = os.environ.get("INSTAGRAM_GRAPH_VERSION", "v27.0").strip()
 INSTAGRAM_REDIRECT_URI = os.environ.get(
     "INSTAGRAM_REDIRECT_URI", "https://puff2door.com/api/instagram/oauth/callback"
@@ -2560,6 +2563,7 @@ def instagram_integration() -> InstagramIntegration:
         expected_username=INSTAGRAM_EXPECTED_USERNAME,
         graph_version=INSTAGRAM_GRAPH_VERSION,
         auth_mode=INSTAGRAM_AUTH_MODE,
+        account_id=INSTAGRAM_ACCOUNT_ID,
     )
 
 
