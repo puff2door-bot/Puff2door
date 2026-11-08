@@ -3294,6 +3294,7 @@ def instagram_error_detail(exc: Exception) -> str:
     return message if message else "Instagram could not complete that request."
 
 
+@api_router.get("/social/media/{media_id}.jpg")
 @api_router.get("/social/media/{media_id}.png")
 async def social_media_image(media_id: str):
     if not re.fullmatch(r"[a-f0-9]{32}", media_id):
@@ -3303,7 +3304,7 @@ async def social_media_image(media_id: str):
         raise HTTPException(status_code=404, detail="Social image not found")
     return Response(
         content=media["bytes"],
-        media_type="image/png",
+        media_type=media.get("contentType") or "image/png",
         headers={"Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"},
     )
 
