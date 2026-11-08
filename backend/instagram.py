@@ -119,7 +119,12 @@ def _font(size: int, bold: bool = False):
             return ImageFont.truetype(path, size=size)
         except OSError:
             continue
-    return ImageFont.load_default()
+    # Pillow >= 10.1 ships a scalable default font; the size argument keeps
+    # post text readable even if no system font is installed.
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        return ImageFont.load_default()
 
 
 def render_social_image(topic: tuple[str, str, str], theme_index: int) -> bytes:

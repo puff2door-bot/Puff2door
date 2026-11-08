@@ -20,6 +20,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OMP_NUM_THREADS=1
 WORKDIR /app/backend
 
+# Fonts for the Instagram post images (python:slim ships none).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY backend/requirements.txt ./requirements.txt
 COPY backend/requirements-photo-processing.txt ./requirements-photo-processing.txt
 RUN pip install --no-cache-dir -r requirements.txt -r requirements-photo-processing.txt
