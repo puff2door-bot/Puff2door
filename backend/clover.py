@@ -1083,6 +1083,53 @@ class CloverIntegration:
         await self._save_undo([{"target": "note", "previous": {"writeback": "last batch"}}], "category_writeback")
         return {"applied": True, "plan": plan}
 
+    async def assign_categories(self, product_ids: list[int]) -> dict:
+        """Give specific linked items the same category in Clover as on the
+        website, removing any other Clover category they had. Unlike the bulk
+        writeback this touches only the listed products and never adds tags."""
+        merchant_id = self._merchant_id(await self.config() or {})
+        if not merchant_id:
+            return {"applied": False, "reason": "not_connected", "results": []}
+        if self.dry_run:
+            return {"applied": False, "dryRun": True, "results": []}
+        categories = await self._paged(f"/v3/merchants/{merchant_id}/categories")
+        by_name = {normalized_name(row.get("name")): row for row in categories if row.get("name")}
+        results = []
+        for product_id in product_ids:
+            product = await self.db.products.find_one({"id": product_id})
+            item_id = str((product or {}).get("cloverItemId") or "")
+            row = {"productId": product_id, "name": (product or {}).get("name", ""), "cloverItemId": item_id}
+            target = by_name.get(normalized_name((product or {}).get("category")))
+            if not product or not item_id:
+                results.append({**row, "status": "skipped", "reason": "not linked"})
+                continue
+            if not target or not target.get("id"):
+                results.append({**row, "status": "skipped", "reason": "no Clover category with this name"})
+                continue
+            try:
+                item = await self.request("GET", f"/v3/merchants/{merchant_id}/items/{item_id}", params={"expand": "categories"})
+            except CloverError as exc:
+                results.append({**row, "status": "failed", "reason": str(exc)})
+                continue
+            current = [c for c in ((item or {}).get("categories") or {}).get("elements") or [] if c.get("id")]
+            try:
+                if not any(c["id"] == target["id"] for c in current):
+                    await self.request("POST", f"/v3/merchants/{merchant_id}/category_items",
+                                       json_body={"elements": [{"category": {"id": target["id"]}, "item": {"id": item_id}}]})
+                stale = [c for c in current if c["id"] != target["id"]]
+                if stale:
+                    await self.request("POST", f"/v3/merchants/{merchant_id}/category_items",
+                                       params={"delete": "true"},
+                                       json_body={"elements": [{"category": {"id": c["id"]}, "item": {"id": item_id}} for c in stale]})
+            except CloverError as exc:
+                results.append({**row, "status": "failed", "reason": str(exc)})
+                continue
+            await self.db.products.update_one({"id": product_id}, {"$set": {"cloverCategory": target.get("name")}})
+            await self.log("category_assign", "success", productId=product_id, cloverItemId=item_id, detail=target.get("name"),
+                           removed=[c.get("name") or c["id"] for c in stale])
+            results.append({**row, "status": "updated", "category": target.get("name"), "removed": [c.get("name") or c["id"] for c in stale]})
+        return {"applied": True, "results": results}
+
     def _photo_plan(self, remote: list[dict], captures: list[dict]) -> dict:
         by_code: dict[str, list[str]] = {}
         for item in remote:
