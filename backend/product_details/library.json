@@ -1,5 +1,165 @@
 [
  {
+  "line": "RAZ Vue pod",
+  "match": {
+   "brand": "raz",
+   "name": "vue\\s*pod"
+  },
+  "puffs": 50000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*raz\\s*vue\\s*pod",
+   "\\b50\\s*k\\b"
+  ],
+  "template": "RAZ Vue Pro replacement pod in {flavor}. Pre-filled with 5% nicotine; rated on the box for up to 50,000 puffs in Normal mode or 25,000 in Boost mode, with a see-through tank so you can watch the e-liquid level. Fits the RAZ Vue battery (sold in the RAZ Vue kits)."
+ },
+ {
+  "line": "RAZ Vue kit",
+  "match": {
+   "brand": "raz",
+   "name": "vue\\s*kit"
+  },
+  "puffs": 50000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*raz\\s*vue\\s*kit"
+  ],
+  "template": "RAZ Vue kit in {flavor}: the rechargeable RAZ Vue battery with a screen plus a pre-filled pod. Rated on the box for up to 50,000 puffs in Normal mode or 25,000 in Boost mode, 5% nicotine, with a visible e-liquid window. Swap in new RAZ Vue pods when the flavor runs out."
+ },
+ {
+  "line": "Off-Stamp Crystal pod",
+  "match": {
+   "brand": "off\\s*stamp",
+   "name": "pod\\s*crystal"
+  },
+  "puffs": 35000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*off\\s*stamp\\s*pod\\s*crystal"
+  ],
+  "template": "Off-Stamp Crystal Cube replacement pod in {flavor} (powered by Lost Mary). Rated on the box for up to 35,000 puffs (25,000 in Turbo), pre-filled with 5% nicotine, with a visible e-liquid level. Fits the Off-Stamp X Cube battery."
+ },
+ {
+  "line": "Off-Stamp Classic pod",
+  "match": {
+   "brand": "off\\s*stamp",
+   "name": "pod\\s*classic"
+  },
+  "puffs": 25000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*off\\s*stamp\\s*pod\\s*classic"
+  ],
+  "template": "Off-Stamp Classic Cube replacement pod in {flavor} (powered by Lost Mary). Rated on the box for up to 25,000 puffs, pre-filled with 5% nicotine. Fits the Off-Stamp X Cube battery."
+ },
+ {
+  "line": "Off-Stamp kit",
+  "match": {
+   "brand": "off\\s*stamp",
+   "name": "\\bkit\\b"
+  },
+  "puffs": 35000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*off\\s*stamp\\s*kit"
+  ],
+  "template": "Off-Stamp X Cube Crystal kit in {flavor} (powered by Lost Mary): the rechargeable X Cube battery plus a pre-filled Crystal pod. Rated on the box for up to 35,000 puffs (25,000 in Turbo), 5% nicotine, with a visible e-liquid level. Swap in new Off-Stamp pods when the flavor runs out."
+ },
+ {
+  "line": "Lost Mary Nera pod",
+  "match": {
+   "brand": "lost\\s*mary",
+   "name": "nera\\s*pod"
+  },
+  "puffs": 70000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*lost\\s*mary\\s*nera\\s*pod"
+  ],
+  "template": "Lost Mary Nera replacement pod in {flavor}. Rated on the box for up to 70,000 puffs, pre-filled with 5% nicotine, with a visible e-liquid level. Use with the Lost Mary Nera Fullview battery."
+ },
+ {
+  "line": "Lost Mary Nera kit",
+  "match": {
+   "brand": "lost\\s*mary",
+   "name": "\\bkit\\b"
+  },
+  "puffs": 70000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*lost\\s*mary\\s*kit"
+  ],
+  "template": "Lost Mary Nera Fullview kit in {flavor}: the rechargeable Nera Fullview battery plus a pre-filled Nera pod. Rated on the box for up to 70,000 puffs, 5% nicotine, with a visible e-liquid level. Swap in new Nera pods when the flavor runs out."
+ },
+ {
+  "line": "Smogger Switch Pro pod",
+  "match": {
+   "brand": "smogger",
+   "name": "\\bpod\\b"
+  },
+  "puffs": 40000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*smogger\\s*pod",
+   "\\b40\\s*k\\b"
+  ],
+  "template": "Smogger Switch Pro replacement pod in {flavor}. Rated on the box for up to 40,000 puffs, pre-filled with 5% nicotine. Fits the Smogger Switch Pro battery."
+ },
+ {
+  "line": "Smogger Switch Pro kit",
+  "match": {
+   "brand": "smogger",
+   "name": "\\bkit\\b"
+  },
+  "puffs": 40000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*smogger\\s*kit"
+  ],
+  "template": "Smogger Switch Pro kit in {flavor}: a pre-filled pod with a rechargeable battery that doubles as a power bank. Rated on the box for up to 40,000 puffs in Normal mode or 30,000 in Boost mode, 5% nicotine. Swap in new Smogger Switch Pro pods when the flavor runs out."
+ },
+ {
+  "line": "Foger Switch Pro pod 60K",
+  "match": {
+   "brand": "foger",
+   "name": "pod.*60\\s*k"
+  },
+  "puffs": 60000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*foger\\s*pod",
+   "\\b60\\s*k\\b"
+  ],
+  "template": "Foger Switch Pro replacement pod in {flavor}, 60K size. Rated on the box for up to 60,000 puffs, pre-filled with 5% nicotine. Fits the Foger Switch Pro battery."
+ },
+ {
+  "line": "Foger Switch Pro pod",
+  "match": {
+   "brand": "foger",
+   "name": "\\bpod\\b"
+  },
+  "puffs": 30000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*foger\\s*pod",
+   "\\b30\\s*k\\b"
+  ],
+  "template": "Foger Switch Pro replacement pod in {flavor}. Rated on the box for up to 30,000 puffs, pre-filled with 5% nicotine. Fits the Foger Switch Pro battery."
+ },
+ {
+  "line": "Foger Switch Pro kit",
+  "match": {
+   "brand": "foger",
+   "name": "\\bkit\\b"
+  },
+  "puffs": 30000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*foger\\s*kit"
+  ],
+  "template": "Foger Switch Pro kit in {flavor}: a pre-filled pod with a rechargeable battery that doubles as a power bank. Rated on the box for up to 30,000 puffs in Normal mode or 18,000 in Boost mode, 5% nicotine. Swap in new Foger Switch Pro pods when the flavor runs out."
+ },
+ {
   "line": "Geek X-Lite 50K",
   "match": {
    "brand": "geek",
@@ -225,7 +385,8 @@
  {
   "line": "Smogger 50K",
   "match": {
-   "brand": "smogger"
+   "brand": "smogger",
+   "notName": "\\b(pod|kit)\\b"
   },
   "puffs": 50000,
   "nicotine": true,
