@@ -247,7 +247,7 @@ class GmailReceipts:
         return payload
 
     async def sync(self, days: int = 400, limit: int = 300) -> dict:
-        learned = {r["vendorKey"]: r["category"] async for r in self.db.expense_vendor_rules.find({}, {"_id": 0})}
+        learned = {r["vendorKey"]: r["category"] async for r in self.db.expense_vendor_rules.find({"category": {"$in": CATEGORIES}}, {"_id": 0})}
         ignored = {r["vendorKey"] async for r in self.db.expense_vendor_rules.find({"ignore": True}, {"_id": 0, "vendorKey": 1})}
         added, seen = 0, 0
         for inbox in await self.inboxes():
