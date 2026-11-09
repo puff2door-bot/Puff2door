@@ -151,7 +151,7 @@ const ChatWidget = () => {
               <button type="button" data-testid="chat-close" onClick={() => setOpen(false)} aria-label="Close chat" className="h-8 w-8 grid place-items-center rounded-full hover:bg-white/10"><X className="h-4 w-4" /></button>
             </div>
           </div>
-          {data ? <Thread data={data} onSent={(m) => setData((d) => ({ ...d, messages: [...d.messages, m] }))} /> : hasToken ? <p className="p-4 text-sm text-neutral-500 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading your conversation…</p> : <StartForm status={status} onStarted={(d) => setData(d)} />}
+          {data ? <Thread data={data} onSent={(m) => { setData((d) => ({ ...d, messages: [...d.messages, m] })); loadConversation(); }} /> : hasToken ? <p className="p-4 text-sm text-neutral-500 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading your conversation…</p> : <StartForm status={status} onStarted={(d) => setData(d)} />}
         </div>
       )}
     </>

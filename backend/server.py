@@ -4798,7 +4798,10 @@ async def chat_start(inp: ChatStartInput, request: Request, user: Optional[dict]
         await db.chat_messages.insert_one({"id": str(uuid.uuid4()), "conversationId": conv["id"], "sender": "admin", "text": s["chatWelcome"], "createdAt": now_utc(), "system": True})
     m = await chat_add_message(conv, "customer", inp.message)
     asyncio.create_task(emails.notify_admin_chat(conv, m["text"], not s["chatOnline"]))
-    asyncio.create_task(hd_automations.chat_reply(db, conv["id"], m["id"], 180 if s["chatOnline"] else 20))
+    try:
+        await hd_automations.chat_reply(db, conv["id"], m["id"], 0)
+    except Exception as exc:
+        logger.warning("Chat auto-reply failed: %s", exc)
     fresh = await db.chat_conversations.find_one({"id": conv["id"]})
     msgs = await db.chat_messages.find({"conversationId": conv["id"]}).sort("createdAt", 1).to_list(500)
     return {"token": token, "conversation": chat_conv_out(fresh), "messages": [chat_msg_out(x) for x in msgs], "online": s["chatOnline"], "offlineMessage": s["chatOffline"]}
@@ -4837,7 +4840,10 @@ async def chat_send(inp: ChatMessageInput, request: Request):
     m = await chat_add_message(conv, "customer", inp.message)
     if not s["chatOnline"]:
         asyncio.create_task(emails.notify_admin_chat(conv, m["text"], True))
-    asyncio.create_task(hd_automations.chat_reply(db, conv["id"], m["id"], 180 if s["chatOnline"] else 20))
+    try:
+        await hd_automations.chat_reply(db, conv["id"], m["id"], 0)
+    except Exception as exc:
+        logger.warning("Chat auto-reply failed: %s", exc)
     return chat_msg_out(m)
 
 

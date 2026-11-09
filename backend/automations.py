@@ -37,7 +37,7 @@ AUTOMATIONS = [
     ("stuck_orders", "Phone + email alert when a website order is stuck"),
     ("review_request", "Ask customers for a Google review a day after their order"),
     ("cart_reminder", "Remind signed-in customers about a cart left for 24 hours"),
-    ("chat_reply", "Answer common Live Chat questions if nobody replies in 3 minutes"),
+    ("chat_reply", "Answer Live Chat questions instantly (stays quiet while you are chatting)"),
     ("weekly_reorder", "Monday reorder list by brand (email)"),
     ("google_reviews", "Reply to new Google reviews"),
 ]
@@ -365,15 +365,20 @@ async def chat_answer(db, text: str) -> str:
 
 
 async def chat_reply(db, conversation_id: str, customer_message_id: str, delay_seconds: int = 180) -> None:
-    """Called right after a customer message. Waits; if nobody from the store has answered, sends the matching answer."""
+    """Called right after a customer message. Answers instantly unless the owner is already chatting with this customer."""
     if not await enabled(db, "chat_reply"):
         return
-    await asyncio.sleep(delay_seconds)
+    if delay_seconds:
+        await asyncio.sleep(delay_seconds)
     msg = await db.chat_messages.find_one({"id": customer_message_id})
     if not msg:
         return
     later = await db.chat_messages.find_one({"conversationId": conversation_id, "createdAt": {"$gt": msg["createdAt"]}})
     if later:  # the owner (or the customer again) already moved the conversation on
+        return
+    owner = await db.chat_messages.find_one({"conversationId": conversation_id, "sender": "admin", "auto": {"$ne": True},
+                                             "system": {"$ne": True}, "createdAt": {"$gte": _now() - timedelta(minutes=15)}})
+    if owner:  # the owner is talking with this customer right now
         return
     answer = await chat_answer(db, msg.get("text") or "")
     auto_count = await db.chat_messages.count_documents({"conversationId": conversation_id, "auto": True})
@@ -381,7 +386,7 @@ async def chat_reply(db, conversation_id: str, customer_message_id: str, delay_s
         if auto_count:
             return
         answer = f"Thanks for your message! Someone from the store will reply here shortly. If it's urgent, call {STORE_PHONE}."
-    elif auto_count >= 4:
+    elif auto_count >= 10:
         return
     now = _now()
     await db.chat_messages.insert_one({"id": str(uuid.uuid4()), "conversationId": conversation_id, "sender": "admin",
