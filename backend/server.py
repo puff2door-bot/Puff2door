@@ -5683,6 +5683,14 @@ async def admin_doc_file_delete(doc_id: str, file_id: str, admin: dict = Depends
         raise _doc_http(exc)
 
 
+import dashboard as hd_dashboard
+
+
+@api_router.get("/admin/dashboard")
+async def admin_dashboard_overview(admin: dict = Depends(get_admin_user)):
+    return await hd_dashboard.overview(db)
+
+
 class AgentIgnoreInput(BaseModel):
     item: str = Field(min_length=1, max_length=600)
 
