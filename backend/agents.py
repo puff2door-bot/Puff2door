@@ -183,10 +183,19 @@ async def agent_marketing(ctx: Ctx) -> dict:
     placeholders = _placeholder_images(products)
     no_desc = [p for p in products if len(str(p.get("description") or "").strip()) < 40]
     no_photo = [p for p in products if not p.get("image") or p["image"] in placeholders]
+    # A real duplicate is the same item listed twice (same barcode or same Clover item).
+    # Different designs that share a name (e.g. three Ooze trays) are separate products.
     names: dict = {}
     for p in products:
-        names.setdefault(p["name"].strip().lower(), []).append(p)
-    dupes = [v for v in names.values() if len(v) > 1]
+        for key in (("barcode", str(p.get("barcode") or "").strip()), ("clover", str(p.get("cloverItemId") or "").strip())):
+            if key[1]:
+                names.setdefault(key, []).append(p)
+    seen, dupes = set(), []
+    for v in names.values():
+        ids = tuple(sorted(p["id"] for p in v))
+        if len(v) > 1 and ids not in seen:
+            seen.add(ids)
+            dupes.append(v)
     cats = await ctx.db.categories.find({"active": {"$ne": False}}, {"_id": 0, "slug": 1, "name": 1}).to_list(200)
     in_cat = {p.get("categorySlug") for p in products}
     empty_cats = [c["name"] for c in cats if c["slug"] not in in_cat]
@@ -205,7 +214,7 @@ async def agent_marketing(ctx: Ctx) -> dict:
     if no_photo:
         items.append(f"{len(no_photo)} in-stock products show no real photo.")
     if dupes:
-        items.append(f"{len(dupes)} product names appear twice: " + ", ".join(v[0]["name"] for v in dupes[:6]))
+        items.append(f"{len(dupes)} products are listed twice (same barcode or Clover item): " + ", ".join(v[0]["name"] for v in dupes[:6]))
     if empty_cats:
         items.append("Categories with nothing in stock (customers see an empty page): " + ", ".join(empty_cats))
     status = "ok" if not items else ("alert" if sitemap_urls is None else "warn")

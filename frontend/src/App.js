@@ -41,6 +41,7 @@ import AdminCompliance from "./pages/admin/AdminCompliance";
 import AdminAnalytics from "./pages/admin/AdminAnalytics";
 import AdminAgents from "./pages/admin/AdminAgents";
 import MissingBarcodes from "./pages/admin/MissingBarcodes";
+import ProductDetails from "./pages/admin/ProductDetails";
 import StoreReceipts from "./pages/admin/StoreReceipts";
 import BusinessExpenses from "./pages/admin/BusinessExpenses";
 import AdminDocuments from "./pages/admin/AdminDocuments";
@@ -152,6 +153,7 @@ const AppRoutes = () => {
         <Route path="inventory-capture" element={<InventoryCapture />} />
         <Route path="missing-photos" element={<MissingPhotos />} />
         <Route path="missing-barcodes" element={<MissingBarcodes />} />
+        <Route path="product-details" element={<ProductDetails />} />
         <Route path="receipts" element={<StoreReceipts />} />
         <Route path="expenses" element={<BusinessExpenses />} />
         <Route path="documents" element={<AdminDocuments />} />
