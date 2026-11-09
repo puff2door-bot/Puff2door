@@ -338,7 +338,9 @@ async def agent_inventory(ctx: Ctx) -> dict:
                      + ", ".join(p["name"].strip() for p in skip[:10]))
     status = "warn" if urgent else "ok"
     headline = f"{len(urgent)} best sellers to reorder now · {len(dead)} slow movers"
-    return _result("inventory", status, headline, items, {"reorder": len(urgent), "slow": len(dead)})
+    reorder_list = [{"name": p["name"].strip(), "brand": (p.get("brandName") or "").strip().title(), "qty": qty,
+                     "stock": int(p.get("stock") or 0), "perWeek": per_week} for _d, p, per_week, qty in urgent]
+    return _result("inventory", status, headline, items, {"reorder": len(urgent), "slow": len(dead), "reorderList": reorder_list})
 
 
 async def agent_photos(ctx: Ctx) -> dict:
@@ -413,13 +415,23 @@ async def agent_social(ctx: Ctx) -> dict:
         return _result("social", "alert", "Instagram is not connected. Open Agents → Connect Instagram.")
     if not st.get("autoPublishEnabled"):
         status = "warn"; items.append("Daily posting is paused.")
+    expires = _as_utc(st.get("tokenExpiresAt"))
     connected = _as_utc(st.get("connectedAt"))
-    if connected:
+    if st.get("tokenNeverExpires"):
+        items.append("Instagram connection doesn't expire (checked daily).")
+    elif expires:
+        days_left = (expires - _now()).days
+        if days_left <= 7:
+            status = "alert" if days_left <= 2 else "warn"
+            items.append(f"Instagram connection expires in {max(days_left, 0)} days and could not renew itself. "
+                         "Click Connect Instagram on the Agents page (30 seconds).")
+        else:
+            items.append(f"Instagram connection renews itself automatically (good until {expires.astimezone(ET):%b %d}).")
+    elif connected and (_now() - connected).days >= 53:
         days = (_now() - connected).days
-        if days >= 53:
-            status = "alert" if days >= 59 else "warn"
-            items.append(f"Instagram connection is {days} days old and Meta expires it around day 60. "
-                         "Click Connect Instagram on the Agents page to renew (30 seconds).")
+        status = "alert" if days >= 59 else "warn"
+        items.append(f"Instagram connection is {days} days old and Meta expires it around day 60. "
+                     "Click Connect Instagram on the Agents page to renew (30 seconds).")
     last = _as_utc(st.get("lastPostAt"))
     local = _now().astimezone(ET)
     if st.get("autoPublishEnabled") and last and (local - last.astimezone(ET)).days >= 2:
@@ -455,6 +467,24 @@ async def agent_briefing(ctx: Ctx) -> dict:
         share = custom["revenue"] / total * 100
         if share >= 10:
             items.append(f"{share:.0f}% of sales were rung up as “Custom Item”. Scanning products instead keeps stock and the reorder list accurate.")
+    if ctx.clover_factory:
+        try:
+            import barcodes
+            report = await barcodes.missing_report(ctx.db, ctx.clover_factory())
+            todo = [i for i in report["items"] if not i["ignored"]]
+            if todo:
+                top = ", ".join(i["name"].strip() for i in todo[:3])
+                items.append(f"Barcodes: {len(todo)} Clover items still can't be scanned ({report['summary']['inStock']} in stock). "
+                             f"Top sellers to fix: {top}. Admin → Missing Barcodes.")
+        except Exception:
+            pass
+    try:
+        import automations
+        done = await automations.done_since(ctx.db, _now() - timedelta(hours=24))
+        if done:
+            items.append("Done for you automatically in the last 24 h: " + " · ".join(done[:8]))
+    except Exception:
+        pass
     latest = await latest_results(ctx.db)
     for a in AGENTS:
         r = latest.get(a["id"])
