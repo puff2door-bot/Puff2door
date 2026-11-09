@@ -201,6 +201,13 @@ async def approve(db, product_ids: list, edits: dict, claim_words: re.Pattern, w
     return done
 
 
+async def drop_drafts(db, product_ids: list, reason: str) -> int:
+    """The owner edited these products by hand, so their waiting drafts are no longer wanted."""
+    res = await db.detail_drafts.update_many({"productId": {"$in": [int(p) for p in product_ids]}, "status": "review"},
+                                             {"$set": {"status": "skipped", "skipReason": reason, "decidedAt": datetime.now(timezone.utc)}})
+    return res.modified_count
+
+
 async def skip(db, product_ids: list) -> int:
     res = await db.detail_drafts.update_many({"productId": {"$in": [int(p) for p in product_ids]}, "status": "review"},
                                              {"$set": {"status": "skipped", "decidedAt": datetime.now(timezone.utc)}})
@@ -266,4 +273,6 @@ async def save_manual(db, product_id: int, data: dict, claim_words: re.Pattern) 
         return {"updated": False}
     update["updatedAt"] = datetime.now(timezone.utc)
     res = await db.products.update_one({"id": int(product_id)}, {"$set": update})
+    if res.matched_count:
+        await drop_drafts(db, [product_id], "edited by owner")
     return {"updated": bool(res.matched_count)}

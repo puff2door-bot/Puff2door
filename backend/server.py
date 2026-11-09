@@ -3004,6 +3004,7 @@ async def admin_update_product(product_id: int, inp: ProductInput, admin: dict =
     doc["category"] = await resolve_category_name(inp)
     doc["updatedAt"] = now_utc()
     await db.products.update_one({"id": product_id}, {"$set": doc})
+    await hd_details.drop_drafts(db, [product_id], "edited by owner")  # owner's own edit wins over a waiting draft
     restocked = int(existing.get("stock", 0)) == 0 and inp.stock > 0
     notified = 0
     updated = await db.products.find_one({"id": product_id})
