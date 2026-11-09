@@ -41,6 +41,7 @@ AUTOMATIONS = [
     ("weekly_reorder", "Monday reorder list by brand (email)"),
     ("google_reviews", "Reply to new Google reviews"),
     ("expenses_sync", "Collect business receipts from Gmail every 3 hours"),
+    ("doc_expiry", "Email me before a license or document expires"),
 ]
 AUTOMATION_IDS = {a for a, _ in AUTOMATIONS}
 MARKETING_EMAILS_PER_DAY = 40  # leaves room under the free email plan for order emails
@@ -423,6 +424,25 @@ async def weekly_reorder(h: Hooks) -> None:
     await log(h.db, "weekly_reorder", f"Emailed the reorder list ({len(rows)} items, {len(groups)} brands).")
 
 
+# ---------------- 10. License / document expiry ----------------
+async def doc_expiry(h: Hooks) -> None:
+    import documents
+    import emails
+    due = await documents.due_reminders(h.db)
+    if not due:
+        return
+    lines = "".join(
+        f'<li style="margin:6px 0;"><b>{escape(d["title"])}</b>: '
+        + (f'<span style="color:#b91c1c;">expired {abs(d["days"])} day(s) ago</span>' if d["days"] < 0 else
+           ("expires today" if d["days"] == 0 else f"expires in {d['days']} days")) + f' ({escape(d["expiryDate"])})</li>' for d in due)
+    body = (f'<p style="font-size:15px;color:#374151;">These need renewing:</p><ul style="font-size:15px;color:#374151;padding-left:20px;">{lines}</ul>'
+            f'<p>{emails.button("Open Licenses & Docs", h.public_url + "/admin/documents")}</p>')
+    await emails._send([emails.NOTIFY_EMAIL], f"Renewal reminder: {len(due)} license/document(s)", emails.layout("Renewal reminder", body),
+                       "auto_doc_expiry")
+    for d in due:
+        await log(h.db, "doc_expiry", f"Reminded you: {d['title']} " + ("has expired." if d["days"] < 0 else f"expires in {d['days']} days."))
+
+
 # ---------------- scheduler ----------------
 async def tick(h: Hooks, logger=None) -> None:
     local = _now().astimezone(ET)
@@ -434,6 +454,7 @@ async def tick(h: Hooks, logger=None) -> None:
         ("cart_reminder", timedelta(minutes=60), cart_reminder),
         ("descriptions", timedelta(hours=6), descriptions),
         ("instagram_renew", timedelta(hours=24), instagram_renew),
+        ("doc_expiry", timedelta(hours=12), doc_expiry),
     ]
     if h.expenses_factory:
         jobs.append(("expenses_sync", timedelta(hours=3), lambda hooks: hooks.expenses_factory().sync(days=14)))

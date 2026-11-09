@@ -97,6 +97,7 @@ const AdminProducts = () => {
   useEffect(() => { try { localStorage.setItem("p2d_admin_products_view", view); } catch { /* ignore */ } }, [view]);
 
   useEffect(() => {
+    if (searchParams.get("new")) { setEditing({}); setSearchParams({}); return; }
     const id = searchParams.get("edit");
     if (id && products.length) {
       const p = products.find((x) => x.id === Number(id));
