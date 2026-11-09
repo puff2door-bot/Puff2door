@@ -25,12 +25,53 @@ def _day_bounds_ms(day: date) -> tuple[int, int]:
     return int(start.timestamp() * 1000), int(end.timestamp() * 1000)
 
 
+RICH_EXPAND = "lineItems,payments,payments.tender,payments.cardTransaction,employee,refunds,discounts"
+
+
 async def _store_orders_for_day(clover, merchant_id: str, day: date) -> list[dict]:
+    """Paid-order details for one day. Falls back to line items only if the Clover app
+    isn't allowed to read payments or employees."""
     start, end = _day_bounds_ms(day)
-    return await clover._paged(
-        f"/v3/merchants/{merchant_id}/orders",
-        {"filter": [f"createdTime>={start}", f"createdTime<{end}"], "expand": "lineItems"},
-    )
+    flt = {"filter": [f"createdTime>={start}", f"createdTime<{end}"]}
+    try:
+        return await clover._paged(f"/v3/merchants/{merchant_id}/orders", {**flt, "expand": RICH_EXPAND})
+    except Exception:
+        return await clover._paged(f"/v3/merchants/{merchant_id}/orders", {**flt, "expand": "lineItems"})
+
+
+def _cents(v) -> float:
+    return round((v or 0) / 100, 2) if isinstance(v, (int, float)) else 0.0
+
+
+def order_summary(o: dict, day_key: str) -> dict:
+    """Small receipt record kept for the Store sales page and receipt search."""
+    payments = [p for p in ((o.get("payments") or {}).get("elements") or []) if p.get("result", "SUCCESS") == "SUCCESS"]
+    refunds = (o.get("refunds") or {}).get("elements") or []
+    lines = [l for l in ((o.get("lineItems") or {}).get("elements") or []) if not l.get("refunded") and not l.get("exchanged")]
+    first = payments[0] if payments else {}
+    card = first.get("cardTransaction") or {}
+    tender = (first.get("tender") or {}).get("label") or ""
+    created = datetime.fromtimestamp((o.get("createdTime") or 0) / 1000, timezone.utc)
+    employee = (o.get("employee") or {}).get("name") or ""
+    state = str(o.get("paymentState") or "").upper()
+    return {
+        "id": o.get("id"), "date": day_key, "createdAt": created,
+        "hour": created.astimezone(ET).hour,
+        "total": _cents(o.get("total")),
+        "tax": round(sum(_cents(p.get("taxAmount")) for p in payments), 2),
+        "tip": round(sum(_cents(p.get("tipAmount")) for p in payments), 2),
+        "discount": round(sum(abs(_cents(d.get("amount"))) for d in ((o.get("discounts") or {}).get("elements") or [])), 2),
+        "refunded": round(sum(_cents(r.get("amount")) for r in refunds), 2),
+        "paymentState": state,
+        "paymentType": tender or ("Card" if card else ""),
+        "cardType": card.get("cardType") or "",
+        "last4": card.get("last4") or "",
+        "employee": employee,
+        "itemCount": round(sum(_line_qty(l) for l in lines), 1),
+        "items": [{"name": (l.get("name") or "").strip(), "qty": _line_qty(l), "price": _cents(l.get("price")),
+                   "itemId": str((l.get("item") or {}).get("id") or "")} for l in lines[:40]],
+        "search": " ".join([(l.get("name") or "") for l in lines] + [card.get("last4") or "", employee, f"{_cents(o.get('total')):.2f}"]).lower(),
+    }
 
 
 def _line_qty(line: dict) -> float:
@@ -43,9 +84,15 @@ async def sync_day(db, clover, merchant_id: str, day: date, product_by_clover: d
     orders = await _store_orders_for_day(clover, merchant_id, day)
     store_orders, store_revenue = 0, 0.0
     items: dict = defaultdict(lambda: {"qty": 0.0, "revenue": 0.0, "name": ""})
+    receipts = []
     for o in orders:
-        paid = str(o.get("paymentState") or "").upper() in PAID_STATES or o.get("state") == "locked"
-        if not paid or str(o.get("note") or "").startswith("Website order"):
+        state = str(o.get("paymentState") or "").upper()
+        paid = state in PAID_STATES or o.get("state") == "locked"
+        if str(o.get("note") or "").startswith("Website order"):
+            continue
+        if paid or state == "REFUNDED":
+            receipts.append(order_summary(o, day.isoformat()))
+        if not paid:
             continue
         store_orders += 1
         store_revenue += (o.get("total") or 0) / 100
@@ -90,6 +137,9 @@ async def sync_day(db, clover, merchant_id: str, day: date, product_by_clover: d
                      "name": v["name"], "qty": round(v["qty"], 3), "revenue": round(v["revenue"], 2)})
     if docs:
         await db.sales_item_days.insert_many(docs)
+    await db.store_orders.delete_many({"date": key})
+    if receipts:
+        await db.store_orders.insert_many(receipts)
     summary = {"date": key, "storeOrders": store_orders, "storeRevenue": round(store_revenue, 2),
                "webOrders": len(web), "webRevenue": web_revenue, "syncedAt": datetime.now(timezone.utc)}
     await db.sales_days.update_one({"date": key}, {"$set": summary}, upsert=True)
@@ -102,10 +152,14 @@ async def sync_sales(db, clover, days: Optional[int] = None, logger=None) -> dic
     if not merchant_id:
         return {"synced": 0, "reason": "clover_not_connected"}
     today = datetime.now(ET).date()
-    have = {d["date"] for d in await db.sales_days.find({}, {"date": 1}).to_list(400)}
+    day_rows = await db.sales_days.find({}, {"date": 1, "storeOrders": 1}).to_list(400)
+    have = {d["date"] for d in day_rows}
+    have_days = {d["date"]: d.get("storeOrders") for d in day_rows}
     window = days or HISTORY_DAYS
     todo = [today - timedelta(days=i) for i in range(window)]
-    todo = [d for d in todo if d >= today - timedelta(days=1) or d.isoformat() not in have]
+    have_receipts = set(await db.store_orders.distinct("date"))
+    todo = [d for d in todo if d >= today - timedelta(days=1) or d.isoformat() not in have
+            or (d.isoformat() not in have_receipts and (have_days.get(d.isoformat()) or 0) > 0)]
     products = await db.products.find({"cloverItemId": {"$nin": [None, ""]}}, {"_id": 0, "id": 1, "name": 1, "cloverItemId": 1}).to_list(5000)
     by_clover = {str(p["cloverItemId"]): p for p in products}
     done, errors = 0, 0
@@ -120,6 +174,7 @@ async def sync_sales(db, clover, days: Optional[int] = None, logger=None) -> dic
     old = (today - timedelta(days=HISTORY_DAYS + 5)).isoformat()
     await db.sales_item_days.delete_many({"date": {"$lt": old}})
     await db.sales_days.delete_many({"date": {"$lt": old}})
+    await db.store_orders.delete_many({"date": {"$lt": old}})
     return {"synced": done, "errors": errors}
 
 
