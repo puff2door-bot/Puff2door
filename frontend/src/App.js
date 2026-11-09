@@ -44,6 +44,7 @@ import MissingBarcodes from "./pages/admin/MissingBarcodes";
 import StoreReceipts from "./pages/admin/StoreReceipts";
 import BusinessExpenses from "./pages/admin/BusinessExpenses";
 import AdminDocuments from "./pages/admin/AdminDocuments";
+import AdminCustomers from "./pages/admin/AdminCustomers";
 import InventoryCapture from "./pages/admin/InventoryCapture";
 import MissingPhotos from "./pages/admin/MissingPhotos";
 import AdminClover from "./pages/admin/AdminClover";
@@ -154,6 +155,7 @@ const AppRoutes = () => {
         <Route path="receipts" element={<StoreReceipts />} />
         <Route path="expenses" element={<BusinessExpenses />} />
         <Route path="documents" element={<AdminDocuments />} />
+        <Route path="customers" element={<AdminCustomers />} />
         <Route path="clover" element={<AdminClover />} />
         <Route path="loyalty" element={<AdminLoyalty />} />
         <Route path="chat" element={<AdminChat />} />

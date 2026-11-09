@@ -5700,6 +5700,44 @@ async def admin_dashboard_overview(admin: dict = Depends(get_admin_user)):
     return await hd_dashboard.overview(db)
 
 
+# ---- Store customers from Clover (backend/customers.py), read-only ----
+import customers as hd_customers
+
+
+async def _customer_employees():
+    try:
+        return await hd_store_reports.employee_names(db, clover_integration())
+    except Exception:
+        return {}
+
+
+async def _refresh_clover_customers(force: bool = False):
+    try:
+        await hd_customers.refresh_customers(db, clover_integration(), force)
+    except Exception as exc:
+        logger.warning("Clover customers refresh failed: %s", exc)
+
+
+@api_router.get("/admin/customers")
+async def admin_customers(refresh: bool = False, admin: dict = Depends(get_admin_user)):
+    await _refresh_clover_customers(refresh)
+    return await hd_customers.report(db, await _customer_employees())
+
+
+@api_router.get("/admin/customers/{customer_id}")
+async def admin_customer_detail(customer_id: str, admin: dict = Depends(get_admin_user)):
+    data = await hd_customers.detail(db, customer_id[:20], await _customer_employees())
+    if not data:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    return data
+
+
+@api_router.get("/admin/dashboard/regulars")
+async def admin_dashboard_regulars(admin: dict = Depends(get_admin_user)):
+    await _refresh_clover_customers(False)
+    return await hd_customers.regulars_card(db, await _customer_employees())
+
+
 class AgentIgnoreInput(BaseModel):
     item: str = Field(min_length=1, max_length=600)
 

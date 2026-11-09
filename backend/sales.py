@@ -25,7 +25,7 @@ def _day_bounds_ms(day: date) -> tuple[int, int]:
     return int(start.timestamp() * 1000), int(end.timestamp() * 1000)
 
 
-RICH_EXPAND = "lineItems,payments,payments.tender,payments.cardTransaction,employee,refunds,discounts"
+RICH_EXPAND = "lineItems,payments,payments.tender,payments.cardTransaction,employee,refunds,discounts,customers"
 
 
 async def _store_orders_for_day(clover, merchant_id: str, day: date) -> list[dict]:
@@ -70,10 +70,11 @@ def order_summary(o: dict, day_key: str) -> dict:
         "last4": card.get("last4") or "",
         "employee": employee,
         "employeeId": str((o.get("employee") or {}).get("id") or ""),
+        "customerId": str((((o.get("customers") or {}).get("elements") or [{}])[0] or {}).get("id") or ""),
         "itemCount": round(sum(_line_qty(l) for l in lines), 1),
         "items": [{"name": (l.get("name") or "").strip(), "qty": _line_qty(l), "price": _cents(l.get("price")),
                    "itemId": str((l.get("item") or {}).get("id") or "")} for l in lines[:40]],
-        "v": 3,
+        "v": 4,
         "search": " ".join([(l.get("name") or "") for l in lines] + [card.get("last4") or "", employee, f"{_cents(o.get('total')):.2f}"]).lower(),
     }
 
@@ -161,7 +162,7 @@ async def sync_sales(db, clover, days: Optional[int] = None, logger=None) -> dic
     have_days = {d["date"]: d.get("storeOrders") for d in day_rows}
     window = days or HISTORY_DAYS
     todo = [today - timedelta(days=i) for i in range(window)]
-    have_receipts = set(await db.store_orders.distinct("date", {"v": 3}))  # v2 = with tax worked out
+    have_receipts = set(await db.store_orders.distinct("date", {"v": 4}))  # v4 = with payments, employee and customer
     todo = [d for d in todo if d >= today - timedelta(days=1) or d.isoformat() not in have
             or (d.isoformat() not in have_receipts and (have_days.get(d.isoformat()) or 0) > 0)]
     products = await db.products.find({"cloverItemId": {"$nin": [None, ""]}}, {"_id": 0, "id": 1, "name": 1, "cloverItemId": 1}).to_list(5000)
