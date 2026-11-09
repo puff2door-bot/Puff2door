@@ -5700,6 +5700,19 @@ import dashboard as hd_dashboard
 
 @api_router.get("/admin/dashboard")
 async def admin_dashboard_overview(admin: dict = Depends(get_admin_user)):
+    # Pull today's register sales first when they're more than 2 minutes old, so the
+    # Dashboard shows sales made a moment ago (waits at most ~10 s, then shows what it has).
+    try:
+        today = datetime.now(hd_sales.ET).date().isoformat()
+        row = await db.sales_days.find_one({"date": today}, {"syncedAt": 1}) or {}
+        synced = row.get("syncedAt")
+        if synced and synced.tzinfo is None:
+            synced = synced.replace(tzinfo=timezone.utc)
+        if not _sales_job["running"] and (not synced or now_utc() - synced > timedelta(minutes=2)):
+            task = asyncio.create_task(_run_sales_sync(1))
+            await asyncio.wait_for(asyncio.shield(task), timeout=10)  # keeps running in the background if slow
+    except Exception:
+        pass
     return await hd_dashboard.overview(db)
 
 
