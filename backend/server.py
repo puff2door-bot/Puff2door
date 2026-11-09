@@ -5475,6 +5475,100 @@ async def admin_store_receipt(order_id: str, admin: dict = Depends(get_admin_use
         raise HTTPException(status_code=502, detail=f"Could not read this receipt from Clover: {exc}")
 
 
+# ---- Business expenses from Gmail receipts (backend/expenses.py), read-only Gmail ----
+import expenses as hd_expenses
+from fastapi.responses import Response as _RawResponse
+
+
+def gmail_receipts() -> "hd_expenses.GmailReceipts":
+    return hd_expenses.GmailReceipts(db, GOOGLE_BP_CLIENT_ID, GOOGLE_BP_CLIENT_SECRET, f"{SITE_URL}/api/gmail/callback", JWT_SECRET)
+
+
+class ExpenseUpdate(BaseModel):
+    category: Optional[str] = None
+    vendor: Optional[str] = Field(default=None, max_length=60)
+    amount: Optional[float] = None
+    notes: Optional[str] = Field(default=None, max_length=300)
+    notReceipt: Optional[bool] = None
+    ignoreSender: bool = False
+    clearAmount: bool = False
+
+
+class SendersInput(BaseModel):
+    email: str = Field(min_length=3, max_length=120)
+    senders: List[str] = Field(default_factory=list, max_length=100)
+
+
+@api_router.get("/admin/expenses")
+async def admin_expenses(start: str, end: str, category: str = "", q: str = "", hidden: bool = False, admin: dict = Depends(get_admin_user)):
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", start) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", end):
+        raise HTTPException(status_code=400, detail="Dates must look like 2026-11-08")
+    data = await hd_expenses.report(db, start, end, category, q[:80], hidden)
+    g = gmail_receipts()
+    data["inboxes"] = await g.inboxes()
+    data["configured"] = g.configured
+    return data
+
+
+@api_router.patch("/admin/expenses/{expense_id}")
+async def admin_expense_update(expense_id: str, inp: ExpenseUpdate, admin: dict = Depends(get_admin_user)):
+    changes = {k: v for k, v in inp.model_dump().items() if v is not None and k not in ("ignoreSender", "clearAmount")}
+    if inp.clearAmount:
+        changes["amount"] = None
+    changes["ignoreSender"] = inp.ignoreSender
+    try:
+        return await hd_expenses.update(db, expense_id[:20], changes)
+    except hd_expenses.GmailError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@api_router.post("/admin/expenses/sync")
+async def admin_expenses_sync(admin: dict = Depends(get_admin_user)):
+    return await gmail_receipts().sync()
+
+
+@api_router.get("/admin/expenses/{expense_id}/attachment/{attachment_id}")
+async def admin_expense_attachment(expense_id: str, attachment_id: str, admin: dict = Depends(get_admin_user)):
+    try:
+        raw, name = await gmail_receipts().attachment(expense_id[:20], attachment_id[:400])
+    except hd_expenses.GmailError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    safe = re.sub(r"[^A-Za-z0-9._ -]", "_", name)[:100] or "receipt.pdf"
+    return _RawResponse(raw, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{safe}"'})
+
+
+@api_router.post("/admin/gmail/connect")
+async def admin_gmail_connect(mode: str = "business", hint: str = "", admin: dict = Depends(get_admin_user)):
+    try:
+        return {"url": await gmail_receipts().auth_url(mode, hint[:120])}
+    except hd_expenses.GmailError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@api_router.get("/gmail/callback", include_in_schema=False)
+async def gmail_callback(code: str = "", state: str = "", error: str = ""):
+    if error or not code:
+        return RedirectResponse(f"{SITE_URL}/admin/expenses?gmail=error", status_code=303)
+    try:
+        await gmail_receipts().callback(code, state)
+    except Exception as exc:
+        logger.warning("Gmail connect failed: %s", exc)
+        return RedirectResponse(f"{SITE_URL}/admin/expenses?gmail=error", status_code=303)
+    asyncio.create_task(gmail_receipts().sync())
+    return RedirectResponse(f"{SITE_URL}/admin/expenses?gmail=connected", status_code=303)
+
+
+@api_router.post("/admin/gmail/disconnect")
+async def admin_gmail_disconnect(email: str, admin: dict = Depends(get_admin_user)):
+    await gmail_receipts().disconnect(email.lower()[:120])
+    return {"ok": True}
+
+
+@api_router.post("/admin/gmail/senders")
+async def admin_gmail_senders(inp: SendersInput, admin: dict = Depends(get_admin_user)):
+    return {"senders": await hd_expenses.set_senders(db, inp.email.lower(), inp.senders)}
+
+
 class AgentIgnoreInput(BaseModel):
     item: str = Field(min_length=1, max_length=600)
 
@@ -5635,7 +5729,8 @@ async def _push_admins(payload: dict) -> None:
 
 def automation_hooks() -> "hd_automations.Hooks":
     return hd_automations.Hooks(db, SITE_URL, JWT_SECRET, get_settings, clover_integration, instagram_integration,
-                                _push_admins, refresh_static_sitemap, hd_agents.CLAIM_WORDS, google_reviews_integration)
+                                _push_admins, refresh_static_sitemap, hd_agents.CLAIM_WORDS, google_reviews_integration,
+                                lambda: gmail_receipts())
 
 
 class AutomationToggle(BaseModel):

@@ -40,6 +40,7 @@ AUTOMATIONS = [
     ("chat_reply", "Answer Live Chat questions instantly (stays quiet while you are chatting)"),
     ("weekly_reorder", "Monday reorder list by brand (email)"),
     ("google_reviews", "Reply to new Google reviews"),
+    ("expenses_sync", "Collect business receipts from Gmail every 3 hours"),
 ]
 AUTOMATION_IDS = {a for a, _ in AUTOMATIONS}
 MARKETING_EMAILS_PER_DAY = 40  # leaves room under the free email plan for order emails
@@ -53,7 +54,8 @@ class Hooks:
     def __init__(self, db, public_url: str, secret: str, get_settings: Callable[[], Awaitable[dict]],
                  clover_factory: Callable[[], Any], instagram_factory: Callable[[], Any],
                  push_admins: Callable[[dict], Awaitable[None]], after_products_changed: Callable[[], Awaitable[None]],
-                 claim_words: re.Pattern, google_factory: Optional[Callable[[], Any]] = None):
+                 claim_words: re.Pattern, google_factory: Optional[Callable[[], Any]] = None,
+                 expenses_factory: Optional[Callable[[], Any]] = None):
         self.db = db
         self.public_url = public_url.rstrip("/")
         self.secret = secret
@@ -64,6 +66,7 @@ class Hooks:
         self.after_products_changed = after_products_changed
         self.claim_words = claim_words
         self.google_factory = google_factory
+        self.expenses_factory = expenses_factory
 
 
 def _now() -> datetime:
@@ -432,6 +435,8 @@ async def tick(h: Hooks, logger=None) -> None:
         ("descriptions", timedelta(hours=6), descriptions),
         ("instagram_renew", timedelta(hours=24), instagram_renew),
     ]
+    if h.expenses_factory:
+        jobs.append(("expenses_sync", timedelta(hours=3), lambda hooks: hooks.expenses_factory().sync(days=14)))
     if h.google_factory:
         import google_reviews
         jobs.append(("google_reviews", timedelta(hours=2), lambda hooks: google_reviews.reply_new(hooks)))
