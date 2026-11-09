@@ -1,5 +1,20 @@
 [
  {
+  "line": "Geek X-Lite 50K",
+  "match": {
+   "brand": "geek",
+   "name": "x-?\\s*lite"
+  },
+  "puffs": 50000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*geek(\\s*bar)?",
+   "x-?\\s*lite",
+   "\\b50\\s*k\\b"
+  ],
+  "template": "Geek X-Lite disposable vape in {flavor}. Rated for up to 50,000 puffs in Regular mode or 40,000 in Pulse mode (as printed on the box), with a 3D curved screen. Pre-filled with nicotine and rechargeable."
+ },
+ {
   "line": "Geek Bar Pulse X 25K",
   "match": {
    "brand": "geek",
