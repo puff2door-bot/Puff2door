@@ -198,7 +198,13 @@ async def descriptions(h: Hooks) -> None:
         if len(str(product.get("description") or "").strip()) >= 40:  # someone wrote one meanwhile
             await h.db.description_drafts.update_one({"_id": d["_id"]}, {"$set": {"status": "skipped", "decidedAt": _now(), "decidedBy": "auto"}})
             continue
-        await h.db.products.update_one({"id": d["productId"]}, {"$set": {"description": text, "updatedAt": _now()}})
+        update = {"description": text, "updatedAt": _now()}
+        current = await h.db.products.find_one({"id": d["productId"]}, {"_id": 0, "flavors": 1, "puffs": 1}) or {}
+        if d.get("flavors") and not current.get("flavors"):
+            update["flavors"] = d["flavors"]  # so the shop's Flavor filter finds new products too
+        if d.get("puffs") and not current.get("puffs"):
+            update["puffs"] = d["puffs"]
+        await h.db.products.update_one({"id": d["productId"]}, {"$set": update})
         await h.db.description_drafts.update_one({"_id": d["_id"]}, {"$set": {"status": "approved", "decidedAt": _now(), "decidedBy": "auto"}})
         done += 1
     if done:

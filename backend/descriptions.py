@@ -9,6 +9,11 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
+import product_details
+
+# Categories where the product name carries a flavor customers can filter by.
+FLAVORED = {"disposable", "e-liquids", "hookah", "kratom", "delta", "delta-edibles", "delta-cartridges", "cigars", "hemp-wraps", "munchies"}
+
 STORE = "HD Smoke Shop in Altamonte Springs"
 CLOSING = f"Available at {STORE} for in-store shopping or local delivery. Adults 21+ only; valid photo ID required."
 
@@ -168,16 +173,21 @@ async def generate(db, claim_words: re.Pattern, limit: int = 1000) -> dict:
     pending = {d["productId"] async for d in db.description_drafts.find({"status": "pending"}, {"productId": 1})}
     rows = await db.products.find({"active": {"$ne": False}}, {"_id": 0, "id": 1, "name": 1, "brandName": 1,
                                                                "categorySlug": 1, "description": 1, "stock": 1}).to_list(5000)
+    queued = {d["productId"] async for d in db.detail_drafts.find({"status": "review"}, {"productId": 1})}
     made, skipped = 0, 0
+    library = product_details.load_library()
     for p in sorted(rows, key=lambda r: -int(r.get("stock") or 0)):
-        if len(str(p.get("description") or "").strip()) >= 40 or p["id"] in pending:
+        if len(str(p.get("description") or "").strip()) >= 40 or p["id"] in pending or p["id"] in queued:
             continue
-        text = draft_for(p)
+        lib = product_details.library_draft(p, library)
+        text = lib["description"] if lib else draft_for(p)
         if not text or claim_words.search(text) or claim_words.search(p.get("name") or ""):
             skipped += 1
             continue
+        flavors = lib["flavors"] if lib else (product_details.flavor_tags(p.get("name")) if p.get("categorySlug") in FLAVORED else [])
         await db.description_drafts.insert_one({"productId": p["id"], "name": p["name"], "category": p.get("categorySlug"),
-                                                "text": text, "status": "pending", "createdAt": datetime.now(timezone.utc)})
+                                                "text": text, "flavors": flavors, "puffs": (lib or {}).get("puffs"),
+                                                "line": (lib or {}).get("line", ""), "status": "pending", "createdAt": datetime.now(timezone.utc)})
         made += 1
         if made >= limit:
             break

@@ -11,7 +11,7 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr, field_validator
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import uuid
 import random
 import re
@@ -5813,6 +5813,46 @@ async def admin_descriptions_skip(inp: DescriptionDecision, admin: dict = Depend
             continue
     res = await db.description_drafts.update_many({"_id": {"$in": ids}, "status": "pending"}, {"$set": {"status": "skipped", "decidedAt": now_utc()}})
     return {"skipped": res.modified_count}
+
+
+# ---- Researched product details (backend/product_details.py): staged in batches, owner approves ----
+import product_details as hd_details
+
+
+class DetailStageInput(BaseModel):
+    batch: str = Field(min_length=1, max_length=60)
+    items: List[Dict[str, Any]] = Field(min_length=1, max_length=300)
+
+
+class DetailDecision(BaseModel):
+    ids: List[int] = Field(min_length=1, max_length=300)
+    edits: Dict[str, str] = Field(default_factory=dict)
+
+
+@api_router.post("/admin/product-details/stage")
+async def admin_details_stage(inp: DetailStageInput, admin: dict = Depends(get_admin_user)):
+    return await hd_details.stage(db, inp.batch, inp.items, hd_agents.CLAIM_WORDS)
+
+
+@api_router.get("/admin/product-details")
+async def admin_details_queue(admin: dict = Depends(get_admin_user)):
+    return await hd_details.queue(db)
+
+
+@api_router.post("/admin/product-details/approve")
+async def admin_details_approve(inp: DetailDecision, admin: dict = Depends(get_admin_user)):
+    try:
+        done = await hd_details.approve(db, inp.ids, inp.edits, hd_agents.CLAIM_WORDS, admin["id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if done:
+        asyncio.create_task(refresh_static_sitemap())
+    return {"approved": done}
+
+
+@api_router.post("/admin/product-details/skip")
+async def admin_details_skip(inp: DetailDecision, admin: dict = Depends(get_admin_user)):
+    return {"skipped": await hd_details.skip(db, inp.ids)}
 
 
 # ---- Missing barcodes (backend/barcodes.py): Clover items the register can't scan ----
