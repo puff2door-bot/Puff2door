@@ -72,10 +72,13 @@ export const FLAVOR_KEYWORDS = [
 ];
 
 export const PUFF_RANGES = [
-  { key: "up-to-10k", label: "Up to 10K puffs", min: 1, max: 10000 },
-  { key: "10k-30k", label: "10K – 30K puffs", min: 10001, max: 30000 },
+  { key: "up-to-5k", label: "Up to 5K puffs", min: 1, max: 5000 },
+  { key: "5k-10k", label: "5K – 10K puffs", min: 5001, max: 10000 },
+  { key: "10k-20k", label: "10K – 20K puffs", min: 10001, max: 20000 },
+  { key: "20k-30k", label: "20K – 30K puffs", min: 20001, max: 30000 },
   { key: "30k-40k", label: "30K – 40K puffs", min: 30001, max: 40000 },
-  { key: "50k-plus", label: "50K+ puffs", min: 40001, max: Infinity },
+  { key: "40k-50k", label: "40K – 50K puffs", min: 40001, max: 49999 },
+  { key: "50k-plus", label: "50K+ puffs", min: 50000, max: Infinity },
 ];
 
 const OUT_OF_STOCK = new Set([

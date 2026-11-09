@@ -1075,6 +1075,7 @@ class ProductInput(BaseModel):
     brandName: str = ""
     flavors: List[str] = []
     puffs: Optional[int] = None
+    size: str = Field(default="", max_length=30)  # strength/size customers filter by, e.g. "500 mg", "3.5 g"
     stock: int = Field(default=0, ge=0)
     sku: str = Field(default="", max_length=120)
     barcode: str = Field(default="", max_length=120)
@@ -1252,6 +1253,7 @@ def product_out(p: dict) -> dict:
         "brandName": p.get("brandName", ""),
         "flavors": p.get("flavors", []),
         "puffs": p.get("puffs"),
+        "size": p.get("size", ""),
         "sku": p.get("sku", ""),
         "barcode": p.get("barcode", ""),
         "cloverItemId": p.get("cloverItemId", ""),

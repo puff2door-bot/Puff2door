@@ -26,24 +26,25 @@ from typing import Optional
 
 CLOSING = "Available at HD Smoke Shop in Altamonte Springs for in-store shopping or local delivery. Adults 21+ only; valid photo ID required."
 NIC_WARNING = "WARNING: This product contains nicotine. Nicotine is an addictive chemical."
+ZERO_NIC = re.compile(r"\b(no\s*nic|zero\s*nic(otine)?|nic(otine)?\s*free|0\s*%)", re.I)
 LIBRARY_FILE = Path(__file__).parent / "product_details" / "library.json"
 
 # Flavor families customers filter by. Order matters: longer names first so
 # "Blue Razz" wins over "Blue", "Watermelon" over "Melon", "Pineapple" over "Apple".
 FAMILIES = [
-    ("Blue Razz", r"blue\s*ra(?:z|zz|spberry)"), ("Watermelon", r"water\s*melon"), ("Pineapple", r"pine\s*apple"),
+    ("Blue Razz", r"blue\s*ra(?:z|zz|spberry)"), ("Watermelon", r"water\s*melon|(?<=straw)melon"), ("Pineapple", r"pine\s*apple"),
     ("Dragon Fruit", r"dragon\s*fruit|pitaya"), ("Passion Fruit", r"passion\s*fruit|maracuja"), ("Cotton Candy", r"cotton\s*candy"), ("Bubblegum", r"bubble\s*gum"),
-    ("Strawberry", r"straw\s*berry|strawberries|\bstraw\b|\bstrazz"), ("Blueberry", r"blue\s*berry|blueberries"), ("Raspberry", r"rasp\s*berry"),
+    ("Strawberry", r"straw\s*berry|strawberries|\bstraw\b|\bstrazz|\bstraws\b|\bstraw(?=melon)|\bstr(?=apple)"), ("Blueberry", r"blue\s*berry|blueberries"), ("Raspberry", r"rasp\s*berry"),
     ("Blackberry", r"black\s*berry"), ("Cranberry", r"cran\s*berry"), ("Grapefruit", r"grape\s*fruit"), ("Mixed Berry", r"mixed\s*berr|triple\s*berr|berry\s*blast|wild\s*berr|\bberries\b"),
-    ("Grape", r"\bgrape"), ("Apple", r"\bapple"), ("Mango", r"\bmango"), ("Peach", r"\bpeach"), ("Cherry", r"\bcherr"), ("Kiwi", r"\bkiwi"),
-    ("Banana", r"\bbanana"), ("Lemon", r"\blemon"), ("Lime", r"\blime\b"), ("Orange", r"\borange|tangerine|mandarin|\bcitrus"), ("Coconut", r"coconut"),
+    ("Grape", r"\bgrape"), ("Apple", r"\bapple|(?<=str)apple"), ("Mango", r"\bmango"), ("Peach", r"\bpeach"), ("Cherry", r"\bcherr"), ("Kiwi", r"\bkiwi"),
+    ("Banana", r"\bbanana"), ("Lemon", r"\blemon"), ("Lime", r"\blime\b"), ("Citrus", r"citrus"), ("Orange", r"\borange|tangerine|mandarin|\btang\b"), ("Coconut", r"coconut"),
     ("Melon", r"\bmelon|honeydew|cantaloupe"), ("Guava", r"\bguava"), ("Lychee", r"lychee|litchi"), ("Pomegranate", r"pomegranate"), ("Papaya", r"papaya"),
     ("Tropical", r"tropic|hawaiian|island|paradise"), ("Peach", r"nectarine"), ("Pear", r"\bpear\b"), ("Plum", r"\bplum\b"),
     ("Mint", r"\bmint|menthol|spearmint|peppermint|wintergreen"), ("Ice", r"\bice[ds]?\b|\bicy\b|frozen|\bcool\b|polar|chill|freez"),
     ("Cola", r"\bcola\b|\bcoke\b"), ("Energy Drink", r"energy|red\s*bull"), ("Coffee", r"coffee|espresso|cappuccino|latte|mocha"),
-    ("Vanilla", r"vanilla"), ("Chocolate", r"chocolate|cocoa"), ("Candy", r"candy|gumm|sour\s*patch|skittle|rainbow|taffy|jelly"),
+    ("Vanilla", r"vanilla"), ("Chocolate", r"chocolate|cocoa"), ("Candy", r"candy|gumm|gumny|\bgami\b|sour\s*patch|skittle|taffy|jelly|rancher"),
     ("Dessert", r"cake|custard|cookie|donut|cream|cheesecake|pudding|pie\b|tiramisu|cereal|milk"), ("Honey", r"\bhoney\b"), ("Sour", r"\bsour\b"),
-    ("Tobacco", r"\btobacco\b|\bvirginia\b|\bcuban\b|\bclassic\s*tob"), ("Unflavored", r"unflavou?red|\bnatural\b|\boriginal\b"),
+    ("Mixed Berry", r"\bberry\b"), ("Tobacco", r"\btobacco\b|\bvirginia\b|\bcuban\b|\bclassic\s*tob"), ("Unflavored", r"unflavou?red|\bnatural\b|\boriginal\b"),
 ]
 _FAMILY_RX = [(fam, re.compile(rx, re.I)) for fam, rx in FAMILIES]
 
@@ -58,6 +59,29 @@ def flavor_tags(flavor_text: str) -> list:
             found.append((m.start(), fam))
             text = text[: m.start()] + " " * (m.end() - m.start()) + text[m.end():]  # don't double-count
     return [f for _, f in sorted(found)][:6]  # in the order the flavor name says them
+
+
+# ---------------- Strength / size ----------------
+SIZE_RX = re.compile(r"(\d+(?:\.\d+)?)\s*(mg|g|gm|gms|gram|grams|ml)\b", re.I)
+# Categories where the strength/size filter matters (edibles: mg, flower/pre-rolls: g, hemp vapes: g).
+SIZED = {"delta", "delta-edibles", "delta-smokeables", "delta-cartridges", "kratom"}
+
+
+def normalize_size(text: str) -> str:
+    m = SIZE_RX.search(str(text or ""))
+    if not m:
+        return ""
+    n = m.group(1).rstrip("0").rstrip(".") if "." in m.group(1) else m.group(1)
+    unit = m.group(2).lower()
+    unit = "g" if unit.startswith("g") else unit
+    return f"{n} {unit}"
+
+
+def size_from_name(name: str, category: str) -> str:
+    """Total strength/size from the product name, for hemp and kratom products only."""
+    if category not in SIZED:
+        return ""
+    return normalize_size(name)
 
 
 # ---------------- Library ----------------
@@ -94,6 +118,8 @@ def _flavor_from_name(entry: dict, name: str) -> str:
 
 def library_draft(product: dict, library: Optional[list] = None) -> Optional[dict]:
     """Full description + flavor tags + puffs from the researched library, or None."""
+    if ZERO_NIC.search(str(product.get("name") or "")):
+        return None  # zero-nicotine versions differ from the line's specs; write those by hand
     for entry in library if library is not None else load_library():
         if not _match(entry, product):
             continue
@@ -133,11 +159,12 @@ async def stage(db, batch: str, items: list, claim_words: re.Pattern) -> dict:
             continue
         flavors = [" ".join(str(f).split())[:30] for f in (it.get("flavors") or []) if str(f).strip()][:20]
         puffs = int(it["puffs"]) if it.get("puffs") else None
+        size = normalize_size(it.get("size") or "")
         await db.detail_drafts.update_one({"productId": pid, "status": "review"}, {"$set": {
             "productId": pid, "batch": batch[:60], "name": product["name"], "category": product.get("categorySlug", ""),
-            "description": text, "flavors": flavors, "puffs": puffs, "flag": str(it.get("flag") or "")[:300],
+            "description": text, "flavors": flavors, "puffs": puffs, "size": size, "flag": str(it.get("flag") or "")[:300],
             "sources": [str(s)[:200] for s in (it.get("sources") or [])][:6],
-            "before": {"description": product.get("description") or "", "flavors": product.get("flavors") or [], "puffs": product.get("puffs")},
+            "before": {"description": product.get("description") or "", "flavors": product.get("flavors") or [], "puffs": product.get("puffs"), "size": product.get("size") or ""},
             "status": "review", "createdAt": datetime.now(timezone.utc)}}, upsert=True)
         staged += 1
     return {"staged": staged, "rejected": rejected}
@@ -165,6 +192,8 @@ async def approve(db, product_ids: list, edits: dict, claim_words: re.Pattern, w
         update = {"description": text, "flavors": d.get("flavors") or [], "updatedAt": datetime.now(timezone.utc)}
         if d.get("puffs"):
             update["puffs"] = d["puffs"]
+        if d.get("size"):
+            update["size"] = d["size"]
         await db.products.update_one({"id": d["productId"]}, {"$set": update})
         await db.detail_drafts.update_one({"_id": d["_id"]}, {"$set": {"status": "approved", "description": text,
                                                                        "decidedAt": datetime.now(timezone.utc), "decidedBy": who}})

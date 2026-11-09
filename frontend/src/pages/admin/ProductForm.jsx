@@ -59,7 +59,7 @@ export const ImageField = ({ label, value, onChange, testId }) => {
 
 export const emptyProduct = {
   name: "", category: "", categorySlug: "", price: "", salePrice: "", image: "", image2: "",
-  brand: "", brandName: "", flavors: [], puffs: "", stock: 0, sku: "", barcode: "", active: true, description: "",
+  brand: "", brandName: "", flavors: [], puffs: "", size: "", stock: 0, sku: "", barcode: "", active: true, description: "",
   complianceCategory: "regulated", minimumAge: 21, requiresIdAtDelivery: true, localDeliveryOnly: true,
   allowedStates: [], blockedStates: [],
 };
@@ -208,6 +208,10 @@ const ProductForm = ({ initial, onClose, onSaved }) => {
           <div>
             <label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Puff count</label>
             <input type="number" min="0" step="1" data-testid="pf-puffs" className={inputCls} placeholder="e.g. 25000" value={f.puffs} onChange={(e) => set("puffs", e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide text-neutral-500 mb-1.5">Strength / size</label>
+            <input type="text" maxLength={30} data-testid="pf-size" className={inputCls} placeholder="e.g. 500 mg or 3.5 g" value={f.size || ""} onChange={(e) => set("size", e.target.value)} />
           </div>
         </div>
 

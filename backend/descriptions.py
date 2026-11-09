@@ -187,6 +187,7 @@ async def generate(db, claim_words: re.Pattern, limit: int = 1000) -> dict:
         flavors = lib["flavors"] if lib else (product_details.flavor_tags(p.get("name")) if p.get("categorySlug") in FLAVORED else [])
         await db.description_drafts.insert_one({"productId": p["id"], "name": p["name"], "category": p.get("categorySlug"),
                                                 "text": text, "flavors": flavors, "puffs": (lib or {}).get("puffs"),
+                                                "size": product_details.size_from_name(p.get("name"), p.get("categorySlug") or ""),
                                                 "line": (lib or {}).get("line", ""), "status": "pending", "createdAt": datetime.now(timezone.utc)})
         made += 1
         if made >= limit:

@@ -1,1 +1,420 @@
-[]
+[
+ {
+  "line": "Geek Bar Pulse X 25K",
+  "match": {
+   "brand": "geek",
+   "name": "pulse\\s*x"
+  },
+  "puffs": 25000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*geek\\s*bar",
+   "pulse\\s*x",
+   "\\b25\\s*k\\b"
+  ],
+  "template": "Geek Bar Pulse X disposable vape in {flavor}. Up to 25,000 puffs in Regular mode or 15,000 in Pulse mode, with an 18 ml pre-filled tank of 5% nicotine, an 820 mAh rechargeable battery (USB-C), a curved 3D screen that shows battery and e-liquid levels, dual mesh coils and adjustable airflow."
+ },
+ {
+  "line": "Geek Bar Pulse 2 (25K)",
+  "match": {
+   "brand": "geek",
+   "name": "pulse\\s*2"
+  },
+  "puffs": 25000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*geek\\s*bar",
+   "pulse\\s*2",
+   "\\b25\\s*k\\b"
+  ],
+  "template": "Geek Bar Pulse 2 disposable vape in {flavor}. Rated for up to 25,000 puffs in regular mode or 15,000 in Pulse mode (as printed on the box), pre-filled with 5% nicotine and rechargeable, with a screen that shows battery and e-liquid levels."
+ },
+ {
+  "line": "Geek Bar Pulse 15K",
+  "match": {
+   "brand": "geek",
+   "name": "\\bpulse\\b",
+   "notName": "pulse\\s*(x|2)"
+  },
+  "puffs": 15000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*geek\\s*bar",
+   "\\bpulse\\b",
+   "\\b15\\s*k\\b"
+  ],
+  "template": "Geek Bar Pulse disposable vape in {flavor}. Up to 15,000 puffs in Regular mode or 7,500 in Pulse mode, with a 16 ml pre-filled tank of 5% nicotine (50 mg/ml), a 650 mAh rechargeable battery (USB-C), a full-color screen showing battery and e-liquid levels, and dual mesh coils."
+ },
+ {
+  "line": "Geek Bar CLR 50K",
+  "match": {
+   "brand": "geek",
+   "name": "\\bclr\\b"
+  },
+  "puffs": 50000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*geek\\s*bar",
+   "\\bclr\\b",
+   "\\b50\\s*k\\b"
+  ],
+  "template": "Geek Bar CLR disposable vape in {flavor}. A clear body so you can see the e-liquid level, rated on the box for up to 50,000 puffs (25,000 in its stronger mode), pre-filled with 5% nicotine and rechargeable."
+ },
+ {
+  "line": "RAZ TN9000",
+  "match": {
+   "brand": "raz",
+   "name": "\\b9\\s*k\\b|9000"
+  },
+  "puffs": 9000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\braz\\b",
+   "\\b9\\s*k\\b",
+   "9000"
+  ],
+  "template": "RAZ TN9000 disposable vape in {flavor}. Up to 9,000 puffs from a 12 ml pre-filled tank of 5% nicotine (50 mg), with a 650 mAh rechargeable battery, an HD screen that shows battery and e-liquid levels, a dual mesh coil and adjustable airflow."
+ },
+ {
+  "line": "RAZ LTX 25K",
+  "match": {
+   "brand": "raz",
+   "name": "\\b25\\s*k\\b"
+  },
+  "puffs": 25000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\braz\\b",
+   "\\b25\\s*k\\b",
+   "\\bltx\\b"
+  ],
+  "template": "RAZ LTX 25K disposable vape in {flavor}. Up to 25,000 puffs in Normal mode (about 15,000 in Boost mode) from a 16 ml pre-filled tank of 5% nicotine, with an 800 mAh rechargeable battery (USB-C), a 1.77-inch HD screen showing battery and e-liquid levels, a dual mesh coil and adjustable airflow."
+ },
+ {
+  "line": "RAZ RX50K Dew Edition",
+  "match": {
+   "brand": "raz",
+   "name": "dew\\s*edition"
+  },
+  "puffs": 50000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\braz\\b",
+   "dew\\s*edition",
+   "\\b50\\s*k\\b"
+  ],
+  "template": "RAZ RX50K Dew Edition disposable vape, flavor {flavor}. Up to 50,000 puffs from a 19 ml see-through tank of 5% nicotine, with an 800 mAh rechargeable battery (USB-C fast charge), an HD screen showing battery, e-liquid and puff count, three power modes and a dual mesh coil."
+ },
+ {
+  "line": "RAZ RX50K",
+  "match": {
+   "brand": "raz",
+   "name": "\\b50\\s*k\\b"
+  },
+  "puffs": 50000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\braz\\b",
+   "\\b50\\s*k\\b",
+   "\\brx\\b"
+  ],
+  "template": "RAZ RX50K disposable vape in {flavor}. Up to 50,000 puffs in Normal mode (about 25,000 in Boost) from a 19 ml see-through tank of 5% nicotine, with an 800 mAh rechargeable battery (USB-C fast charge), an HD screen showing battery, e-liquid and puff count, and a dual mesh coil."
+ },
+ {
+  "line": "Lost Mary MT35000 Turbo",
+  "match": {
+   "brand": "lost\\s*mary",
+   "name": "\\b35\\s*k\\b"
+  },
+  "puffs": 35000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*lost\\s*mary",
+   "\\b35\\s*k\\b",
+   "\\bturbo\\b"
+  ],
+  "template": "Lost Mary MT35000 Turbo disposable vape in {flavor}. Up to 35,000 puffs in Smooth mode (about 20,000 in Turbo mode) from an 18 ml pre-filled tank of 5% nicotine salt, with a 1000 mAh rechargeable battery (USB-C, can be used while charging) and a hidden display that shows mode, battery and e-liquid levels."
+ },
+ {
+  "line": "Lost Mary MO20000 Pro",
+  "match": {
+   "brand": "lost\\s*mary",
+   "name": "\\b20\\s*k\\b"
+  },
+  "puffs": 20000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*lost\\s*mary",
+   "\\b20\\s*k\\b",
+   "\\bpro\\b"
+  ],
+  "template": "Lost Mary MO20000 Pro disposable vape in {flavor}. Up to 20,000 puffs, pre-filled with 5% nicotine, with power you can set from 13W to 25W, three airflow levels, a dual mesh coil and a large HD animated screen. Rechargeable."
+ },
+ {
+  "line": "Lost Mary MT15000 Turbo",
+  "match": {
+   "brand": "lost\\s*mary",
+   "name": "\\b15\\s*k\\b"
+  },
+  "puffs": 15000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*lost\\s*mary",
+   "\\b15\\s*k\\b",
+   "\\bturbo\\b"
+  ],
+  "template": "Lost Mary MT15000 Turbo disposable vape in {flavor}. Up to 15,000 puffs with Smooth and Turbo modes, pre-filled with 5% nicotine and rechargeable."
+ },
+ {
+  "line": "Nexa Ultra II 50K",
+  "match": {
+   "brand": "nexa",
+   "name": "\\b50\\s*k\\b"
+  },
+  "puffs": 50000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\bnexa\\b",
+   "\\b50\\s*k\\b"
+  ],
+  "template": "NEXA Ultra II disposable vape in {flavor}. Rated for up to 50,000 puffs with Normal and Turbo modes. Juicy Lock design: the e-liquid stays sealed until your first draw. 20 ml see-through tank, 900 mAh rechargeable battery (USB-C, usable while charging) and a curved screen with a stealth mode."
+ },
+ {
+  "line": "Nexa PIX 35K",
+  "match": {
+   "brand": "nexa",
+   "name": "\\b35\\s*k\\b"
+  },
+  "puffs": 35000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\bnexa\\b",
+   "\\b35\\s*k\\b"
+  ],
+  "template": "NEXA PIX disposable vape in {flavor}. Rated for up to 35,000 puffs, with NEXA's Juicy Lock design that keeps the e-liquid sealed until your first draw and a visible e-liquid window. Pre-filled and rechargeable."
+ },
+ {
+  "line": "YOVO JB50000",
+  "match": {
+   "brand": "yovo"
+  },
+  "puffs": 50000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\byovo\\b",
+   "\\b50\\s*k\\b",
+   "\\bjb\\s*50000\\b"
+  ],
+  "template": "YOVO JB50000 kit in {flavor}: a rechargeable battery plus a pre-filled pod with a see-through tank. Up to 50,000 puffs from 15 ml of 5% nicotine salt, with a dual mesh coil and USB-C charging."
+ },
+ {
+  "line": "Smogger 50K",
+  "match": {
+   "brand": "smogger"
+  },
+  "puffs": 50000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\bsmogger\\b",
+   "\\b50\\s*k\\b"
+  ],
+  "template": "Smogger disposable vape in {flavor}. Rated on the box for up to 50,000 puffs in Normal mode or 40,000 in Rocket mode, with a mega HD screen. Pre-filled and rechargeable."
+ },
+ {
+  "line": "Fume Extra 1500",
+  "match": {
+   "brand": "fume",
+   "name": "extra"
+  },
+  "puffs": 1500,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\bfume\\b",
+   "\\bextra\\b",
+   "1500"
+  ],
+  "template": "Fume Extra disposable vape in {flavor}. Up to 1,500 puffs, pre-filled with 5% nicotine salt and powered by an 850 mAh battery. Not rechargeable: use it until it's empty, then recycle it."
+ },
+ {
+  "line": "Fume Ultra 2500",
+  "match": {
+   "brand": "fume",
+   "name": "ultra"
+  },
+  "puffs": 2500,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\bfume\\b",
+   "\\bultra\\b",
+   "2500"
+  ],
+  "template": "Fume Ultra disposable vape in {flavor}. Up to 2,500 puffs, pre-filled with 5% nicotine and powered by a 1,000 mAh battery. Not rechargeable: use it until it's empty, then recycle it."
+ },
+ {
+  "line": "Fume Infinity 4500",
+  "match": {
+   "brand": "fume",
+   "name": "infinity"
+  },
+  "puffs": 4500,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\bfume\\b",
+   "\\binfinity\\b",
+   "4500"
+  ],
+  "template": "Fume Infinity Plus disposable vape in {flavor}. Up to 4,500 puffs (as printed on the box), pre-filled with 5% nicotine, with an LED display."
+ },
+ {
+  "line": "HQD Cuvie Plus 1200",
+  "match": {
+   "brand": "hqd",
+   "name": "1200"
+  },
+  "puffs": 1200,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\bhqd\\b",
+   "1200"
+  ],
+  "template": "HQD disposable vape in {flavor}. Up to 1,200 puffs, pre-filled with 5% nicotine. Slim pen-style body; not rechargeable."
+ },
+ {
+  "line": "HQD Cuvie Bar 7000",
+  "match": {
+   "brand": "hqd",
+   "name": "\\b7\\s*k\\b|7000"
+  },
+  "puffs": 7000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\bhqd\\b",
+   "cuvie\\s*bar",
+   "\\b7\\s*k\\b",
+   "7000"
+  ],
+  "template": "HQD Cuvie Bar disposable vape in {flavor}. Up to 7,000 puffs, pre-filled with 5% nicotine."
+ },
+ {
+  "line": "HQD 9000",
+  "match": {
+   "brand": "hqd",
+   "name": "\\b9\\s*k\\b|9000"
+  },
+  "puffs": 9000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\bhqd\\b",
+   "\\b9\\s*k\\b",
+   "9000"
+  ],
+  "template": "HQD disposable vape in {flavor}. Up to 9,000 puffs with a dual mesh coil, pre-filled with 5% nicotine, and rechargeable."
+ },
+ {
+  "line": "HQD Glaze 15000",
+  "match": {
+   "brand": "hqd",
+   "name": "glaze"
+  },
+  "puffs": 15000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\bhqd\\b",
+   "\\bglaze\\b"
+  ],
+  "template": "HQD Glaze disposable vape in {flavor}. Up to 15,000 puffs with a dual mesh coil and 5% nicotine, plus a battery and e-liquid level indicator. Rechargeable."
+ },
+ {
+  "line": "HQD Go 25K",
+  "match": {
+   "brand": "hqd",
+   "name": "\\bgo\\b"
+  },
+  "puffs": 25000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\bhqd\\b",
+   "\\bgo\\b"
+  ],
+  "template": "HQD GO disposable vape in {flavor}. Rated for up to 25,000 puffs (as printed on the box), pre-filled with 5% nicotine, with a screen and rechargeable battery."
+ },
+ {
+  "line": "Beri 50K",
+  "match": {
+   "brand": "beri"
+  },
+  "puffs": 50000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\bberi\\b"
+  ],
+  "template": "BERI disposable vape in {flavor}. Rated for up to 50,000 puffs in standard mode or 25,000 in Crush mode, with up to 40W of power and 2.5x faster charging (as printed on the box). 20 ml of 5% nicotine salt, a 1,000 mAh rechargeable battery (USB-C) and a 1.77-inch HD screen showing battery and e-liquid levels."
+ },
+ {
+  "line": "Tasteflex Cresmo 80K",
+  "match": {
+   "brand": "tasteflex"
+  },
+  "puffs": 80000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*\\btasteflex\\b",
+   "\\b80\\s*k\\b",
+   "puffs?"
+  ],
+  "template": "Tasteflex Cresmo disposable vape in {flavor}. Rated for up to 80,000 puffs (as printed on the box), with an e-valve inside and a screen. Pre-filled with 5% nicotine and rechargeable."
+ },
+ {
+  "line": "Hookalit 40K",
+  "match": {
+   "brand": "hook"
+  },
+  "puffs": 40000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*hookalit",
+   "\\b40\\s*k\\b"
+  ],
+  "template": "Hookalit Classic disposable vape in {flavor}: hookah-style flavors in a disposable, rated for up to 40,000 puffs (as printed on the box). Pre-filled with nicotine and rechargeable."
+ },
+ {
+  "line": "Rif Bar 40K",
+  "match": {
+   "brand": "\\brif\\b"
+  },
+  "puffs": 40000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*rif\\s*bar",
+   "\\bvape\\b",
+   "\\b40\\s*k\\b",
+   "^\\s*-\\s*"
+  ],
+  "template": "RIF Bar Mixpro disposable vape in {flavor}. Rated for up to 40,000 puffs, with a large screen. Pre-filled with nicotine and rechargeable."
+ },
+ {
+  "line": "Tequila Vape 15000",
+  "match": {
+   "brand": "teq"
+  },
+  "puffs": 15000,
+  "nicotine": true,
+  "strip": [
+   "^\\s*teq\\w*\\s*vape"
+  ],
+  "template": "Tequila Vape disposable in {flavor}, shaped like a tequila bottle. Up to 15,000 puffs (as printed on the box), pre-filled with nicotine and rechargeable."
+ },
+ {
+  "line": "Crown Bar Al Fakher",
+  "match": {
+   "brand": "fakher|crown"
+  },
+  "nicotine": true,
+  "strip": [
+   "^\\s*crown\\s*bar",
+   "al\\s*fakher",
+   "\\b\\d+\\s*k\\b"
+  ],
+  "template": "Crown Bar by Al Fakher disposable vape in {flavor}: Al Fakher's hookah-style flavors in a pre-filled disposable with dual mode. Check the box for the puff rating."
+ }
+]

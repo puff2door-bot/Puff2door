@@ -199,7 +199,9 @@ async def descriptions(h: Hooks) -> None:
             await h.db.description_drafts.update_one({"_id": d["_id"]}, {"$set": {"status": "skipped", "decidedAt": _now(), "decidedBy": "auto"}})
             continue
         update = {"description": text, "updatedAt": _now()}
-        current = await h.db.products.find_one({"id": d["productId"]}, {"_id": 0, "flavors": 1, "puffs": 1}) or {}
+        current = await h.db.products.find_one({"id": d["productId"]}, {"_id": 0, "flavors": 1, "puffs": 1, "size": 1}) or {}
+        if d.get("size") and not current.get("size"):
+            update["size"] = d["size"]
         if d.get("flavors") and not current.get("flavors"):
             update["flavors"] = d["flavors"]  # so the shop's Flavor filter finds new products too
         if d.get("puffs") and not current.get("puffs"):
