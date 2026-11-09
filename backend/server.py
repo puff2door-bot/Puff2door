@@ -5456,7 +5456,7 @@ async def admin_store_sales_items(days: int = 30, start: Optional[str] = None, e
 @api_router.get("/admin/receipts/store")
 async def admin_store_receipts(start: Optional[str] = None, end: Optional[str] = None, q: str = "", page: int = 1, employee: str = "",
                                admin: dict = Depends(get_admin_user)):
-    return await hd_store_reports.receipts(db, start, end, q[:80], max(1, min(page, 500)), employee[:40])
+    return await hd_store_reports.receipts(db, start, end, q[:80], max(1, min(page, 500)), employee_id=employee[:40])
 
 
 @api_router.get("/admin/store-sales/employee/{employee_id}")
