@@ -42,7 +42,7 @@ RULES = [  # (category, pattern on sender email/name + subject)
     ("Government, taxes & licenses", r"\.gov\b|floridarevenue|\birs\b|sunbiz|tax collector|county|city of|altamonte\.org|"
                                      r"\bdbpr\b|license|myflorida|department of|fdacs|annual report"),
     ("Rent & property", r"\brent\b|lease|landlord|property management|realty|plaza|properties"),
-    ("Insurance", r"insurance|geico|state ?farm|progressive|allstate|next ?insurance|hiscox|liberty mutual|thimble"),
+    ("Insurance", r"insurance|insure|premium ?finance|gotopremium|pbsnetaccess|geico|state ?farm|progressive|allstate|next ?insurance|hiscox|liberty mutual|thimble"),
     ("Professional services", r"\bcpa\b|accounting|bookkeep|law office|attorney|legal|clio|consult|yashcon"),
     ("Bank & card fees", r"\bbank\b|\bchase\b|wells ?fargo|bank of america|\bfee\b|merchant statement|clover fees|fiserv|"
                          r"stripe|square|paypal|interest charge"),
@@ -54,13 +54,16 @@ RULES = [  # (category, pattern on sender email/name + subject)
     ("Repairs & maintenance", r"repair|plumb|hvac|electrician|locksmith|maintenance|pest|vivint|alarm|security system"),
     ("Store supplies & equipment", r"lowe'?s|home ?depot|staples|office ?depot|walmart|costco|sam'?s club|amazon|target|"
                                    r"best buy|uline|webstaurant"),
-    ("Inventory & suppliers", r"distribut|wholesale|supply|supplies|vape|smoke|hemp|cbd|kratom|tobacco|cigar|"
+    ("Inventory & suppliers", r"distribut|novelty|wholesale|supply|supplies|vape|smoke|hemp|cbd|kratom|tobacco|cigar|"
                               r"glass|hookah|geek ?bar|lost ?mary|raz|elf ?bar|nexa|smok|grabba|backwoods"),
 ]
 SKIP = re.compile(r"verification code|verify your|sign in|password|security alert|newsletter|digest|"
-                  r"two-factor|2-step|welcome to|shipped|out for delivery|delivered:", re.I)
+                  r"two-factor|2-step|welcome to|shipped|out for delivery|delivered:|\bquote\b|quotation|estimate|"
+                  r"payment received from|you received|money received|sent you|credit on your|refund|cancell?ation|"
+                  r"notice of acceptance|application received", re.I)
+BILL_WORDS = re.compile(r"invoice|receipt|bill|statement|payment|paid|order|fee|premium|due", re.I)
 AMOUNT_KEYS = r"(?:grand total|total (?:amount )?(?:paid|due|charged)?|amount (?:paid|due|charged)|balance due|" \
-              r"payment (?:amount|of)|you paid|order total|total)"
+              r"payment (?:amount|of)|you paid|order total|total|fees?(?: due| amount)?)"
 MONEY = r"\$\s?([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})|[0-9]+(?:\.[0-9]{2}))"
 
 
@@ -113,7 +116,7 @@ def find_amount(text: str) -> Optional[float]:
         return round(best[1], 2)
     vals = [float(v.replace(",", "")) for v in re.findall(MONEY, t)]
     vals = [v for v in vals if 0 < v < 100000]
-    return round(max(vals), 2) if vals else None
+    return round(vals[0], 2) if len(set(vals)) == 1 else None  # only when the email shows a single amount
 
 
 def find_invoice(text: str) -> str:
@@ -167,6 +170,8 @@ def parse_message(msg: dict, learned: dict) -> Optional[dict]:
     pdfs = [f for f in files if f["mime"] == "application/pdf" or f["name"].lower().endswith(".pdf")]
     if amount is None and not pdfs:
         return None  # nothing that looks like a bill
+    if amount is None and not (BILL_WORDS.search(subject) or any(BILL_WORDS.search(f["name"]) for f in pdfs)):
+        return None  # a PDF that isn't a bill (contracts, signed documents)
     return {"messageId": msg["id"], "threadId": msg.get("threadId"), "date": when, "vendor": vendor_name(display, email),
             "vendorKey": vendor_key(email), "from": email.lower(), "subject": subject[:200], "amount": amount,
             "invoice": find_invoice(f"{subject}\n{body}"), "category": categorize(sender, subject, learned),
@@ -364,6 +369,15 @@ async def update(db, expense_id: str, changes: dict, remember: bool = True) -> d
         sets["categoryLocked"] = True if "category" in sets else row.get("categoryLocked", False)
         await db.expenses.update_one({"id": expense_id}, {"$set": sets})
     return {"ok": True}
+
+
+async def rescan(gmail: "GmailReceipts") -> dict:
+    """Forget everything the owner hasn't edited and read Gmail again with the current rules."""
+    res = await gmail.db.expenses.delete_many({"categoryLocked": {"$ne": True}, "notes": {"$exists": False},
+                                               "$or": [{"notReceipt": {"$ne": True}}, {"auto": True}]})
+    out = await gmail.sync()
+    out["cleared"] = res.deleted_count
+    return out
 
 
 async def set_senders(db, email: str, senders: list[str]) -> list[str]:
