@@ -16,6 +16,13 @@ from sales import ET, RICH_EXPAND, _cents, _line_qty
 CUSTOM = re.compile(r"^\s*custom item\s*$", re.I)
 
 
+def _iso(v):
+    """MongoDB hands datetimes back without a timezone; they are UTC. Send them with 'Z'."""
+    if isinstance(v, datetime):
+        return (v if v.tzinfo else v.replace(tzinfo=timezone.utc)).isoformat().replace("+00:00", "Z")
+    return v
+
+
 def _range(days: int, start: Optional[str], end: Optional[str]) -> tuple[str, str]:
     today = datetime.now(ET).date()
     if start and end:
@@ -101,6 +108,8 @@ async def receipts(db, start: Optional[str], end: Optional[str], q: str = "", pa
             flt["search"] = {"$regex": re.escape(q)}
     total = await db.store_orders.count_documents(flt)
     rows = await db.store_orders.find(flt, {"_id": 0, "search": 0}).sort("createdAt", -1).skip((max(page, 1) - 1) * per_page).limit(per_page).to_list(per_page)
+    for r in rows:
+        r["createdAt"] = _iso(r.get("createdAt"))
     return {"from": d_from, "to": d_to, "total": total, "page": page, "perPage": per_page, "receipts": rows}
 
 
@@ -116,7 +125,7 @@ async def receipt(db, clover, order_id: str) -> dict:
     except Exception:
         if not saved:
             raise
-        return {**saved, "live": False,
+        return {**saved, "createdAt": _iso(saved.get("createdAt")), "live": False,
                 "lines": [{"name": i["name"], "qty": i["qty"], "price": i["price"], "total": round(i["price"] * i["qty"], 2), "refunded": False}
                           for i in saved.get("items") or []],
                 "discounts": [], "refunds": [],
@@ -125,8 +134,11 @@ async def receipt(db, clover, order_id: str) -> dict:
     lines = (o.get("lineItems") or {}).get("elements") or []
     payments = [p for p in ((o.get("payments") or {}).get("elements") or [])]
     created = datetime.fromtimestamp((o.get("createdTime") or 0) / 1000, timezone.utc)
+    line_total = sum(_cents(l.get("price")) * _line_qty(l) for l in lines if not l.get("refunded"))
+    disc_total = sum(abs(_cents(d.get("amount"))) for d in ((o.get("discounts") or {}).get("elements") or []))
+    pay_tax = round(sum(_cents(p.get("taxAmount")) for p in payments), 2)
     return {
-        "id": o.get("id"), "createdAt": created, "live": True,
+        "id": o.get("id"), "createdAt": _iso(created), "live": True,
         "employee": (o.get("employee") or {}).get("name") or (saved or {}).get("employee", ""),
         "paymentState": str(o.get("paymentState") or ""),
         "lines": [{"name": (l.get("name") or "").strip(), "qty": _line_qty(l), "price": _cents(l.get("price")),
@@ -141,6 +153,6 @@ async def receipt(db, clover, order_id: str) -> dict:
         "refunds": [{"amount": _cents(r.get("amount")), "at": datetime.fromtimestamp((r.get("createdTime") or 0) / 1000, timezone.utc)}
                     for r in ((o.get("refunds") or {}).get("elements") or [])],
         "total": _cents(o.get("total")),
-        "tax": round(sum(_cents(p.get("taxAmount")) for p in payments), 2),
+        "tax": pay_tax or max(0.0, round(_cents(o.get("total")) - line_total + disc_total, 2)),
         "tip": round(sum(_cents(p.get("tipAmount")) for p in payments), 2),
     }

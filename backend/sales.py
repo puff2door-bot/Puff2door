@@ -58,7 +58,9 @@ def order_summary(o: dict, day_key: str) -> dict:
         "id": o.get("id"), "date": day_key, "createdAt": created,
         "hour": created.astimezone(ET).hour,
         "total": _cents(o.get("total")),
-        "tax": round(sum(_cents(p.get("taxAmount")) for p in payments), 2),
+        "tax": round(sum(_cents(p.get("taxAmount")) for p in payments), 2) or max(0.0, round(
+            _cents(o.get("total")) - sum(_cents(l.get("price")) * _line_qty(l) for l in lines)
+            + sum(abs(_cents(d.get("amount"))) for d in ((o.get("discounts") or {}).get("elements") or [])), 2)),
         "tip": round(sum(_cents(p.get("tipAmount")) for p in payments), 2),
         "discount": round(sum(abs(_cents(d.get("amount"))) for d in ((o.get("discounts") or {}).get("elements") or [])), 2),
         "refunded": round(sum(_cents(r.get("amount")) for r in refunds), 2),
