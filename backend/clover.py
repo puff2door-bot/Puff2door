@@ -1491,6 +1491,13 @@ class CloverIntegration:
             }
             if not row.get("orderId") or not line["cloverItemId"] or line["qty"] <= 0:
                 continue
+            # The product was deleted from the website and its Clover item no longer exists:
+            # there is nothing left to update, so stop retrying it every sync.
+            if "not found" in str(row.get("error") or "").lower() and not await self.db.products.find_one(
+                    {"$or": [{"id": line["productId"]}, {"cloverItemId": line["cloverItemId"]}]}, {"_id": 1}):
+                await self.db.clover_stock_adjustments.update_one({"_id": row["_id"]}, {"$set": {
+                    "status": "abandoned", "abandonedReason": "Product and Clover item were deleted", "updatedAt": utcnow()}})
+                continue
             applied.append(await self._mutate_item_stock(row["orderId"], line, row.get("direction") or "decrement"))
         return applied
 
