@@ -14,7 +14,7 @@ const SORTS = [
   { key: "name", label: "Name A-Z" },
 ];
 
-const EMPTY_FILTERS = { brands: [], flavors: [], puffs: [] };
+const EMPTY_FILTERS = { brands: [], flavors: [], puffs: [], sizes: [] };
 
 const ShopPage = () => {
   const { slug } = useParams();
@@ -67,7 +67,7 @@ const ShopPage = () => {
     return list;
   }, [scopeList, filters, sort]);
 
-  const activeFilterCount = filters.brands.length + filters.flavors.length + filters.puffs.length;
+  const activeFilterCount = filters.brands.length + filters.flavors.length + filters.puffs.length + filters.sizes.length;
 
   const totalPages = Math.max(1, Math.ceil(baseList.length / perPage));
   const pageList = baseList.slice((page - 1) * perPage, page * perPage);

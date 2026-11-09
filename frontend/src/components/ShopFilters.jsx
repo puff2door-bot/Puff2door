@@ -48,11 +48,22 @@ const Group = ({ title, options, selected, onToggle, testPrefix }) => {
 
 const slugify = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
+// "500 mg" < "1 g" < "3.5 g": sort sizes by their weight in mg; ml and counts after.
+const sizeRank = (label) => {
+  const m = String(label).match(/([\d.]+)\s*(mg|g|ml|ct|pk)?/i);
+  if (!m) return 1e12;
+  const n = parseFloat(m[1]);
+  const u = (m[2] || "").toLowerCase();
+  return u === "mg" ? n : u === "g" ? n * 1000 : u === "ml" ? 1e9 + n : 1e10 + n;
+};
+
 export const buildFilterOptions = (list) => {
   const brandCounts = {};
   const flavorCounts = {};
   const puffCounts = {};
+  const sizeCounts = {};
   list.forEach((p) => {
+    if ((p.size || "").trim()) sizeCounts[p.size] = (sizeCounts[p.size] || 0) + 1;
     if ((p.brandName || "").trim()) brandCounts[p.brandName] = (brandCounts[p.brandName] || 0) + 1;
     p.flavors.forEach((f) => { flavorCounts[f] = (flavorCounts[f] || 0) + 1; });
     if (p.puffs) {
@@ -65,6 +76,7 @@ export const buildFilterOptions = (list) => {
   return {
     brands: toOpts(brandCounts),
     flavors: toOpts(flavorCounts),
+    sizes: Object.entries(sizeCounts).sort((a, b) => sizeRank(a[0]) - sizeRank(b[0])).map(([label, count]) => ({ key: slugify(label), label, count })),
     puffs: PUFF_RANGES.filter((r) => puffCounts[r.key]).map((r) => ({ key: r.key, label: r.label, count: puffCounts[r.key] })),
   };
 };
@@ -73,6 +85,7 @@ export const applyFilters = (list, f) => {
   return list.filter((p) => {
     if (f.brands.length && !f.brands.includes(slugify(p.brandName))) return false;
     if (f.flavors.length && !p.flavors.some((fl) => f.flavors.includes(slugify(fl)))) return false;
+    if ((f.sizes || []).length && !f.sizes.includes(slugify(p.size))) return false;
     if (f.puffs.length) {
       if (!p.puffs) return false;
       const r = PUFF_RANGES.find((x) => p.puffs >= x.min && p.puffs <= x.max);
@@ -86,9 +99,9 @@ const ShopFilters = ({ options, filters, setFilters, variant = "desktop" }) => {
   const toggle = (group) => (key) =>
     setFilters((prev) => ({
       ...prev,
-      [group]: prev[group].includes(key) ? prev[group].filter((k) => k !== key) : [...prev[group], key],
+      [group]: (prev[group] || []).includes(key) ? prev[group].filter((k) => k !== key) : [...(prev[group] || []), key],
     }));
-  const active = filters.brands.length + filters.flavors.length + filters.puffs.length;
+  const active = filters.brands.length + filters.flavors.length + filters.puffs.length + (filters.sizes || []).length;
   const tp = (k) => (variant === "mobile" ? `m-${k}` : k);
 
   return (
@@ -98,7 +111,7 @@ const ShopFilters = ({ options, filters, setFilters, variant = "desktop" }) => {
         {active > 0 && (
           <button
             data-testid={tp("clear-filters-btn")}
-            onClick={() => setFilters({ brands: [], flavors: [], puffs: [] })}
+            onClick={() => setFilters({ brands: [], flavors: [], puffs: [], sizes: [] })}
             className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 hover:underline"
           >
             <X className="h-3.5 w-3.5" /> Clear ({active})
@@ -108,6 +121,7 @@ const ShopFilters = ({ options, filters, setFilters, variant = "desktop" }) => {
       <Group title="Brand" options={options.brands} selected={filters.brands} onToggle={toggle("brands")} testPrefix={tp("filter-brand")} />
       <Group title="Flavor" options={options.flavors} selected={filters.flavors} onToggle={toggle("flavors")} testPrefix={tp("filter-flavor")} />
       <Group title="Puff Count" options={options.puffs} selected={filters.puffs} onToggle={toggle("puffs")} testPrefix={tp("filter-puffs")} />
+      <Group title="Strength / Size" options={options.sizes || []} selected={filters.sizes || []} onToggle={toggle("sizes")} testPrefix={tp("filter-sizes")} />
     </div>
   );
 };

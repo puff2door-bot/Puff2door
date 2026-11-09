@@ -17,6 +17,7 @@ const Item = ({ d, picked, onPick, text, onText }) => (
       <span className="text-neutral-500 mr-1">Flavor filter:</span>
       {d.flavors.length ? d.flavors.map((f) => <span key={f} className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-semibold">{f}</span>) : <span className="text-neutral-400">none</span>}
       {d.puffs ? <span className="ml-2 px-2 py-0.5 rounded-full bg-sky-100 text-sky-900 font-semibold">{d.puffs.toLocaleString()} puffs</span> : null}
+      {d.size ? <span className="ml-2 px-2 py-0.5 rounded-full bg-violet-100 text-violet-900 font-semibold">Size: {d.size}</span> : null}
     </div>
     {d.before?.description && <details className="text-xs text-neutral-500"><summary className="cursor-pointer">Current description</summary><p className="mt-1">{d.before.description}</p></details>}
   </div>
