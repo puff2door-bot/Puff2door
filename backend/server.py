@@ -4335,7 +4335,8 @@ async def admin_update_order_status(order_id: str, inp: OrderStatusInput, admin:
     elif inp.status == "delivered":
         await loyalty_award_for_order(updated)
     if inp.status in STAGE_KEYS:
-        asyncio.create_task(emails.send_status_update(updated, inp.status, (await get_settings()).get("googleReviewUrl", "")))
+        review_url = "" if await hd_automations.enabled(db, "review_request") else (await get_settings()).get("googleReviewUrl", "")
+        asyncio.create_task(emails.send_status_update(updated, inp.status, review_url))
     asyncio.create_task(send_order_push(updated, inp.status))
     return order_response(await db.orders.find_one({"id": order_id}))
 
@@ -4797,6 +4798,7 @@ async def chat_start(inp: ChatStartInput, request: Request, user: Optional[dict]
         await db.chat_messages.insert_one({"id": str(uuid.uuid4()), "conversationId": conv["id"], "sender": "admin", "text": s["chatWelcome"], "createdAt": now_utc(), "system": True})
     m = await chat_add_message(conv, "customer", inp.message)
     asyncio.create_task(emails.notify_admin_chat(conv, m["text"], not s["chatOnline"]))
+    asyncio.create_task(hd_automations.chat_reply(db, conv["id"], m["id"], 180 if s["chatOnline"] else 20))
     fresh = await db.chat_conversations.find_one({"id": conv["id"]})
     msgs = await db.chat_messages.find({"conversationId": conv["id"]}).sort("createdAt", 1).to_list(500)
     return {"token": token, "conversation": chat_conv_out(fresh), "messages": [chat_msg_out(x) for x in msgs], "online": s["chatOnline"], "offlineMessage": s["chatOffline"]}
@@ -4835,6 +4837,7 @@ async def chat_send(inp: ChatMessageInput, request: Request):
     m = await chat_add_message(conv, "customer", inp.message)
     if not s["chatOnline"]:
         asyncio.create_task(emails.notify_admin_chat(conv, m["text"], True))
+    asyncio.create_task(hd_automations.chat_reply(db, conv["id"], m["id"], 180 if s["chatOnline"] else 20))
     return chat_msg_out(m)
 
 
@@ -5565,6 +5568,93 @@ async def admin_barcodes_store_code(admin: dict = Depends(get_admin_user)):
         return {"code": await hd_barcodes.new_store_code(db, clover_integration())}
     except (hd_barcodes.BarcodeError, CloverError) as exc:
         raise _barcode_http(exc)
+
+
+# ---- Automations (backend/automations.py, backend/google_reviews.py) ----
+import automations as hd_automations
+import google_reviews as hd_google
+
+GOOGLE_BP_CLIENT_ID = os.environ.get("GOOGLE_BP_CLIENT_ID", "").strip()
+GOOGLE_BP_CLIENT_SECRET = os.environ.get("GOOGLE_BP_CLIENT_SECRET", "").strip()
+
+
+def google_reviews_integration() -> "hd_google.GoogleReviews":
+    return hd_google.GoogleReviews(db, GOOGLE_BP_CLIENT_ID, GOOGLE_BP_CLIENT_SECRET, f"{SITE_URL}/api/google/callback", JWT_SECRET)
+
+
+async def _push_admins(payload: dict) -> None:
+    admins = await db.users.find({"$or": [{"role": "admin"}, {"email": {"$in": ADMIN_EMAILS}}]}, {"_id": 0, "id": 1}).to_list(20)
+    for a in admins:
+        try:
+            await send_push_to_user(a["id"], payload)
+        except Exception:
+            pass
+
+
+def automation_hooks() -> "hd_automations.Hooks":
+    return hd_automations.Hooks(db, SITE_URL, JWT_SECRET, get_settings, clover_integration, instagram_integration,
+                                _push_admins, refresh_static_sitemap, hd_agents.CLAIM_WORDS, google_reviews_integration)
+
+
+class AutomationToggle(BaseModel):
+    on: bool
+
+
+@api_router.get("/admin/automations")
+async def admin_automations(admin: dict = Depends(get_admin_user)):
+    rows = await db.automation_log.find({}, {"_id": 0}).sort("at", -1).to_list(60)
+    return {"automations": await hd_automations.settings_view(db), "log": rows,
+            "google": await google_reviews_integration().status()}
+
+
+@api_router.post("/admin/automations/{kind}")
+async def admin_automation_toggle(kind: str, inp: AutomationToggle, admin: dict = Depends(get_admin_user)):
+    if kind not in hd_automations.AUTOMATION_IDS:
+        raise HTTPException(status_code=404, detail="Unknown automation")
+    await hd_automations.set_enabled(db, kind, inp.on)
+    return {"id": kind, "on": inp.on}
+
+
+@api_router.get("/email/unsubscribe", include_in_schema=False)
+async def email_unsubscribe(e: str = "", t: str = ""):
+    email = e.lower().strip()
+    import hmac as _hmac
+    if not email or not _hmac.compare_digest(t, hd_automations.unsubscribe_token(JWT_SECRET, email)):
+        return HTMLResponse("<p style='font-family:sans-serif'>This link is not valid.</p>", status_code=400)
+    await db.email_optouts.update_one({"email": email}, {"$set": {"email": email, "at": now_utc()}}, upsert=True)
+    return HTMLResponse("<p style='font-family:sans-serif;font-size:16px;padding:24px'>Done. HD Smoke Shop won't send you review requests or cart reminders anymore. "
+                        "You'll still get emails about orders you place.</p>")
+
+
+@api_router.post("/admin/google/connect")
+async def admin_google_connect(admin: dict = Depends(get_admin_user)):
+    try:
+        return {"url": await google_reviews_integration().auth_url(admin["id"])}
+    except hd_google.GoogleError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@api_router.get("/google/callback", include_in_schema=False)
+async def google_callback(code: str = "", state: str = "", error: str = ""):
+    if error or not code:
+        return RedirectResponse(f"{SITE_URL}/admin/agents?google=error", status_code=303)
+    try:
+        await google_reviews_integration().callback(code, state)
+    except Exception as exc:
+        logger.warning("Google connect failed: %s", exc)
+        return RedirectResponse(f"{SITE_URL}/admin/agents?google=error", status_code=303)
+    return RedirectResponse(f"{SITE_URL}/admin/agents?google=connected", status_code=303)
+
+
+@api_router.post("/admin/google/disconnect")
+async def admin_google_disconnect(admin: dict = Depends(get_admin_user)):
+    await google_reviews_integration().disconnect()
+    return {"ok": True}
+
+
+@app.on_event("startup")
+async def hd_automations_schedule():
+    asyncio.create_task(hd_automations.loop(automation_hooks(), logger))
 
 
 @app.on_event("startup")

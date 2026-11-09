@@ -6,6 +6,7 @@ import {
   Share2,
 } from "lucide-react";
 import api from "../../api";
+import AutomationsPanel from "./AutomationsPanel";
 
 const AGENT_ICONS = {
   operations: Bot, marketing: Megaphone, briefing: Sparkles, watchdog: Globe2, reputation: HeartHandshake,
@@ -229,6 +230,8 @@ const AdminAgents = () => {
       </div>
 
       <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">{notice}</div>
+
+      <AutomationsPanel />
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="rounded-2xl border border-violet-200 bg-white p-5 shadow-sm">

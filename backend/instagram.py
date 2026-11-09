@@ -87,6 +87,12 @@ FEATURES = (
 )
 
 
+def _as_aware(value):
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+
+
 class InstagramError(RuntimeError):
     pass
 
@@ -916,6 +922,59 @@ class InstagramIntegration:
         result = await self.publish_draft(draft["id"], source="agent12")
         return {"status": "published", "published": True, "draftId": result["id"], "permalink": result.get("permalink", "")}
 
+    async def renew_token(self) -> dict:
+        """Keep the Instagram connection from expiring. Safe to call daily.
+
+        Checks when the stored token expires. A token that never expires is left alone;
+        one that expires within 20 days is exchanged for a fresh long-lived token."""
+        config = await self.config()
+        if not config.get("encryptedSystemUserToken"):
+            return {"status": "not_connected"}
+        token = self.decrypt(config["encryptedSystemUserToken"])
+        page_same = config.get("encryptedPageToken") and self.decrypt(config["encryptedPageToken"]) == token
+        mode = config.get("authMode") or self.auth_mode
+        now = utcnow()
+        headers = {"Accept": "application/json", "User-Agent": "HD-Agent-12/1.0"}
+        new_token, expires_at = "", None
+        async with self.http_client_factory(timeout=30) as client:
+            if mode == "instagram":
+                if config.get("tokenExpiresAt") and _as_aware(config["tokenExpiresAt"]) - now > timedelta(days=20):
+                    return {"status": "ok", "expiresAt": config["tokenExpiresAt"]}
+                r = await client.get(f"{INSTAGRAM_GRAPH_HOST}/refresh_access_token",
+                                     params={"grant_type": "ig_refresh_token", "access_token": token}, headers=headers)
+                payload = await self._json(r, "Instagram could not renew the connection.")
+                new_token = str(payload.get("access_token") or "")
+                expires_at = now + timedelta(seconds=int(payload.get("expires_in") or 5184000))
+            else:
+                r = await client.get(f"{GRAPH_HOST}/{self.graph_version}/debug_token",
+                                     params={"input_token": token, "access_token": f"{self.app_id}|{self.app_secret}"}, headers=headers)
+                data = (await self._json(r, "Meta could not check the connection.")).get("data") or {}
+                if not data.get("is_valid"):
+                    raise InstagramError("The Instagram connection is no longer valid. Click Connect Instagram to renew it.")
+                exp = int(data.get("expires_at") or 0)
+                if exp == 0:
+                    await self.db.integrations.update_one({"key": "instagram"}, {"$set": {"tokenNeverExpires": True, "tokenCheckedAt": now}})
+                    return {"status": "never_expires"}
+                current = datetime.fromtimestamp(exp, timezone.utc)
+                if current - now > timedelta(days=20):
+                    await self.db.integrations.update_one({"key": "instagram"}, {"$set": {"tokenExpiresAt": current, "tokenNeverExpires": False, "tokenCheckedAt": now}})
+                    return {"status": "ok", "expiresAt": current}
+                r = await client.get(f"{GRAPH_HOST}/{self.graph_version}/oauth/access_token",
+                                     params={"grant_type": "fb_exchange_token", "client_id": self.app_id,
+                                             "client_secret": self.app_secret, "fb_exchange_token": token}, headers=headers)
+                payload = await self._json(r, "Meta could not renew the connection.")
+                new_token = str(payload.get("access_token") or "")
+                expires_at = now + timedelta(seconds=int(payload.get("expires_in") or 5184000))
+        if not new_token:
+            raise InstagramError("Meta did not return a renewed token. Click Connect Instagram to renew it.")
+        sets = {"encryptedSystemUserToken": self.encrypt(new_token), "tokenExpiresAt": expires_at,
+                "tokenNeverExpires": False, "tokenRenewedAt": now, "tokenCheckedAt": now}
+        if page_same:
+            sets["encryptedPageToken"] = self.encrypt(new_token)
+        await self.db.integrations.update_one({"key": "instagram"}, {"$set": sets})
+        await self.log("token_renew", "success", expiresAt=expires_at.isoformat())
+        return {"status": "renewed", "expiresAt": expires_at}
+
     async def status(self) -> dict:
         config = await self.config()
         latest = await self.db.social_drafts.find_one({}, {"_id": 0, "caption": 0}, sort=[("createdAt", -1)])
@@ -934,6 +993,9 @@ class InstagramIntegration:
                 config.get("timezone", DEFAULT_TIMEZONE),
             ),
             "connectedAt": config.get("connectedAt"),
+            "tokenExpiresAt": config.get("tokenExpiresAt"),
+            "tokenNeverExpires": bool(config.get("tokenNeverExpires")),
+            "tokenRenewedAt": config.get("tokenRenewedAt"),
             "lastPostAt": config.get("lastPostAt"),
             "lastPostPermalink": config.get("lastPostPermalink", ""),
             "latestDraft": latest or {},
