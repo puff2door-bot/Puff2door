@@ -5445,13 +5445,24 @@ import store_reports as hd_store_reports
 
 @api_router.get("/admin/store-sales")
 async def admin_store_sales(days: int = 30, start: Optional[str] = None, end: Optional[str] = None, admin: dict = Depends(get_admin_user)):
-    return await hd_store_reports.report(db, days, start, end)
+    return await hd_store_reports.report(db, days, start, end, clover_integration())
+
+
+@api_router.get("/admin/store-sales/items")
+async def admin_store_sales_items(days: int = 30, start: Optional[str] = None, end: Optional[str] = None, admin: dict = Depends(get_admin_user)):
+    return await hd_store_reports.items_sold(db, start, end, days)
 
 
 @api_router.get("/admin/receipts/store")
-async def admin_store_receipts(start: Optional[str] = None, end: Optional[str] = None, q: str = "", page: int = 1,
+async def admin_store_receipts(start: Optional[str] = None, end: Optional[str] = None, q: str = "", page: int = 1, employee: str = "",
                                admin: dict = Depends(get_admin_user)):
-    return await hd_store_reports.receipts(db, start, end, q[:80], max(1, min(page, 500)))
+    return await hd_store_reports.receipts(db, start, end, q[:80], max(1, min(page, 500)), employee[:40])
+
+
+@api_router.get("/admin/store-sales/employee/{employee_id}")
+async def admin_store_sales_employee(employee_id: str, days: int = 30, start: Optional[str] = None, end: Optional[str] = None,
+                                     admin: dict = Depends(get_admin_user)):
+    return await hd_store_reports.employee_detail(db, employee_id[:40], days, start, end, clover_integration())
 
 
 @api_router.get("/admin/receipts/store/{order_id}")

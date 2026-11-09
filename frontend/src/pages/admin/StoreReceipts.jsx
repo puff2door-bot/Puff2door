@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Download, Printer, Receipt, Search, X } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import api from "../../api";
 
 const money = (v) => `$${Number(v || 0).toFixed(2)}`;
@@ -22,9 +23,11 @@ ${r.refunds.length ? `<hr><p>Refunded ${money(r.refunds.reduce((a, x) => a + x.a
 };
 
 const StoreReceipts = () => {
-  const [from, setFrom] = useState(daysAgo(6));
-  const [to, setTo] = useState(today());
-  const [q, setQ] = useState("");
+  const [params] = useSearchParams();
+  const [from, setFrom] = useState(params.get("start") || daysAgo(6));
+  const [to, setTo] = useState(params.get("end") || today());
+  const [q, setQ] = useState(params.get("q") || "");
+  const [employee, setEmployee] = useState(params.get("employee") || "");
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -34,9 +37,9 @@ const StoreReceipts = () => {
 
   const load = useCallback(async () => {
     setError("");
-    try { setData((await api.get("/admin/receipts/store", { params: { start: from, end: to, q, page } })).data); }
+    try { setData((await api.get("/admin/receipts/store", { params: { start: from, end: to, q, page, employee } })).data); }
     catch (e) { setError("Could not load receipts."); }
-  }, [from, to, q, page]);
+  }, [from, to, q, page, employee]);
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
 
   const show = async (row) => {
@@ -48,7 +51,7 @@ const StoreReceipts = () => {
   const csv = async () => {
     const all = [];
     for (let p = 1; p <= 40; p += 1) {
-      const { data: d } = await api.get("/admin/receipts/store", { params: { start: from, end: to, q, page: p } });
+      const { data: d } = await api.get("/admin/receipts/store", { params: { start: from, end: to, q, page: p, employee } });
       all.push(...d.receipts);
       if (all.length >= d.total) break;
     }
@@ -79,6 +82,7 @@ const StoreReceipts = () => {
           <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} placeholder="Item, exact total (24.98), card last 4 or employee" className="w-full border rounded-xl pl-9 pr-3 py-2.5 text-sm" /></label>
         <button type="button" onClick={csv} disabled={!data?.total} className="border rounded-xl px-3 py-2.5 text-sm font-semibold flex items-center gap-1 disabled:opacity-50"><Download className="w-4 h-4" />CSV</button>
       </div>
+      {employee && <p className="text-sm">Showing one employee's receipts. <button type="button" className="underline" onClick={() => { setEmployee(""); setPage(1); }}>Show everyone</button></p>}
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       <p className="text-sm font-semibold">{data ? `${data.total} receipt${data.total === 1 ? "" : "s"} · ${money(data.receipts.reduce((a, r) => a + r.total, 0))} on this page` : "Loading…"}</p>
       <div className="rounded-2xl border overflow-x-auto">
