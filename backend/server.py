@@ -5439,6 +5439,31 @@ async def admin_sales_status(admin: dict = Depends(get_admin_user)):
             "dayCount": await db.sales_days.count_documents({}), "recentDays": days, "topLast7Days": top}
 
 
+# ---- Store (Clover) sales reports and receipts (backend/store_reports.py), read-only ----
+import store_reports as hd_store_reports
+
+
+@api_router.get("/admin/store-sales")
+async def admin_store_sales(days: int = 30, start: Optional[str] = None, end: Optional[str] = None, admin: dict = Depends(get_admin_user)):
+    return await hd_store_reports.report(db, days, start, end)
+
+
+@api_router.get("/admin/receipts/store")
+async def admin_store_receipts(start: Optional[str] = None, end: Optional[str] = None, q: str = "", page: int = 1,
+                               admin: dict = Depends(get_admin_user)):
+    return await hd_store_reports.receipts(db, start, end, q[:80], max(1, min(page, 500)))
+
+
+@api_router.get("/admin/receipts/store/{order_id}")
+async def admin_store_receipt(order_id: str, admin: dict = Depends(get_admin_user)):
+    if not re.fullmatch(r"[A-Z0-9]{8,20}", order_id or ""):
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    try:
+        return await hd_store_reports.receipt(db, clover_integration(), order_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not read this receipt from Clover: {exc}")
+
+
 class AgentIgnoreInput(BaseModel):
     item: str = Field(min_length=1, max_length=600)
 
