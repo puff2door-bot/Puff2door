@@ -1,0 +1,28 @@
+name: Keep site awake
+
+# Free Render instances sleep after 15 minutes without traffic. A light request
+# every 10 minutes keeps the store, agents and Instagram scheduler running.
+# GitHub may start scheduled runs a few minutes late; the retries cover the
+# ~50 second wake-up when that happens.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keep-awake
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping puff2door.com
+        run: |
+          curl --fail --silent --show-error --output /dev/null \
+            --retry 6 --retry-delay 15 --retry-all-errors --max-time 90 \
+            https://puff2door.com/api/
