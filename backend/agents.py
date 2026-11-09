@@ -638,6 +638,16 @@ async def scheduler_tick(ctx: Ctx) -> None:
         r = await run_agent(ctx, "operations")
         await _set_state(db, "operations", lastRunAt=_now())
         await _alert_on_change(ctx, r)
+    # Today's store sales refresh every 5 minutes so the Dashboard keeps up with the register;
+    # the wider 3-day refresh (late edits, refunds) still runs hourly.
+    if await _due(db, "sales_today", timedelta(minutes=5)):
+        try:
+            import sales
+            if ctx.clover_factory:
+                await sales.sync_sales(db, ctx.clover_factory(), days=1)
+        except Exception:
+            pass
+        await _set_state(db, "sales_today", lastRunAt=_now())
     if await _due(db, "sales", timedelta(minutes=55)):
         try:
             import sales
