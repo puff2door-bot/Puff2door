@@ -73,7 +73,7 @@ const AdminDashboard = () => {
   if (!d) return <p className="text-neutral-500">Loading dashboard…</p>;
 
   const t = d.today;
-  const change = t.lastWeekSales ? Math.round(((t.storeSales - t.lastWeekSales) / t.lastWeekSales) * 100) : null;
+  const change = t.lastWeekSales && t.storeOrders > 0 ? Math.round(((t.storeSales - t.lastWeekSales) / t.lastWeekSales) * 100) : null;
   const list = tab === "reorder" ? d.reorder : tab === "soldout" ? d.soldOut : d.slow;
   const copyList = async (brand) => {
     const groups = brand ? d.shopping.filter((g) => g.brand === brand) : d.shopping;
@@ -103,7 +103,7 @@ const AdminDashboard = () => {
           <p className="text-xs uppercase tracking-wide text-neutral-500 font-semibold">In-store sales today</p>
           <p className="font-heading text-3xl">{money(t.storeSales)}</p>
           <p className={`text-xs flex items-center gap-1 ${change == null ? "text-neutral-400" : change >= 0 ? "text-emerald-700" : "text-red-700"}`}>
-            {change == null ? "no sales last week to compare" : <>{change >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}{change >= 0 ? "+" : ""}{change}% vs last {new Date(`${t.date}T12:00:00`).toLocaleDateString("en-US", { weekday: "long" })} ({money(t.lastWeekSales)})</>} · {t.storeOrders} sales
+            {change == null ? (t.storeOrders === 0 ? `No sales yet today · last ${new Date(`${t.date}T12:00:00`).toLocaleDateString("en-US", { weekday: "long" })}: ${money(t.lastWeekSales)}` : "no sales last week to compare") : <>{change >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}{change >= 0 ? "+" : ""}{change}% vs last {new Date(`${t.date}T12:00:00`).toLocaleDateString("en-US", { weekday: "long" })} ({money(t.lastWeekSales)})</>} · {t.storeOrders} sales
           </p>
         </Link>
         <Link to="/admin/orders" className="rounded-2xl border p-4 hover:border-emerald-500"><p className="text-xs uppercase tracking-wide text-neutral-500 font-semibold">Website orders waiting</p><p className="font-heading text-3xl">{t.webOrdersWaiting}</p><p className="text-xs text-neutral-500">not delivered or picked up yet</p></Link>
