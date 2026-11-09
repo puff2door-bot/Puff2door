@@ -205,3 +205,65 @@ async def skip(db, product_ids: list) -> int:
     res = await db.detail_drafts.update_many({"productId": {"$in": [int(p) for p in product_ids]}, "status": "review"},
                                              {"$set": {"status": "skipped", "decidedAt": datetime.now(timezone.utc)}})
     return res.modified_count
+
+
+# ---------------- Missing details report ----------------
+# What each category should have so customers can filter it.
+NEEDS_FLAVOR = {"disposable", "e-liquids", "hookah", "kratom", "delta-edibles"}
+NEEDS_PUFFS = {"disposable"}
+NEEDS_SIZE = SIZED
+
+
+async def missing_report(db) -> dict:
+    in_review = {d["productId"] async for d in db.detail_drafts.find({"status": "review"}, {"productId": 1})}
+    rows = await db.products.find({"active": {"$ne": False}}, {"_id": 0, "id": 1, "name": 1, "slug": 1, "image": 1, "categorySlug": 1,
+                                                                "category": 1, "brandName": 1, "stock": 1, "description": 1,
+                                                                "flavors": 1, "puffs": 1, "size": 1}).to_list(5000)
+    out = []
+    for p in rows:
+        cat = p.get("categorySlug") or ""
+        missing = []
+        if len(str(p.get("description") or "").strip()) < 40:
+            missing.append("description")
+        if cat in NEEDS_FLAVOR and not p.get("flavors"):
+            missing.append("flavor")
+        if cat in NEEDS_PUFFS and not p.get("puffs"):
+            missing.append("puffs")
+        if cat in NEEDS_SIZE and not str(p.get("size") or "").strip():
+            missing.append("size")
+        if missing:
+            out.append({"id": p["id"], "name": p["name"], "slug": p.get("slug"), "image": p.get("image") or "", "category": p.get("category") or cat,
+                        "categorySlug": cat, "brand": p.get("brandName") or "", "stock": int(p.get("stock") or 0), "missing": missing,
+                        "flavors": p.get("flavors") or [], "puffs": p.get("puffs"), "size": p.get("size") or "",
+                        "description": p.get("description") or "", "inReview": p["id"] in in_review,
+                        "suggestedSize": normalize_size(p["name"]) if "size" in missing else ""})
+    out.sort(key=lambda r: (-r["stock"], r["name"]))
+    counts = {k: sum(1 for r in out if k in r["missing"]) for k in ("flavor", "puffs", "size", "description")}
+    return {"products": out, "counts": counts}
+
+
+async def save_manual(db, product_id: int, data: dict, claim_words: re.Pattern) -> dict:
+    """Owner's own edit of description/flavors/puffs/size. Website only; nothing is sent to Clover."""
+    update = {}
+    if "description" in data:
+        text = re.sub(r"\s+", " ", str(data["description"] or "")).strip()[:3000]
+        if claim_words.search(text):
+            raise ValueError("Remove health-claim wording (for example 'treats', 'relief', 'anxiety') before saving.")
+        update["description"] = text
+    if "flavors" in data:
+        seen, flavors = set(), []
+        for f in data["flavors"] or []:
+            t = " ".join(str(f).split())[:30]
+            if t and t.lower() not in seen:
+                seen.add(t.lower())
+                flavors.append(t)
+        update["flavors"] = flavors[:20]
+    if "puffs" in data:
+        update["puffs"] = int(data["puffs"]) if str(data["puffs"] or "").strip() else None
+    if "size" in data:
+        update["size"] = normalize_size(data["size"]) or " ".join(str(data["size"] or "").split())[:30]
+    if not update:
+        return {"updated": False}
+    update["updatedAt"] = datetime.now(timezone.utc)
+    res = await db.products.update_one({"id": int(product_id)}, {"$set": update})
+    return {"updated": bool(res.matched_count)}
