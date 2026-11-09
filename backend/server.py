@@ -5527,6 +5527,11 @@ async def admin_expenses_sync(admin: dict = Depends(get_admin_user)):
     return await gmail_receipts().sync()
 
 
+@api_router.post("/admin/expenses/rescan")
+async def admin_expenses_rescan(admin: dict = Depends(get_admin_user)):
+    return await hd_expenses.rescan(gmail_receipts())
+
+
 @api_router.get("/admin/expenses/{expense_id}/attachment/{attachment_id}")
 async def admin_expense_attachment(expense_id: str, attachment_id: str, admin: dict = Depends(get_admin_user)):
     try:
