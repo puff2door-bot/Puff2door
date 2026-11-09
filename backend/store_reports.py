@@ -31,6 +31,24 @@ def _range(days: int, start: Optional[str], end: Optional[str]) -> tuple[str, st
 
 
 async def employee_names(db, clover=None) -> dict:
+    """Clover employee id -> {name, ...}. Names the owner typed in win over Clover's."""
+    names = {k: dict(v) for k, v in (await _clover_employee_names(db, clover)).items()}
+    async for o in db.employee_names.find({}, {"_id": 0}):
+        names.setdefault(o["id"], {})["name"] = o["name"]
+        names[o["id"]]["custom"] = True
+    return names
+
+
+async def set_employee_name(db, employee_id: str, name: str) -> dict:
+    name = re.sub(r"\s+", " ", name or "").strip()[:40]
+    if name:
+        await db.employee_names.update_one({"id": employee_id}, {"$set": {"id": employee_id, "name": name}}, upsert=True)
+    else:
+        await db.employee_names.delete_one({"id": employee_id})
+    return {"id": employee_id, "name": name}
+
+
+async def _clover_employee_names(db, clover=None) -> dict:
     """Clover employee id -> name, cached for a day. Empty if Clover won't share employees."""
     cache = await db.integrations.find_one({"key": "clover_employees"}) or {}
     fresh = cache.get("at") and (datetime.now(timezone.utc) - (cache["at"] if cache["at"].tzinfo else cache["at"].replace(tzinfo=timezone.utc))) < timedelta(hours=24)
@@ -51,7 +69,8 @@ async def employee_names(db, clover=None) -> dict:
 
 def _emp_label(r: dict, names: dict) -> tuple[str, str]:
     eid = r.get("employeeId") or ""
-    name = r.get("employee") or (names.get(eid) or {}).get("name") or ""
+    custom = (names.get(eid) or {}).get("name") if (names.get(eid) or {}).get("custom") else ""
+    name = custom or r.get("employee") or (names.get(eid) or {}).get("name") or ""
     return eid or name or "unknown", name or (f"Employee {eid[-4:]}" if eid else "Unknown")
 
 

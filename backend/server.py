@@ -5459,6 +5459,15 @@ async def admin_store_receipts(start: Optional[str] = None, end: Optional[str] =
     return await hd_store_reports.receipts(db, start, end, q[:80], max(1, min(page, 500)), employee_id=employee[:40])
 
 
+class EmployeeNameInput(BaseModel):
+    name: str = Field(default="", max_length=40)
+
+
+@api_router.put("/admin/store-sales/employee/{employee_id}/name")
+async def admin_store_employee_name(employee_id: str, inp: EmployeeNameInput, admin: dict = Depends(get_admin_user)):
+    return await hd_store_reports.set_employee_name(db, employee_id[:40], inp.name)
+
+
 @api_router.get("/admin/store-sales/employee/{employee_id}")
 async def admin_store_sales_employee(employee_id: str, days: int = 30, start: Optional[str] = None, end: Optional[str] = None,
                                      admin: dict = Depends(get_admin_user)):
