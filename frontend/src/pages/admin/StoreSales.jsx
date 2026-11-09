@@ -65,15 +65,21 @@ const ItemsSold = ({ params, onClose }) => {
 };
 
 // One employee's sales, days worked (first and last sale), busiest hours and top items.
-const EmployeeDetail = ({ who, params, onClose }) => {
+const EmployeeDetail = ({ who, params, onClose, onRenamed }) => {
   const [d, setD] = useState(null);
+  const [name, setName] = useState(who.name);
+  const [draft, setDraft] = useState(who.name.startsWith("Employee ") ? "" : who.name);
   useEffect(() => { api.get(`/admin/store-sales/employee/${encodeURIComponent(who.id)}`, { params }).then(({ data: x }) => setD(x)).catch(() => setD({ error: true })); }, [who, params]);
   const maxH = Math.max(1, ...((d?.hours || []).map((h) => h.orders)));
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onClose} role="dialog" aria-modal="true" aria-label={`Employee ${who.name}`}>
       <div className="bg-white w-full max-w-3xl h-full overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-start mb-4">
-          <div><h2 className="font-heading text-2xl">{who.name}</h2>{d && !d.error && <p className="text-sm text-neutral-500">{d.role ? `${d.role.toLowerCase()} · ` : ""}{d.from} to {d.to}</p>}</div>
+          <div><h2 className="font-heading text-2xl">{name}</h2>{d && !d.error && <p className="text-sm text-neutral-500">{d.role ? `${d.role.toLowerCase()} · ` : ""}{d.from} to {d.to}</p>}
+            <form className="flex gap-2 mt-2" onSubmit={async (e) => { e.preventDefault(); try { await api.put(`/admin/store-sales/employee/${encodeURIComponent(who.id)}/name`, { name: draft }); setName(draft || who.name); onRenamed && onRenamed(); } catch { /* keep the old name */ } }}>
+              <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Employee name" aria-label="Employee name" className="border rounded-lg px-2 py-1 text-sm" />
+              <button type="submit" className="text-sm font-semibold underline">Save name</button>
+            </form></div>
           <button type="button" onClick={onClose} aria-label="Close"><X className="w-5 h-5" /></button>
         </div>
         {!d && <p className="text-sm text-neutral-500">Loading…</p>}
@@ -255,7 +261,7 @@ const StoreSales = ({ days, start, end, mode }) => {
         </section>
       </div>
       {showItems && <ItemsSold params={params} onClose={() => setShowItems(false)} />}
-      {employee && <EmployeeDetail who={employee} params={params} onClose={() => setEmployee(null)} />}
+      {employee && <EmployeeDetail who={employee} params={params} onClose={() => setEmployee(null)} onRenamed={() => api.get("/admin/store-sales", { params }).then(({ data: x }) => setData(x)).catch(() => {})} />}
       <p className="text-xs text-neutral-400 mt-5">Clover sales from {data.from} to {data.to}. Updated about every hour. <Link to="/admin/receipts" className="underline">See every receipt</Link></p>
     </div>
   );
