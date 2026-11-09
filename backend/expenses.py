@@ -167,6 +167,10 @@ def parse_message(msg: dict, learned: dict) -> Optional[dict]:
         when = datetime.fromtimestamp(int(msg.get("internalDate", 0)) / 1000, timezone.utc)
     display, email = parseaddr(sender)
     amount = find_amount(f"{subject}\n{body}")
+    if amount is None and re.search(r"invoice|receipt", subject, re.I) and not email.lower().endswith(".gov"):
+        vals = [float(v.replace(",", "")) for v in re.findall(MONEY, body)]
+        vals = [v for v in vals if 0 < v < 100000]
+        amount = round(max(vals), 2) if vals else None  # supplier invoices often show the total without a label
     pdfs = [f for f in files if f["mime"] == "application/pdf" or f["name"].lower().endswith(".pdf")]
     if amount is None and not pdfs:
         return None  # nothing that looks like a bill

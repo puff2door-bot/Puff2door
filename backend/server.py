@@ -5574,6 +5574,115 @@ async def admin_gmail_senders(inp: SendersInput, admin: dict = Depends(get_admin
     return {"senders": await hd_expenses.set_senders(db, inp.email.lower(), inp.senders)}
 
 
+# ---- Licenses & important documents (backend/documents.py), admin only, private bucket ----
+import documents as hd_docs
+
+private_docs_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="private_docs")
+
+
+class DocTypeInput(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=80)
+    hasExpiry: Optional[bool] = None
+    order: Optional[int] = None
+
+
+class DocInput(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=120)
+    typeId: Optional[str] = Field(default=None, max_length=20)
+    number: Optional[str] = Field(default=None, max_length=120)
+    issuedBy: Optional[str] = Field(default=None, max_length=120)
+    issueDate: Optional[str] = Field(default=None, max_length=10)
+    expiryDate: Optional[str] = Field(default=None, max_length=10)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    remind: Optional[bool] = None
+
+
+def _doc_http(exc: "hd_docs.DocError"):
+    return HTTPException(status_code=exc.status, detail=str(exc))
+
+
+@api_router.get("/admin/documents")
+async def admin_documents(admin: dict = Depends(get_admin_user)):
+    return await hd_docs.overview(db)
+
+
+@api_router.post("/admin/documents/types")
+async def admin_doc_type_add(inp: DocTypeInput, admin: dict = Depends(get_admin_user)):
+    try:
+        return await hd_docs.add_type(db, inp.name or "", bool(inp.hasExpiry))
+    except hd_docs.DocError as exc:
+        raise _doc_http(exc)
+
+
+@api_router.patch("/admin/documents/types/{type_id}")
+async def admin_doc_type_update(type_id: str, inp: DocTypeInput, admin: dict = Depends(get_admin_user)):
+    try:
+        return await hd_docs.update_type(db, type_id[:20], inp.name, inp.hasExpiry, inp.order)
+    except hd_docs.DocError as exc:
+        raise _doc_http(exc)
+
+
+@api_router.delete("/admin/documents/types/{type_id}")
+async def admin_doc_type_delete(type_id: str, moveTo: str = "", admin: dict = Depends(get_admin_user)):
+    try:
+        return await hd_docs.delete_type(db, type_id[:20], moveTo[:20] or None)
+    except hd_docs.DocError as exc:
+        raise _doc_http(exc)
+
+
+@api_router.post("/admin/documents")
+async def admin_doc_create(inp: DocInput, admin: dict = Depends(get_admin_user)):
+    try:
+        return await hd_docs.save_document(db, inp.model_dump(exclude_unset=True), None, admin.get("email", ""))
+    except hd_docs.DocError as exc:
+        raise _doc_http(exc)
+
+
+@api_router.patch("/admin/documents/{doc_id}")
+async def admin_doc_update(doc_id: str, inp: DocInput, admin: dict = Depends(get_admin_user)):
+    try:
+        return await hd_docs.save_document(db, inp.model_dump(exclude_unset=True), doc_id[:20], admin.get("email", ""))
+    except hd_docs.DocError as exc:
+        raise _doc_http(exc)
+
+
+@api_router.delete("/admin/documents/{doc_id}")
+async def admin_doc_delete(doc_id: str, admin: dict = Depends(get_admin_user)):
+    try:
+        return await hd_docs.delete_document(db, private_docs_bucket, doc_id[:20])
+    except hd_docs.DocError as exc:
+        raise _doc_http(exc)
+
+
+@api_router.post("/admin/documents/{doc_id}/files")
+async def admin_doc_upload(doc_id: str, file: UploadFile = File(...), admin: dict = Depends(get_admin_user)):
+    data = await file.read(hd_docs.MAX_BYTES + 1)
+    try:
+        return await hd_docs.add_file(db, private_docs_bucket, doc_id[:20], file.filename or "", file.content_type or "", data)
+    except hd_docs.DocError as exc:
+        raise _doc_http(exc)
+
+
+@api_router.get("/admin/documents/{doc_id}/files/{file_id}")
+async def admin_doc_file(doc_id: str, file_id: str, download: bool = False, admin: dict = Depends(get_admin_user)):
+    try:
+        raw, name, ctype = await hd_docs.read_file(db, private_docs_bucket, doc_id[:20], file_id[:30])
+    except hd_docs.DocError as exc:
+        raise _doc_http(exc)
+    except Exception:
+        raise HTTPException(status_code=404, detail="File not found")
+    disp = "attachment" if download else "inline"
+    return Response(raw, media_type=ctype, headers={"Content-Disposition": f'{disp}; filename="{name}"', "Cache-Control": "private, no-store"})
+
+
+@api_router.delete("/admin/documents/{doc_id}/files/{file_id}")
+async def admin_doc_file_delete(doc_id: str, file_id: str, admin: dict = Depends(get_admin_user)):
+    try:
+        return await hd_docs.remove_file(db, private_docs_bucket, doc_id[:20], file_id[:30])
+    except hd_docs.DocError as exc:
+        raise _doc_http(exc)
+
+
 class AgentIgnoreInput(BaseModel):
     item: str = Field(min_length=1, max_length=600)
 
