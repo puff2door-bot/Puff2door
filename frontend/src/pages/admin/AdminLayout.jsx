@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { NavLink, Link, Outlet } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle, Truck, ShieldCheck, BarChart3, Store, Camera, Bot, Barcode, Receipt } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle, Truck, ShieldCheck, BarChart3, Store, Camera, Bot, Barcode, Receipt, Wallet } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import api from "../../api";
 
@@ -12,6 +12,7 @@ const nav = [
   { to: "/admin/missing-photos", label: "Missing Photos", icon: Camera },
   { to: "/admin/missing-barcodes", label: "Missing Barcodes", icon: Barcode },
   { to: "/admin/receipts", label: "Store Receipts", icon: Receipt },
+  { to: "/admin/expenses", label: "Business Expenses", icon: Wallet },
   { to: "/admin/clover", label: "Clover Inventory", icon: Store },
   { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
   { to: "/admin/operations", label: "Delivery Operations", icon: Truck },
