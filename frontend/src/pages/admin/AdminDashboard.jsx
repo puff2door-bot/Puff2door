@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle, Barcode, Bell, Camera, Check, ClipboardCopy, FileText, MessageCircle, Package, Plus,
-  Printer, Receipt, RefreshCw, ShoppingBag, Star, TrendingDown, TrendingUp, Truck, Wallet,
+  Printer, Receipt, RefreshCw, ShoppingBag, Star, TrendingDown, TrendingUp, Truck, Users, Wallet,
 } from "lucide-react";
 import api from "../../api";
 
@@ -39,6 +39,24 @@ const StockCard = ({ p, mode }) => (
     </div>
   </Link>
 );
+
+// Regulars card: loads on its own so a problem here never blocks the rest of the dashboard.
+const Regulars = () => {
+  const [r, setR] = useState(null);
+  useEffect(() => { api.get("/admin/dashboard/regulars").then(({ data }) => setR(data)).catch(() => setR({ error: true })); }, []);
+  if (!r || r.error || !r.count) return null;
+  const row = (c, right) => <Link key={c.id} to="/admin/customers" className="flex justify-between gap-3 text-sm border-t first:border-0 py-1.5 hover:text-emerald-700"><span className="truncate">{c.name}</span><span className="whitespace-nowrap text-neutral-600">{right}</span></Link>;
+  return (
+    <section className="rounded-2xl border p-5">
+      <div className="flex items-center justify-between mb-3"><h2 className="font-heading text-xl uppercase tracking-wide flex items-center gap-2"><Users className="h-5 w-5 text-emerald-600" />Regulars</h2><Link to="/admin/customers" className="text-xs underline">All {r.count} customers</Link></div>
+      <div className="grid md:grid-cols-3 gap-5">
+        <div><h3 className="text-xs uppercase font-bold text-neutral-500 mb-1">Top spenders this month</h3>{r.topMonth.length ? r.topMonth.map((c) => row(c, money(c.monthSpend))) : <p className="text-sm text-neutral-500">No named sales yet this month.</p>}</div>
+        <div><h3 className="text-xs uppercase font-bold text-neutral-500 mb-1">Haven't been in lately</h3>{r.overdue.length ? r.overdue.map((c) => row(c, `${c.daysSinceLast} days · usually every ${Math.round(c.everyDays)}`)) : <p className="text-sm text-neutral-500">Every regular has been in on time.</p>}</div>
+        <div><h3 className="text-xs uppercase font-bold text-neutral-500 mb-1">New this week</h3>{r.new.length ? r.new.map((c) => row(c, money(c.spend))) : <p className="text-sm text-neutral-500">No new customers this week.</p>}</div>
+      </div>
+    </section>
+  );
+};
 
 const AdminDashboard = () => {
   const [d, setD] = useState(null);
@@ -167,6 +185,8 @@ const AdminDashboard = () => {
           </section>
         </div>
       </div>
+
+      <Regulars />
 
       {/* 7. Top sellers this week */}
       <section className="rounded-2xl border p-5">
