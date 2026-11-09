@@ -5852,6 +5852,30 @@ async def admin_details_approve(inp: DetailDecision, admin: dict = Depends(get_a
     return {"approved": done}
 
 
+@api_router.get("/admin/missing-details")
+async def admin_missing_details(admin: dict = Depends(get_admin_user)):
+    return await hd_details.missing_report(db)
+
+
+class ManualDetailsInput(BaseModel):
+    description: Optional[str] = Field(default=None, max_length=3000)
+    flavors: Optional[List[str]] = Field(default=None, max_length=20)
+    puffs: Optional[int] = Field(default=None, ge=0, le=500000)
+    size: Optional[str] = Field(default=None, max_length=30)
+
+
+@api_router.put("/admin/missing-details/{product_id}")
+async def admin_missing_details_save(product_id: int, inp: ManualDetailsInput, admin: dict = Depends(get_admin_user)):
+    data = inp.dict(exclude_unset=True)
+    try:
+        result = await hd_details.save_manual(db, product_id, data, hd_agents.CLAIM_WORDS)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not result["updated"]:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return result
+
+
 @api_router.post("/admin/product-details/skip")
 async def admin_details_skip(inp: DetailDecision, admin: dict = Depends(get_admin_user)):
     return {"skipped": await hd_details.skip(db, inp.ids)}

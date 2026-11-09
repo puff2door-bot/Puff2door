@@ -42,6 +42,7 @@ import AdminAnalytics from "./pages/admin/AdminAnalytics";
 import AdminAgents from "./pages/admin/AdminAgents";
 import MissingBarcodes from "./pages/admin/MissingBarcodes";
 import ProductDetails from "./pages/admin/ProductDetails";
+import MissingDetails from "./pages/admin/MissingDetails";
 import StoreReceipts from "./pages/admin/StoreReceipts";
 import BusinessExpenses from "./pages/admin/BusinessExpenses";
 import AdminDocuments from "./pages/admin/AdminDocuments";
@@ -154,6 +155,7 @@ const AppRoutes = () => {
         <Route path="missing-photos" element={<MissingPhotos />} />
         <Route path="missing-barcodes" element={<MissingBarcodes />} />
         <Route path="product-details" element={<ProductDetails />} />
+        <Route path="missing-details" element={<MissingDetails />} />
         <Route path="receipts" element={<StoreReceipts />} />
         <Route path="expenses" element={<BusinessExpenses />} />
         <Route path="documents" element={<AdminDocuments />} />
