@@ -6047,8 +6047,54 @@ async def public_google_reviews(preview: bool = False):
     cfg = await db.integrations.find_one({"key": "google_reviews"}, {"_id": 0, "averageRating": 1, "totalReviewCount": 1, "onSite": 1}) or {}
     if not (cfg.get("onSite") or preview):
         return {"show": False, "reviews": []}
-    rows = await db.google_reviews.find({}, {"_id": 0, "reviewId": 0}).sort("createTime", -1).to_list(6)
+    rows = await db.google_reviews.find({}, {"_id": 0, "reviewId": 0, "source": 0}).sort("createTime", -1).to_list(6)
     return {"show": bool(rows), "averageRating": cfg.get("averageRating"), "total": cfg.get("totalReviewCount"), "reviews": rows}
+
+
+class ManualReviewInput(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    comment: str = Field(min_length=10, max_length=1200)
+    month: str = Field(default="", max_length=7)  # YYYY-MM
+
+
+class ReviewSummaryInput(BaseModel):
+    averageRating: Optional[float] = Field(default=None, ge=1, le=5)
+    totalReviewCount: Optional[int] = Field(default=None, ge=0, le=100000)
+
+
+@api_router.get("/admin/reviews")
+async def admin_reviews(admin: dict = Depends(get_admin_user)):
+    cfg = await db.integrations.find_one({"key": "google_reviews"}, {"_id": 0, "onSite": 1, "averageRating": 1, "totalReviewCount": 1,
+                                                                     "locationName": 1}) or {}
+    rows = await db.google_reviews.find({}, {"_id": 0}).sort("createTime", -1).to_list(500)
+    return {"onSite": bool(cfg.get("onSite")), "averageRating": cfg.get("averageRating"), "totalReviewCount": cfg.get("totalReviewCount"),
+            "googleConnected": bool(cfg.get("locationName")), "reviews": rows}
+
+
+@api_router.post("/admin/reviews")
+async def admin_review_add(inp: ManualReviewInput, admin: dict = Depends(get_admin_user)):
+    """A real 5-star Google review the owner copied in by hand (shown with first name + last initial only)."""
+    import secrets as _secrets
+    month = inp.month if re.fullmatch(r"\d{4}-\d{2}", inp.month or "") else now_utc().strftime("%Y-%m")
+    row = {"reviewId": "manual-" + _secrets.token_hex(6), "name": hd_google.public_name(inp.name), "stars": 5,
+           "comment": " ".join(inp.comment.split()), "createTime": f"{month}-15T12:00:00Z", "source": "manual"}
+    await db.google_reviews.insert_one(dict(row))
+    return row
+
+
+@api_router.delete("/admin/reviews/{review_id}")
+async def admin_review_delete(review_id: str, admin: dict = Depends(get_admin_user)):
+    res = await db.google_reviews.delete_one({"reviewId": review_id[:80]})
+    if not res.deleted_count:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return {"ok": True}
+
+
+@api_router.put("/admin/reviews/summary")
+async def admin_review_summary(inp: ReviewSummaryInput, admin: dict = Depends(get_admin_user)):
+    await db.integrations.update_one({"key": "google_reviews"}, {"$set": {"averageRating": inp.averageRating,
+                                                                           "totalReviewCount": inp.totalReviewCount}}, upsert=True)
+    return {"ok": True}
 
 
 class GoogleReviewsSite(BaseModel):
