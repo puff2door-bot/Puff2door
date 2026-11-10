@@ -86,6 +86,14 @@ def first_name(display: str) -> str:
     return name[:20].title() if name and name.lower() not in ("a", "google", "user") else "there"
 
 
+def public_name(display: str) -> str:
+    """First name + last initial ("Maria G."), so the website never shows a customer's full name."""
+    parts = [p for p in str(display or "").split() if p]
+    if not parts or parts[0].lower() in ("a", "google"):
+        return "Google reviewer"
+    return parts[0].title() + (f" {parts[-1][0].upper()}." if len(parts) > 1 else "")
+
+
 def write_reply(review_id: str, stars: int, display_name: str, comment: str) -> str:
     name = first_name(display_name)
     text = str(comment or "").lower()
@@ -122,7 +130,8 @@ class GoogleReviews:
         last = await self.db.google_review_replies.find_one({}, {"_id": 0}, sort=[("at", -1)])
         return {"configured": self.configured, "connected": bool(c.get("encryptedRefreshToken") and c.get("locationName")),
                 "locationTitle": c.get("locationTitle", ""), "connectedAt": c.get("connectedAt"), "lastError": c.get("lastError", ""),
-                "lastCheckedAt": c.get("lastCheckedAt"), "repliedCount": await self.db.google_review_replies.count_documents({}),
+                "lastCheckedAt": c.get("lastCheckedAt"), "onSite": bool(c.get("onSite")),
+                "reviewsOnFile": await self.db.google_reviews.count_documents({}), "lastErrorAt": c.get("lastErrorAt"), "repliedCount": await self.db.google_review_replies.count_documents({}),
                 "lastReply": last or {}}
 
     async def auth_url(self, admin_id: str) -> str:
@@ -183,7 +192,39 @@ class GoogleReviews:
         return doc
 
     async def disconnect(self) -> None:
-        await self.db.integrations.delete_one({"key": "google_reviews"})
+        await self.db.integrations.update_one({"key": "google_reviews"}, {"$unset": {
+            "encryptedRefreshToken": "", "accountName": "", "locationName": "", "locationTitle": "", "connectedAt": ""}})
+
+    async def sync_reviews(self) -> dict:
+        """Copy the business's 5-star Google reviews (with text) for the website section. Read-only on Google."""
+        c = await self.config()
+        if not c.get("locationName"):
+            return {"saved": 0}
+        token = await self._access()
+        loc_id = c["locationName"].split("/")[-1]
+        base = f"{REVIEWS_URL}/{c['accountName']}/locations/{loc_id}/reviews"
+        saved, page, avg, total = 0, None, None, None
+        for _ in range(4):  # up to 200 newest reviews
+            params = {"pageSize": 50, "orderBy": "updateTime desc"}
+            if page:
+                params["pageToken"] = page
+            payload = await self._get(token, base, params)
+            avg = payload.get("averageRating", avg)
+            total = payload.get("totalReviewCount", total)
+            for rv in payload.get("reviews") or []:
+                comment = (rv.get("comment") or "").split("(Translated by Google)")[0].strip()
+                if STARS.get(rv.get("starRating")) != 5 or len(comment) < 20:
+                    continue
+                await self.db.google_reviews.update_one({"reviewId": rv["reviewId"]}, {"$set": {
+                    "reviewId": rv["reviewId"], "name": public_name((rv.get("reviewer") or {}).get("displayName") or ""),
+                    "stars": 5, "comment": comment[:1200], "createTime": rv.get("createTime") or rv.get("updateTime") or ""}}, upsert=True)
+                saved += 1
+            page = payload.get("nextPageToken")
+            if not page:
+                break
+        await self.db.integrations.update_one({"key": "google_reviews"}, {"$set": {
+            "averageRating": avg, "totalReviewCount": total, "reviewsSyncedAt": datetime.now(timezone.utc), "lastError": ""}})
+        return {"saved": saved, "averageRating": avg, "total": total}
 
     async def reply_new(self, notify=None) -> list[dict]:
         c = await self.config()
@@ -232,6 +273,7 @@ async def reply_new(h) -> None:
         await emails._send([emails.NOTIFY_EMAIL], f"New {row['stars']}★ Google review", emails.layout("New Google review", body), "auto_google_review")
 
     try:
+        await gr.sync_reviews()
         rows = await gr.reply_new(notify)
     except Exception as exc:
         await h.db.integrations.update_one({"key": "google_reviews"}, {"$set": {"lastError": str(exc)[:300]}})

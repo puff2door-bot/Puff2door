@@ -7,6 +7,7 @@ import { useCatalog } from "../context/CatalogContext";
 import Seo from "../seo/Seo";
 import { breadcrumbJsonLd, faqJsonLd, SITE_URL, STORE, titleCase } from "../seo/config";
 import VisitStore from "../components/VisitStore";
+import GoogleReviews from "../components/GoogleReviews";
 
 // Add a hosted walkthrough URL here when a delivery video is ready.
 const DELIVERY_VIDEO_URL = "";
@@ -116,12 +117,14 @@ const DeliveryAreaPage = () => {
           {GOOGLE_PLACE_ID && GOOGLE_MAPS_KEY ? (
             <iframe title="HD Smoke Shop on Google Maps" className="w-full h-[360px] rounded-2xl border border-neutral-200" loading="lazy" allowFullScreen src={`https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(GOOGLE_MAPS_KEY)}&q=place_id:${encodeURIComponent(GOOGLE_PLACE_ID)}`} />
           ) : (
+            <GoogleReviews reviewUrl={trust.googleReviewUrl} fallback={(
             <div className="border border-neutral-200 rounded-2xl p-8 text-center bg-neutral-50">
               <Star className="h-8 w-8 text-emerald-600 mx-auto mb-3" />
               <p className="font-bold text-neutral-900">Read our verified Google reviews</p>
               <p className="text-sm text-neutral-500 mt-1 mb-4">See current customer feedback directly on Google.</p>
               <a href={trust.googleReviewUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center rounded-full bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-emerald-700">Open Google Reviews</a>
             </div>
+            )} />
           )}
         </section> : null}
 

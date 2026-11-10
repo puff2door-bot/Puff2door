@@ -6022,14 +6022,43 @@ async def admin_google_connect(admin: dict = Depends(get_admin_user)):
 
 @api_router.get("/google/callback", include_in_schema=False)
 async def google_callback(code: str = "", state: str = "", error: str = ""):
+    async def fail(reason: str):
+        logger.warning("Google connect failed: %s", reason)
+        await db.integrations.update_one({"key": "google_reviews"}, {"$set": {"key": "google_reviews", "lastError": reason[:300],
+                                                                               "lastErrorAt": now_utc()}}, upsert=True)
+        return RedirectResponse(f"{SITE_URL}/admin/agents?google=error", status_code=303)
     if error or not code:
-        return RedirectResponse(f"{SITE_URL}/admin/agents?google=error", status_code=303)
+        return await fail("Google sign-in was cancelled or blocked" + (f" ({error})." if error else "."))
+    gr = google_reviews_integration()
     try:
-        await google_reviews_integration().callback(code, state)
+        await gr.callback(code, state)
     except Exception as exc:
-        logger.warning("Google connect failed: %s", exc)
-        return RedirectResponse(f"{SITE_URL}/admin/agents?google=error", status_code=303)
+        return await fail(str(exc))
+    try:
+        await gr.sync_reviews()
+    except Exception as exc:
+        logger.warning("Google reviews sync after connect failed: %s", exc)
     return RedirectResponse(f"{SITE_URL}/admin/agents?google=connected", status_code=303)
+
+
+@api_router.get("/reviews/google")
+async def public_google_reviews(preview: bool = False):
+    """5-star Google reviews for the website. Hidden until the owner turns them on (or ?preview=1)."""
+    cfg = await db.integrations.find_one({"key": "google_reviews"}, {"_id": 0, "averageRating": 1, "totalReviewCount": 1, "onSite": 1}) or {}
+    if not (cfg.get("onSite") or preview):
+        return {"show": False, "reviews": []}
+    rows = await db.google_reviews.find({}, {"_id": 0, "reviewId": 0}).sort("createTime", -1).to_list(6)
+    return {"show": bool(rows), "averageRating": cfg.get("averageRating"), "total": cfg.get("totalReviewCount"), "reviews": rows}
+
+
+class GoogleReviewsSite(BaseModel):
+    on: bool
+
+
+@api_router.post("/admin/google/reviews-on-site")
+async def admin_google_reviews_on_site(inp: GoogleReviewsSite, admin: dict = Depends(get_admin_user)):
+    await db.integrations.update_one({"key": "google_reviews"}, {"$set": {"onSite": inp.on}}, upsert=True)
+    return {"on": inp.on}
 
 
 @api_router.post("/admin/google/disconnect")
