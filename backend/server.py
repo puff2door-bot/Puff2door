@@ -6041,7 +6041,7 @@ async def google_callback(code: str = "", state: str = "", error: str = ""):
     return RedirectResponse(f"{SITE_URL}/admin/agents?google=connected", status_code=303)
 
 
-@api_router.get("/reviews/google")
+@api_router.get("/google-reviews")
 async def public_google_reviews(preview: bool = False):
     """5-star Google reviews for the website. Hidden until the owner turns them on (or ?preview=1)."""
     cfg = await db.integrations.find_one({"key": "google_reviews"}, {"_id": 0, "averageRating": 1, "totalReviewCount": 1, "onSite": 1}) or {}
