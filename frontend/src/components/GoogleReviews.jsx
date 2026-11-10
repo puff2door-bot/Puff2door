@@ -10,7 +10,7 @@ const GoogleReviews = ({ reviewUrl, fallback = null, title = "" }) => {
   const [data, setData] = useState(null);
   useEffect(() => {
     const preview = new URLSearchParams(window.location.search).get("reviewPreview") === "1";
-    api.get("/reviews/google", { params: preview ? { preview: true } : {} }).then(({ data: d }) => setData(d)).catch(() => setData({ show: false }));
+    api.get("/google-reviews", { params: preview ? { preview: true } : {} }).then(({ data: d }) => setData(d)).catch(() => setData({ show: false }));
   }, []);
   if (!data) return null;
   if (!data.show || !data.reviews?.length) return fallback;
