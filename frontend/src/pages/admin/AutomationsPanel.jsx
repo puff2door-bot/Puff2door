@@ -51,8 +51,14 @@ const AutomationsPanel = () => {
           <b>Google reviews:</b>{" "}
           {g.connected ? `connected to ${g.locationTitle || "your profile"} · ${g.repliedCount || 0} replies sent${g.lastCheckedAt ? ` · checked ${when(g.lastCheckedAt)}` : ""}`
             : g.configured ? "not connected yet." : "waiting for Google to approve API access."}
-          {g.lastError && <span className="block text-red-700">{g.lastError}</span>}
+          {g.lastError && <span className="block text-red-700">Last try didn't work: {g.lastError}</span>}
+          {g.connected && <span className="block text-neutral-600 mt-1">{g.reviewsOnFile || 0} five-star reviews ready for the website.{" "}
+            <a href="/delivery-area?reviewPreview=1" target="_blank" rel="noreferrer" className="underline">Preview</a></span>}
         </div>
+        {g.connected && <label className="flex items-center gap-2 font-semibold">
+          <input type="checkbox" className="h-5 w-5 accent-emerald-600" checked={!!g.onSite} disabled={busy === "site"}
+            onChange={async (e) => { setBusy("site"); try { await api.post("/admin/google/reviews-on-site", { on: e.target.checked }); await load(); } catch { setError("Could not change that setting."); } setBusy(""); }} />
+          Show on website</label>}
         {!g.connected && <button type="button" onClick={connectGoogle} disabled={busy === "google" || !g.configured} className="rounded-xl px-3 py-2 font-semibold bg-emerald-700 text-white disabled:opacity-50">Connect Google</button>}
       </div>
       <div>
