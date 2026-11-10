@@ -12,9 +12,10 @@ import { useCatalog } from "../context/CatalogContext";
 import { useCart } from "../context/CartContext";
 import api, { imgUrl } from "../api";
 import Seo from "../seo/Seo";
-import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, HOME_FAQS, faqJsonLd, titleCase } from "../seo/config";
+import { DEFAULT_DESCRIPTION, DEFAULT_TITLE, HOME_FAQS, STORE, faqJsonLd, titleCase } from "../seo/config";
 import PersonalizedShelf from "../components/PersonalizedShelf";
 import VisitStore from "../components/VisitStore";
+import GoogleReviews from "../components/GoogleReviews";
 import { useToast } from "../hooks/use-toast";
 import HomeConceptHero from "../components/HomeConceptHero";
 import { resolveSiteTheme } from "../lib/siteTheme";
@@ -241,6 +242,11 @@ const Home = () => {
             </div>
           </div>
         </div>
+      </section>
+
+      {/* Real customer reviews (hidden until the owner turns them on in Admin → Reviews) */}
+      <section className="max-w-[1280px] mx-auto px-4 pt-14" data-testid="home-reviews">
+        <GoogleReviews title="What Our Customers Say" reviewUrl={STORE.googleReviewUrl} />
       </section>
 
       {/* Local store proof */}
