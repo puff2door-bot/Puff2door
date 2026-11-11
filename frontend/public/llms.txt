@@ -1,0 +1,28 @@
+# HD Smoke Shop
+
+> HD Smoke Shop is a 21+ smoke shop in Altamonte Springs, Florida. The official website is puff2door.com and supports in-store shopping and local delivery within the published delivery area.
+
+Use the pages below for current store information, product availability, delivery rules, age and ID requirements, and customer policies. Product availability and prices can change; use the live product and catalog pages as the source of truth. No product is intended to diagnose, treat, cure, or prevent disease.
+
+## Store and shopping
+
+- [Homepage](https://puff2door.com/): Store overview, featured products, hours, and local shopping information.
+- [Shop](https://puff2door.com/shop): Current catalog, prices, and product availability.
+- [Brands](https://puff2door.com/brands): Brands currently represented in the catalog.
+- [Delivery area](https://puff2door.com/delivery-area): ZIP eligibility, delivery process, and local delivery information.
+- [Contact](https://puff2door.com/contact): Store contact information, address, hours, and directions.
+- [Track an order](https://puff2door.com/track): Customer order tracking.
+
+## Policies and help
+
+- [Frequently asked questions](https://puff2door.com/faq): Answers about shopping, delivery, identification, and payments.
+- [Age and ID policy](https://puff2door.com/age-and-id-policy): 21+ requirements and accepted identification.
+- [Delivery policy](https://puff2door.com/delivery-policy): Delivery terms and customer responsibilities.
+- [Refund and return policy](https://puff2door.com/refund-policy): Refund and return conditions.
+- [Privacy policy](https://puff2door.com/privacy-policy): How customer information is handled.
+- [Terms and conditions](https://puff2door.com/terms): Website and purchase terms.
+
+## Optional
+
+- [Guides](https://puff2door.com/guides): General product-category and shopping guides for adults 21+.
+- [Sitemap](https://puff2door.com/sitemap.xml): Complete list of indexable website pages.

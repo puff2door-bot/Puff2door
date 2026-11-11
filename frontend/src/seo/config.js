@@ -124,7 +124,6 @@ export const storeJsonLd = () => ({
   openingHours: "Mo-Su 10:00-22:00",
   openingHoursSpecification: [{ "@type": "OpeningHoursSpecification", dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], opens: STORE.opens, closes: STORE.closes }],
   areaServed: [{ "@type": "Place", name: "Altamonte Springs, FL 32714", address: { "@type": "PostalAddress", postalCode: STORE.deliveryZip, addressLocality: STORE.city, addressRegion: STORE.region, addressCountry: STORE.country } }],
-  audience: { "@type": "PeopleAudience", suggestedMinAge: 21 },
   sameAs: [STORE.directionsUrl, STORE.instagram, STORE.facebook],
 });
 

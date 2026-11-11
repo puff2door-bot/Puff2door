@@ -83,6 +83,7 @@ def test_catalog_route_metadata(monkeypatch):
     monkeypatch.setattr(server, "get_categories", fake_categories)
     monkeypatch.setattr(server, "get_brand_map", fake_brands)
     monkeypatch.setattr(server, "db", FakeDB())
+    monkeypatch.setattr(server, "_settings_cache", {"pickupEnabled": True})
 
     category = asyncio.run(server._seo_meta_for_path("product-category/disposable-vapes"))
     brand = asyncio.run(server._seo_meta_for_path("brand/geek-bar"))
