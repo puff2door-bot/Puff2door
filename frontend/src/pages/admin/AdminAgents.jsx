@@ -54,7 +54,7 @@ const AdminAgents = () => {
   const [agents, setAgents] = useState([]);
   const [running, setRunning] = useState("");
   const [open, setOpen] = useState("");
-  const [notice, setNotice] = useState("Agents only read your data and report. They never change products, prices, orders or Clover.");
+  const [notice, setNotice] = useState("Monitoring agents report what needs attention. Social Studio only posts when you explicitly enable it.");
   const [socialStatus, setSocialStatus] = useState(null);
   const [socialDraft, setSocialDraft] = useState(null);
   const [socialBusy, setSocialBusy] = useState("");
@@ -70,7 +70,7 @@ const AdminAgents = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const socialError = (error) => error?.response?.data?.detail || "Agent 12 could not complete that request.";
+  const socialError = (error) => error?.response?.data?.detail || "Social Studio could not complete that request.";
 
   const connectInstagram = async () => {
     setSocialBusy("connect");
@@ -159,14 +159,17 @@ const AdminAgents = () => {
 
   const runAll = async () => {
     setRunning("all");
-    for (const agent of agents.filter((a) => !["support", "briefing"].includes(a.id))) {
-      try {
-        const { data } = await api.post(`/admin/agents/${agent.id}/run`);
-        setAgents((rows) => rows.map((row) => row.id === agent.id ? { ...row, latest: data } : row));
-      } catch { /* keep going */ }
-    }
+    const checks = agents.filter((agent) => agent.id !== "briefing");
+    const results = await Promise.allSettled(checks.map(async (agent) => {
+      const { data } = await api.post(`/admin/agents/${agent.id}/run`);
+      return { id: agent.id, data };
+    }));
+    const completed = results.filter((result) => result.status === "fulfilled").map((result) => result.value);
+    const fresh = new Map(completed.map((result) => [result.id, result.data]));
+    setAgents((rows) => rows.map((row) => fresh.has(row.id) ? { ...row, latest: fresh.get(row.id) } : row));
     setRunning("");
-    setNotice("All checks ran just now.");
+    const failed = results.length - completed.length;
+    setNotice(failed ? `${completed.length} checks completed; ${failed} could not run. Open those agent cards and retry.` : `All ${completed.length} monitoring checks completed.`);
   };
 
   const ignoreItem = async (agent, item) => {
@@ -219,7 +222,7 @@ const AdminAgents = () => {
             <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold"><span className="h-2 w-2 rounded-full bg-emerald-300" /> Private admin only</span>
           </div>
           <h1 className="mt-5 max-w-3xl text-3xl md:text-5xl font-black tracking-[-.045em] leading-[1.04]">Your store, checked around the clock.</h1>
-          <p className="mt-4 max-w-2xl text-sm md:text-base text-emerald-50/80">Eleven agents check your website, Clover sync, stock, photos and compliance, then email you a briefing every morning at 8 AM. They only read and report.</p>
+          <p className="mt-4 max-w-2xl text-sm md:text-base text-emerald-50/80">Eleven agents check your website, Clover sync, stock, support, photos and compliance, then email you a briefing every morning at 8 AM. Monitoring agents report; Social Studio posts only when you enable it.</p>
         </div>
       </section>
 
@@ -250,7 +253,7 @@ const AdminAgents = () => {
       </section>
 
       <section className="rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50 to-fuchsia-50 p-5 shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><p className="text-[10px] font-extrabold uppercase tracking-[.14em] text-violet-600">Agent 12 creative rotation</p><h2 className="mt-1 text-xl font-black tracking-tight text-neutral-900">A new layout, color set and featured shelf every day</h2><p className="mt-1 text-sm text-neutral-600">7 layouts × 10 color sets using your own product photos. Never features THC/delta or kratom. Daily post at {postTime}.</p></div><div className="flex flex-wrap gap-1.5">{["Poster", "Grid", "Neon", "Magazine", "Split", "Polaroid", "Bold type"].map((theme) => <span key={theme} className="rounded-full border border-white/80 bg-white/75 px-2.5 py-1 text-[10px] font-bold text-violet-700">{theme}</span>)}</div></div>
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><p className="text-[10px] font-extrabold uppercase tracking-[.14em] text-violet-600">Agent 11 creative rotation</p><h2 className="mt-1 text-xl font-black tracking-tight text-neutral-900">A new layout, color set and featured shelf every day</h2><p className="mt-1 text-sm text-neutral-600">7 layouts × 10 color sets using your own product photos. Never features THC/delta or kratom. Daily post at {postTime}.</p></div><div className="flex flex-wrap gap-1.5">{["Poster", "Grid", "Neon", "Magazine", "Split", "Polaroid", "Bold type"].map((theme) => <span key={theme} className="rounded-full border border-white/80 bg-white/75 px-2.5 py-1 text-[10px] font-bold text-violet-700">{theme}</span>)}</div></div>
         {socialDraft?.imageUrl && <div className="mt-5 grid gap-4 md:grid-cols-[180px_1fr]"><img src={socialDraft.imageUrl} alt={`${socialDraft.themeName || "Daily"} Instagram preview`} className="aspect-[4/5] w-full max-w-[180px] rounded-2xl object-cover shadow-md" /><div><p className="font-extrabold text-neutral-900">{socialDraft.themeName || "Today’s theme"} · {socialDraft.topic || "Daily business story"}</p><p className="mt-2 text-xs leading-5 text-neutral-500">Preview only. Nothing is posted unless you press “Post this preview to Instagram now.” The daily post is made automatically.</p></div></div>}
       </section>
 
@@ -277,7 +280,7 @@ const AdminAgents = () => {
                   <button onClick={() => setOpen(isOpen ? "" : agent.id)} className="mt-3 w-full rounded-xl bg-neutral-50 p-3 text-left hover:bg-neutral-100">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase ${st?.pill}`}>{st?.label}</span>
                     <p className="mt-1.5 text-sm font-semibold text-neutral-800">{agent.latest.headline}</p>
-                    <p className="mt-1 text-[11px] text-neutral-400">Checked {formatWhen(agent.latest.ranAt)}{agent.latest.items?.length ? ` · ${isOpen ? "hide" : "show"} details` : ""}</p>
+                    <p className="mt-1 text-[11px] text-neutral-400">Checked {formatWhen(agent.latest.ranAt)}{Number.isFinite(agent.latest.durationMs) ? ` · ${(agent.latest.durationMs / 1000).toFixed(1)}s` : ""}{agent.latest.items?.length ? ` · ${isOpen ? "hide" : "show"} details` : ""}</p>
                   </button>
                 ) : <p className="mt-3 rounded-xl bg-neutral-50 p-3 text-sm text-neutral-500">Not run yet.</p>}
                 {isOpen && agent.latest?.items?.length > 0 && (
@@ -296,12 +299,10 @@ const AdminAgents = () => {
                 {isOpen && agent.latest?.ignoredCount > 0 && (
                   <button onClick={() => restoreIgnored(agent)} className="mt-2 text-[11px] font-semibold text-neutral-500 underline">{agent.latest.ignoredCount} ignored · show them again</button>
                 )}
-                {agent.id !== "support" && (
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <button onClick={() => runAgent(agent)} disabled={Boolean(running)} className="inline-flex items-center gap-1.5 text-sm font-bold text-emerald-700 hover:text-emerald-900 disabled:opacity-40">{running === agent.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4" />} Check now</button>
-                    <button onClick={() => runAgent(agent, true)} disabled={Boolean(running)} className="inline-flex items-center gap-1.5 text-sm font-semibold text-neutral-500 hover:text-neutral-800 disabled:opacity-40">Email me this <ChevronRight className="h-4 w-4" /></button>
-                  </div>
-                )}
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button onClick={() => runAgent(agent)} disabled={Boolean(running)} className="inline-flex items-center gap-1.5 text-sm font-bold text-emerald-700 hover:text-emerald-900 disabled:opacity-40">{running === agent.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4" />} Check now</button>
+                  <button onClick={() => runAgent(agent, true)} disabled={Boolean(running)} className="inline-flex items-center gap-1.5 text-sm font-semibold text-neutral-500 hover:text-neutral-800 disabled:opacity-40">Email me this <ChevronRight className="h-4 w-4" /></button>
+                </div>
               </article>
             );
           })}

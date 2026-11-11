@@ -1,4 +1,4 @@
-"""Instagram publishing integration for Agent 12.
+"""Instagram publishing integration for the Social Studio agent.
 
 The integration supports Meta's Instagram Login flow and the legacy Facebook
 Login for Business flow. Credentials are encrypted before storage, every state
@@ -894,6 +894,7 @@ class InstagramIntegration:
         await self.db.social_drafts.update_one({"id": draft_id}, {"$set": updates})
         await self.db.integrations.update_one({"key": "instagram"}, {"$set": {
             "lastPostAt": now, "lastPostId": media_id, "lastPostPermalink": permalink, "updatedAt": now,
+            "lastPublishError": "", "publishFailureCount": 0,
         }})
         await self.log("publish", "success", draftId=draft_id, mediaId=media_id, source=source, username=config.get("username"))
         return {**draft, **updates}
@@ -998,5 +999,8 @@ class InstagramIntegration:
             "tokenRenewedAt": config.get("tokenRenewedAt"),
             "lastPostAt": config.get("lastPostAt"),
             "lastPostPermalink": config.get("lastPostPermalink", ""),
+            "lastPublishError": config.get("lastPublishError", ""),
+            "lastPublishErrorAt": config.get("lastPublishErrorAt"),
+            "publishFailureCount": int(config.get("publishFailureCount") or 0),
             "latestDraft": latest or {},
         }

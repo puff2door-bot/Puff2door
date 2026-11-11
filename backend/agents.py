@@ -1,9 +1,9 @@
-"""HD AgentOS: real, read-only store checks that run on a schedule and email the owner.
+"""HD AgentOS: store checks that run on a schedule and email the owner.
 
-Every agent only READS data and reports. None of them changes products, prices, orders,
-Clover, payments or listings. Results are saved in `agent_runs` so the admin page can
-show the latest outcome, and alerts / the morning briefing go to NOTIFY_EMAIL.
-Everything here is free: plain Python checks plus the site's existing email service.
+Monitoring agents read data and report; the separately enabled Social Studio can publish
+to Instagram. Results are saved in `agent_runs` so the admin page can show the latest
+outcome, and alerts / the morning briefing go to NOTIFY_EMAIL. Everything here is free:
+plain Python checks plus the site's existing email service.
 """
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ import httpx
 
 ET = ZoneInfo("America/New_York")
 THC_CATEGORIES = {"delta", "delta-cartridges", "delta-edibles", "delta-smokeables", "kratom"}
+AGE_RESTRICTED_CATEGORIES = THC_CATEGORIES | {"disposable", "e-liquids", "cigars", "hemp-wraps"}
 CLAIM_WORDS = re.compile(
     r"\b(cure[sd]?|treat(s|ment)?|pain[\s-]*relief|relieves?|anxiety|insomnia|medical|medicinal|heal(s|ing)?|"
     r"fda[\s-]*approved|prevents?|therapeutic|health benefits?|safer than|harmless)\b", re.I)
@@ -34,18 +35,18 @@ AGENTS = [
     {"id": "watchdog", "number": 4, "name": "Website watchdog", "schedule": "Every 15 minutes",
      "description": "Checks the homepage, shop, checkout data and sitemap; emails you if anything is down."},
     {"id": "reputation", "number": 5, "name": "Review & reputation", "schedule": "Mondays",
-     "description": "Weekly reminder with links to your Google and Yelp reviews, plus reply templates."},
+     "description": "Checks Google review health, low ratings and saved reviews that still need a recorded reply."},
     {"id": "compliance", "number": 6, "name": "Compliance guardian", "schedule": "Daily",
-     "description": "Flags health-claim wording and THC/kratom items missing the 21+ or ID setting."},
+     "description": "Flags health claims and regulated products missing the 21+ or ID-at-delivery setting."},
     {"id": "inventory", "number": 7, "name": "Inventory & reorder", "schedule": "Daily",
      "description": "Smart reorder from real sales: what to reorder and how many, plus slow movers to stop buying. Never orders anything."},
     {"id": "photos", "number": 8, "name": "Product photo agent", "schedule": "Daily",
      "description": "Lists in-stock products with no real photo, most stock first."},
-    {"id": "support", "number": 9, "name": "Customer support", "schedule": "Templates",
-     "description": "Saved answers for Live Chat: hours, ID rules, delivery area, pickup, payment."},
-    {"id": "delivery", "number": 11, "name": "Delivery readiness", "schedule": "Daily",
+    {"id": "support", "number": 9, "name": "Customer support", "schedule": "Every 15 minutes",
+     "description": "Watches unanswered chats, response time and whether instant replies are working."},
+    {"id": "delivery", "number": 10, "name": "Delivery readiness", "schedule": "Daily",
      "description": "Checks delivery ZIPs, hours, tax, email and the delivery window are set up."},
-    {"id": "social", "number": 12, "name": "Daily social studio", "schedule": "Daily, 11 AM",
+    {"id": "social", "number": 11, "name": "Daily social studio", "schedule": "Daily, 11 AM",
      "description": "Posts a new Instagram image every day; warns before the connection expires."},
 ]
 AGENT_IDS = {a["id"] for a in AGENTS}
@@ -101,6 +102,7 @@ async def apply_ignores(db, result: dict) -> dict:
     result = dict(result, items=kept, ignoredCount=hidden)
     if not kept and result.get("status") == "warn":
         result["status"] = "ok"
+        result["headline"] = "All current findings are hidden"
     return result
 
 
@@ -161,6 +163,11 @@ async def agent_operations(ctx: Ctx) -> dict:
         status = "warn" if status == "ok" else status
         for code, names in list(dup_codes.items())[:8]:
             issues.append(f"Barcode {code} is on more than one item: " + " / ".join(sorted(names)))
+    for key, label in (("sales_today", "5-minute sales refresh"), ("sales", "hourly sales history refresh")):
+        sync_state = await ctx.db.agent_state.find_one({"key": key}, {"_id": 0}) or {}
+        if sync_state.get("lastError"):
+            status = "warn" if status == "ok" else status
+            issues.append(f"{label} failed: {sync_state['lastError']}")
     # Price changes since the last check (Clover is the source of truth for prices).
     snap = await ctx.db.agent_state.find_one({"key": "price_snapshot"}, {"_id": 0}) or {}
     previous = snap.get("prices") or {}
@@ -242,13 +249,16 @@ async def agent_watchdog(ctx: Ctx) -> dict:
         ("Shop page", f"{ctx.public_url}/shop", ""),
         ("Product data", f"{ctx.public_url}/api/products?limit=1", "products"),
         ("Delivery window (checkout)", f"{ctx.public_url}/api/delivery/window", ""),
+        ("Account page", f"{ctx.public_url}/my-account", "HD Smoke Shop"),
+        ("Checkout page", f"{ctx.public_url}/checkout", "HD Smoke Shop"),
+        ("Order tracking", f"{ctx.public_url}/track", "HD Smoke Shop"),
         ("Sitemap", f"{ctx.public_url}/sitemap.xml", "<urlset"),
         ("robots.txt", f"{ctx.public_url}/robots.txt", "Sitemap"),
     ]
     items, failures, slow = [], [], []
     async with httpx.AsyncClient(timeout=25, follow_redirects=True, headers={"User-Agent": "HD-Watchdog/1.0"}) as client:
-        for label, url, needle in checks:
-            ok, detail, ms = await _check(client, url, needle)
+        results = await asyncio.gather(*(_check(client, url, needle) for _label, url, needle in checks))
+        for (label, _url, _needle), (ok, detail, ms) in zip(checks, results):
             tag = "DOWN" if not ok else ("SLOW" if ms > SLOW_MS else "OK")
             items.append(f"{tag} · {label}: {detail}")
             if not ok:
@@ -267,13 +277,36 @@ async def agent_watchdog(ctx: Ctx) -> dict:
 
 async def agent_reputation(ctx: Ctx) -> dict:
     settings = await ctx.get_settings()
-    links = [
+    config = await ctx.db.integrations.find_one({"key": "google_reviews"}, {"_id": 0}) or {}
+    connected = bool(config.get("encryptedRefreshToken") and config.get("locationName"))
+    total = int(config.get("totalReviewCount") or await ctx.db.google_reviews.count_documents({}))
+    average = float(config.get("averageRating") or 0)
+    reply_rows = await ctx.db.google_review_replies.find(
+        {}, {"_id": 0, "reviewId": 1, "reviewer": 1, "stars": 1, "comment": 1, "reply": 1, "at": 1},
+    ).sort("at", -1).to_list(500)
+    low = [row for row in reply_rows if int(row.get("stars") or 0) <= 3][:8]
+    items = []
+    status = "ok"
+    if not connected:
+        status = "warn"
+        items.append("Google Business Profile is not connected, so new reviews cannot be checked automatically.")
+    if config.get("lastError"):
+        status = "alert"
+        items.append(f"Last Google review check failed: {config['lastError']}")
+    checked = _as_utc(config.get("lastCheckedAt"))
+    if connected and (not checked or _now() - checked > timedelta(hours=6)):
+        status = "warn" if status == "ok" else status
+        items.append("Google reviews have not been checked successfully in the last 6 hours.")
+    for row in low:
+        items.append(f"AUTO-REPLIED · {int(row.get('stars') or 0)}★ from {row.get('reviewer') or 'a customer'}: {str(row.get('comment') or '(no comment)')[:140]}")
+    items += [
         f"Google reviews: {settings.get('googleReviewUrl') or 'https://www.google.com/maps/search/HD+Smoke+Shop+Altamonte+Springs'}",
-        "Yelp reviews: https://biz.yelp.com/home/hLkli3XnmbGWSP-Ft8j5TQ/",
-        "Reply to every review within a few days; use the templates on the Agents page.",
-        "Ask happy customers at the counter to leave a Google review (the printed review cards help).",
+        "Yelp dashboard: https://biz.yelp.com/",
     ]
-    return _result("reputation", "ok", "Weekly review check reminder", links)
+    headline = (f"{average:.1f}★ from {total} Google reviews" if average else f"{total} Google reviews on file")
+    return _result("reputation", status, headline, items,
+                   {"connected": connected, "total": total, "average": average, "recordedReplies": len(reply_rows),
+                    "recentLowRatings": len(low)})
 
 
 async def agent_compliance(ctx: Ctx) -> dict:
@@ -285,7 +318,7 @@ async def agent_compliance(ctx: Ctx) -> dict:
         if m:
             items.append(f"Health-claim wording “{m.group(0)}” in: {p['name']}")
     for p in products:
-        if p.get("categorySlug") in THC_CATEGORIES:
+        if p.get("categorySlug") in AGE_RESTRICTED_CATEGORIES:
             problems = []
             if int(p.get("minimumAge") or 21) < 21:
                 problems.append("age under 21")
@@ -298,7 +331,7 @@ async def agent_compliance(ctx: Ctx) -> dict:
         m = strong.search(p.get("name", ""))
         if m:
             items.append(f"Contains “{m.group(0)}” (check it is legal to sell in Florida and keep off Instagram): {p['name']}")
-    young = [p for p in products if p.get("minimumAge") is not None and int(p["minimumAge"]) < 21 and p.get("categorySlug") not in THC_CATEGORIES]
+    young = [p for p in products if p.get("minimumAge") is not None and int(p["minimumAge"]) < 21]
     if young:
         items.append(f"{len(young)} products are set below age 21: " + ", ".join(p["name"] for p in young[:6]))
     status = "ok" if not items else "warn"
@@ -334,6 +367,8 @@ async def agent_inventory(ctx: Ctx) -> dict:
                 skip.append(p)
     urgent.sort(key=lambda r: (-r[2], r[0]))  # fastest sellers first
     items = []
+    if not start:
+        items.append("Sales history is not available yet, so reorder estimates may be incomplete.")
     for days_left, p, per_week, qty in urgent[:30]:
         d = max(1, int(days_left))
         when = "OUT now" if int(p.get("stock") or 0) <= 0 else f"runs out in about {d} day{'s' if d != 1 else ''}"
@@ -345,7 +380,7 @@ async def agent_inventory(ctx: Ctx) -> dict:
     if skip:
         items.append(f"SKIP · {len(skip)} out-of-stock items haven't sold in 60+ days, so no need to restock: "
                      + ", ".join(p["name"].strip() for p in skip[:10]))
-    status = "warn" if urgent else "ok"
+    status = "warn" if urgent or not start else "ok"
     headline = f"{len(urgent)} best sellers to reorder now · {len(dead)} slow movers"
     reorder_list = [{"name": p["name"].strip(), "brand": (p.get("brandName") or "").strip().title(), "qty": qty,
                      "stock": int(p.get("stock") or 0), "perWeek": per_week} for _d, p, per_week, qty in urgent]
@@ -366,7 +401,39 @@ async def agent_photos(ctx: Ctx) -> dict:
 
 
 async def agent_support(ctx: Ctx) -> dict:
-    return _result("support", "ok", "Reply templates ready on the Agents page")
+    now = _now()
+    open_rows = await ctx.db.chat_conversations.find(
+        {"status": {"$ne": "resolved"}},
+        {"_id": 0, "id": 1, "name": 1, "contact": 1, "lastSender": 1, "lastMessageAt": 1, "lastMessage": 1},
+    ).sort("lastMessageAt", -1).to_list(300)
+    unanswered = []
+    for row in open_rows:
+        at = _as_utc(row.get("lastMessageAt"))
+        if row.get("lastSender") == "customer" and at:
+            unanswered.append((int((now - at).total_seconds() // 60), row))
+    unanswered.sort(key=lambda item: -item[0])
+    messages = await ctx.db.chat_messages.find(
+        {"createdAt": {"$gte": now - timedelta(days=7)}},
+        {"_id": 0, "conversationId": 1, "sender": 1, "auto": 1, "createdAt": 1},
+    ).sort("createdAt", 1).to_list(4000)
+    customer = sum(1 for row in messages if row.get("sender") == "customer")
+    automatic = sum(1 for row in messages if row.get("sender") == "admin" and row.get("auto") is True)
+    manual = sum(1 for row in messages if row.get("sender") == "admin" and row.get("auto") is not True)
+    settings = await ctx.db.automation_settings.find_one({"key": "automations"}, {"_id": 0}) or {}
+    instant_on = (settings.get("paused") or {}).get("chat_reply") is not True
+    items = []
+    if not instant_on:
+        items.append("Instant Live Chat replies are paused.")
+    for minutes, row in unanswered[:20]:
+        who = row.get("name") or row.get("contact") or "Customer"
+        items.append(f"UNANSWERED {minutes} min · {who}: {str(row.get('lastMessage') or '')[:120]}")
+    if len(unanswered) > 20:
+        items.append(f"…and {len(unanswered) - 20} more unanswered conversations.")
+    status = "alert" if any(minutes >= 15 for minutes, _ in unanswered) else ("warn" if unanswered or not instant_on else "ok")
+    headline = f"{len(unanswered)} unanswered · {customer} customer messages in 7 days · {automatic} instant replies"
+    return _result("support", status, headline, items,
+                   {"unanswered": len(unanswered), "customerMessages7d": customer,
+                    "automaticReplies7d": automatic, "manualReplies7d": manual, "instantRepliesOn": instant_on})
 
 
 async def agent_delivery(ctx: Ctx) -> dict:
@@ -385,6 +452,11 @@ async def agent_delivery(ctx: Ctx) -> dict:
         items.append("Order emails are turned off (email service not configured).")
     if not NOTIFY_EMAIL:
         items.append("No owner email is set for alerts (NOTIFY_EMAIL).")
+    failed_email_count = await ctx.db.email_log.count_documents({
+        "status": "failed", "createdAt": {"$gte": _now() - timedelta(hours=24)},
+    })
+    if failed_email_count:
+        items.append(f"{failed_email_count} email(s) failed to send in the last 24 hours.")
     recent = await ctx.db.orders.find(
         {"createdAt": {"$gte": _now() - timedelta(days=3)}},
         {"_id": 0, "orderNumber": 1, "createdAt": 1, "manualStatus": 1, "paymentStatus": 1, "fulfillment": 1, "statusHistory": 1},
@@ -424,6 +496,11 @@ async def agent_social(ctx: Ctx) -> dict:
         return _result("social", "alert", "Instagram is not connected. Open Agents → Connect Instagram.")
     if not st.get("autoPublishEnabled"):
         status = "warn"; items.append("Daily posting is paused.")
+    if st.get("lastPublishError"):
+        status = "alert"
+        at = _as_utc(st.get("lastPublishErrorAt"))
+        when_error = f" at {at.astimezone(ET):%b %d, %-I:%M %p}" if at else ""
+        items.append(f"Last automatic post failed{when_error}: {st['lastPublishError']}")
     expires = _as_utc(st.get("tokenExpiresAt"))
     connected = _as_utc(st.get("connectedAt"))
     if st.get("tokenNeverExpires"):
@@ -562,10 +639,12 @@ async def latest_results(db) -> dict:
 async def run_agent(ctx: Ctx, agent_id: str, save: bool = True) -> dict:
     if agent_id not in RUNNERS:
         raise KeyError(agent_id)
+    started = time.monotonic()
     try:
         result = await RUNNERS[agent_id](ctx)
     except Exception as exc:  # an agent crashing is itself worth reporting
         result = _result(agent_id, "alert", f"The check could not run ({type(exc).__name__}).", [str(exc)[:300]])
+    result["durationMs"] = int((time.monotonic() - started) * 1000)
     result = await apply_ignores(ctx.db, result)
     if save:
         await save_result(ctx.db, result)
@@ -589,8 +668,8 @@ def _email_html(title: str, results: list[dict], intro: str = "") -> str:
             f"<div style='color:#404040;font-size:14px'>{escape(r.get('headline', ''))}</div>"
             + (f"<ul style='padding-left:18px;margin:8px 0 0;color:#525252;font-size:13px'>{rows}</ul>" if rows else "")
             + "</div>")
-    blocks.append("<p style='color:#737373;font-size:12px;margin-top:16px'>Sent by HD AgentOS. These checks only read your data; "
-                  "nothing was changed. Open Admin → Agents to see details.</p>")
+    blocks.append("<p style='color:#737373;font-size:12px;margin-top:16px'>Sent by HD AgentOS. Monitoring checks do not change "
+                  "products, prices or orders. Open Admin → Agents to see details.</p>")
     return layout(title, "".join(blocks), title)
 
 
@@ -638,6 +717,10 @@ async def scheduler_tick(ctx: Ctx) -> None:
         r = await run_agent(ctx, "operations")
         await _set_state(db, "operations", lastRunAt=_now())
         await _alert_on_change(ctx, r)
+    if await _due(db, "support", timedelta(minutes=14)):
+        r = await run_agent(ctx, "support")
+        await _set_state(db, "support", lastRunAt=_now())
+        await _alert_on_change(ctx, r)
     # Today's store sales refresh every 5 minutes so the Dashboard keeps up with the register;
     # the wider 3-day refresh (late edits, refunds) still runs hourly.
     if await _due(db, "sales_today", timedelta(minutes=5)):
@@ -645,17 +728,19 @@ async def scheduler_tick(ctx: Ctx) -> None:
             import sales
             if ctx.clover_factory:
                 await sales.sync_sales(db, ctx.clover_factory(), days=1)
-        except Exception:
-            pass
-        await _set_state(db, "sales_today", lastRunAt=_now())
+        except Exception as exc:
+            await _set_state(db, "sales_today", lastRunAt=_now(), lastError=str(exc)[:300], lastErrorAt=_now())
+        else:
+            await _set_state(db, "sales_today", lastRunAt=_now(), lastError="")
     if await _due(db, "sales", timedelta(minutes=55)):
         try:
             import sales
             if ctx.clover_factory:
                 await sales.sync_sales(db, ctx.clover_factory(), days=3)
-        except Exception:
-            pass
-        await _set_state(db, "sales", lastRunAt=_now())
+        except Exception as exc:
+            await _set_state(db, "sales", lastRunAt=_now(), lastError=str(exc)[:300], lastErrorAt=_now())
+        else:
+            await _set_state(db, "sales", lastRunAt=_now(), lastError="")
     today = local.date().isoformat()
     daily = await _state(db, "daily")
     if (local.hour, local.minute) >= (7, 30) and daily.get("date") != today:
@@ -669,7 +754,7 @@ async def scheduler_tick(ctx: Ctx) -> None:
     if (local.hour, local.minute) >= (8, 0) and brief.get("date") != today and (await _state(db, "daily")).get("date") == today:
         r = await run_agent(ctx, "briefing")
         latest = await latest_results(db)
-        detail = [latest[a] for a in ("inventory", "photos", "compliance", "delivery", "operations", "watchdog", "social")
+        detail = [latest[a] for a in ("inventory", "photos", "compliance", "delivery", "operations", "watchdog", "support", "social")
                   if a in latest and latest[a].get("status") != "ok"]
         if local.weekday() == 0:
             detail += [latest[a] for a in ("marketing", "reputation") if a in latest]

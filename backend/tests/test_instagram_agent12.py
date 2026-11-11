@@ -20,6 +20,19 @@ class FakeCollection:
     async def insert_one(self, row):
         self.rows.append(dict(row))
 
+    def find(self, query=None, projection=None):
+        class Cursor:
+            async def to_list(self, _limit):
+                return []
+
+        return Cursor()
+
+    async def delete_one(self, query):
+        for index, row in enumerate(self.rows):
+            if all(row.get(key) == value for key, value in query.items()):
+                self.rows.pop(index)
+                break
+
     async def find_one(self, query=None, projection=None, sort=None):
         query = query or {}
         matches = [row for row in self.rows if all(row.get(key) == value for key, value in query.items())]
@@ -194,6 +207,10 @@ def test_daily_rotation_never_repeats_consecutive_theme_or_topic():
     agent = integration(db)
 
     async def go():
+        async def no_feature_products(_categories, _seed, _count=4):
+            return [], []
+
+        agent._feature_products = no_feature_products
         first = await agent.generate_draft("2026-11-05")
         second = await agent.generate_draft("2026-11-06")
         assert first["themeName"] != second["themeName"]

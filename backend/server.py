@@ -3284,7 +3284,7 @@ async def admin_revert_enhanced_photos(admin: dict = Depends(get_admin_user)):
     return {"reverted": reverted}
 
 
-# ---- Agent 12: Instagram daily social publisher ----
+# ---- Social Studio agent: Instagram daily publisher ----
 class InstagramSettingsInput(BaseModel):
     autoPublishEnabled: bool
     confirmUsername: str = Field(default="", max_length=80)
@@ -3327,7 +3327,7 @@ async def admin_social_status(admin: dict = Depends(get_admin_user)):
     if len(INSTAGRAM_TOKEN_ENCRYPTION_KEY.encode("utf-8")) < 32:
         missing.append("Instagram token encryption key")
     if not AGENT12_CRON_SECRET:
-        missing.append("Agent 12 daily trigger secret")
+        missing.append("Social Studio daily trigger secret")
     return {
         **status,
         "missingSetup": missing,
@@ -3420,14 +3420,14 @@ async def admin_social_settings(inp: InstagramSettingsInput, admin: dict = Depen
 @api_router.post("/internal/agent12/daily")
 async def agent12_daily_trigger(request: Request):
     if not AGENT12_CRON_SECRET:
-        raise HTTPException(status_code=503, detail="Agent 12 daily trigger is not configured")
+        raise HTTPException(status_code=503, detail="Social Studio daily trigger is not configured")
     supplied = request.headers.get("X-Agent-Secret", "")
     if not supplied or not secrets.compare_digest(supplied, AGENT12_CRON_SECRET):
-        raise HTTPException(status_code=401, detail="Invalid Agent 12 trigger")
+        raise HTTPException(status_code=401, detail="Invalid Social Studio trigger")
     try:
         return await instagram_integration().run_daily()
     except InstagramError as exc:
-        logger.error("Agent 12 daily publish failed")
+        logger.exception("Social Studio daily publish failed")
         raise HTTPException(status_code=502, detail=instagram_error_detail(exc))
 
 
@@ -6130,9 +6130,21 @@ async def agent12_social_schedule():
         await asyncio.sleep(90)
         while True:
             try:
-                await instagram_integration().run_daily()
-            except Exception:
-                logger.error("Agent 12 scheduler check failed")
+                integration = instagram_integration()
+                status = await integration.status()
+                if status.get("connected") and status.get("autoPublishEnabled"):
+                    await integration.run_daily()
+            except Exception as exc:
+                logger.exception("Social Studio scheduler check failed: %s", exc)
+                try:
+                    await db.integrations.update_one(
+                        {"key": "instagram"},
+                        {"$set": {"lastPublishError": str(exc)[:300], "lastPublishErrorAt": now_utc()},
+                         "$inc": {"publishFailureCount": 1}},
+                        upsert=True,
+                    )
+                except Exception:
+                    logger.exception("Could not save the Social Studio failure status")
             await asyncio.sleep(900)
 
     asyncio.create_task(loop())
