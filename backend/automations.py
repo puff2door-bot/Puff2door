@@ -10,7 +10,7 @@ each automation can be paused from the Agents page (`automation_settings`).
   stuck_orders      push + email the owner when a website order is stuck
   review_request    one email asking for a Google review a day after an order is completed
   cart_reminder     one reminder email for a signed-in cart left for 24 hours
-  chat_reply        answer common Live Chat questions when nobody replies within 3 minutes
+  chat_reply        answer every Live Chat message immediately unless the owner is already chatting
   weekly_reorder    Monday email: what to reorder, grouped by brand
   google_reviews    reply to new Google reviews (see google_reviews.py)
 """
@@ -329,6 +329,8 @@ async def cart_reminder(h: Hooks) -> None:
 
 # ---------------- 8. Live Chat ----------------
 TOPICS = [
+    ("greeting", r"\b(hi|hello|hey|good morning|good afternoon|good evening)\b",
+     "Hi! 👋 How can we help you today? Ask about products, store hours, delivery, pickup, payment, or ID requirements."),
     ("hours", r"\b(hours?|open|close|closing|opening|what time|today)\b",
      "We're open every day from 10 AM to 10 PM at 481 N State Rd 434, Suite 1050, Altamonte Springs."),
     ("id", r"\b(id|age|21|under ?age|license|passport)\b",
@@ -395,11 +397,9 @@ async def chat_reply(db, conversation_id: str, customer_message_id: str, delay_s
     answer = await chat_answer(db, msg.get("text") or "")
     auto_count = await db.chat_messages.count_documents({"conversationId": conversation_id, "auto": True})
     if not answer:
-        if auto_count:
-            return
         answer = f"Thanks for your message! Someone from the store will reply here shortly. If it's urgent, call {STORE_PHONE}."
     elif auto_count >= 10:
-        return
+        answer = f"Thanks for your message! Someone from the store will reply here shortly. If it's urgent, call {STORE_PHONE}."
     now = _now()
     await db.chat_messages.insert_one({"id": str(uuid.uuid4()), "conversationId": conversation_id, "sender": "admin",
                                        "text": answer, "createdAt": now, "auto": True})
