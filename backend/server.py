@@ -6881,6 +6881,69 @@ def _h(value) -> str:
     return html_escape(str(value or ""), quote=True)
 
 
+# Extra crawlable copy for pages whose real text is drawn by React, so the first
+# HTML response carries enough indexable content (search auditors and AI crawlers
+# often read only the server HTML). Mirrors the on-page wording; React replaces it.
+SEO_STATIC_SECTIONS: dict[str, list[tuple[str, str]]] = {
+    "about": [
+        ("Your smoke shop in Altamonte Springs", "HD Smoke Shop is a locally owned smoke and vape shop at 481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714, open 10 AM to 10 PM every day. Walk in to shop disposables, pods, hemp-derived delta products, kratom, hookah, glass, rolling papers, cigars and wraps, lighters and more, or order online for local delivery within ZIP 32714."),
+        ("Visit or delivery", "Walk in at our SR 434 store, or order online for delivery within Altamonte Springs, ZIP 32714, in plain packaging. Checkout is age-verified and delivery is discreet. Shoppers from Longwood, Casselberry, Maitland, Winter Springs, Forest City and Apopka are welcome in store."),
+        ("21+ only, top brands", "A valid 21+ photo ID is required in store and at delivery, and we never sell to minors. We curate popular names across vape, delta and smoke culture, with friendly staff in store and a straightforward online ordering experience."),
+    ],
+    "contact": [
+        ("Visit the store", "HD Smoke Shop is at 481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714, in San Sebastian Square on SR 434. Walk-ins are always welcome and free parking is available in the plaza right outside the store."),
+        ("Hours and phone", "We are open 10 AM to 10 PM every day, including holidays. Call us at (407) 625-6826 with any question about stock, delivery or your order."),
+        ("Delivery and online orders", "Order online for local delivery within Altamonte Springs, ZIP 32714. Enter your ZIP at checkout to confirm eligibility. You can also message us on Instagram at @hdsmokeshop.altamonte."),
+        ("Directions and nearby areas", "You'll find us in San Sebastian Square on North State Road 434, a short drive from Longwood, Casselberry, Maitland, Winter Springs, Forest City and Apopka. Whether you're picking up disposables, hemp products, kratom, hookah supplies or glass, our staff can point you to what's in stock that day."),
+    ],
+    "delivery-area": [
+        ("Where we deliver", "Local delivery is available only to addresses in Altamonte Springs, ZIP 32714. Enter the delivery ZIP before checkout for the current eligibility result. If you are outside 32714, you are welcome to shop in our store on SR 434."),
+        ("Fees and windows", "There is no minimum order for delivery. The delivery fee and any free-delivery threshold are shown in your cart before you pay, and delivery windows at checkout reflect our current hours and driver capacity, with the earliest available window listed first."),
+        ("At the door", "A person 21 or older must be present with a valid, unexpired government-issued photo ID. Orders cannot be left unattended, in a mailbox, at a door, or with anyone under 21. If no eligible adult is available or the ID check fails, the order returns to the store and support will help with the next step."),
+        ("Tracking your order", "After checkout you receive an order number by email. Enter it on the Track Order page to follow your order from placed to out for delivery and delivered."),
+    ],
+    "privacy-policy": [
+        ("Information we collect", "We collect information you provide when you create an account, place an order, contact support, join an email list, save an address or request an alert, such as your name, email, phone number, delivery address, date of birth and order details. We also receive basic technical information such as browser type, device type and IP address needed for security, troubleshooting and performance."),
+        ("Payments and identity checks", "Payments are handled by the payment method shown at checkout, and HD Smoke Shop does not store full card numbers. At delivery we record the result of the required 21+ ID check, the ID type, driver name and time; the standard workflow does not retain a complete ID image."),
+        ("How we use and share information", "We use information to process and deliver orders, verify eligibility, prevent fraud, provide support, operate rewards, send requested order alerts, improve the site and meet legal obligations. We share only what is needed with service providers for hosting, payments, email, analytics and delivery, and retain records only as long as needed for business, security and legal purposes."),
+    ],
+    "terms": [
+        ("Eligibility", "You must be at least 21 years old to use the store or purchase age-restricted products. By ordering, you confirm that your information is accurate and that you will present a valid government-issued photo ID at delivery."),
+        ("Orders and availability", "Products, prices and inventory may change, and an order is accepted only after the site confirms it. HD Smoke Shop may cancel or limit an order when inventory is unavailable, payment cannot be verified, the address is outside the delivery area, or legal and safety requirements cannot be met."),
+        ("Delivery and acceptable use", "You are responsible for choosing an eligible address and being available during the selected window; the recipient must be 21+ and pass the door ID check, and orders cannot be left unattended or with anyone under 21. Do not misuse the site, submit false information, interfere with checkout or use the service for unlawful resale."),
+    ],
+    "delivery-policy": [
+        ("Service area and timing", "Local delivery is available only to addresses in Altamonte Springs, ZIP 32714. Enter the delivery ZIP before checkout for the current eligibility result. Delivery windows shown at checkout reflect current hours and capacity."),
+        ("At the door", "A person age 21 or older must be present with a valid government-issued photo ID. The name and age must be readable and the ID must not be expired. Orders cannot be left unattended, in a mailbox, at a door, or with anyone under 21."),
+        ("Failed delivery and tracking", "If the address is incorrect, no eligible adult is present, or the ID check fails, the driver returns the order to the store, and any refund or redelivery decision follows the payment status, product condition, delivery work already performed and applicable law. Use the Track Order page or your private order link to see current status."),
+    ],
+    "refund-policy": [
+        ("Report an order problem", "Contact HD Smoke Shop promptly if an item is missing, incorrect, damaged on arrival or defective. Include the order number and a clear description. Support may request photos of the product or packaging to review the issue."),
+        ("Return eligibility", "For safety and product-integrity reasons, opened or used consumable products generally cannot be returned. Unopened items may be eligible after review, depending on the item, condition, reason for return and applicable law."),
+        ("Cancelled, failed and refunds", "If HD Smoke Shop cancels an order before fulfillment, any captured payment is reviewed for refund to the original method. Orders returned because no eligible 21+ recipient was available or the ID check failed are reviewed individually. Approved refunds are sent to the original payment method, and the payment provider or bank controls when the credit appears."),
+    ],
+    "age-and-id-policy": [
+        ("21+ only", "HD Smoke Shop is for adults age 21 and older. Customers must pass the entry age gate, provide a valid date of birth at checkout and present acceptable identification at delivery."),
+        ("Accepted identification", "Bring a valid, unexpired government-issued photo ID that clearly shows your photograph and date of birth, such as a state driver license, state identification card, passport or military ID."),
+        ("Door verification and privacy", "The driver checks that the recipient is 21+, the ID appears valid and the person receiving the order matches the ID. Orders cannot be left with anyone under 21 or left unattended. The delivery record keeps the verification result, ID type, driver name, checklist and timestamp for compliance, and the standard workflow does not collect a complete ID image."),
+    ],
+}
+
+SEO_FAQ: list[tuple[str, str]] = [
+    ("Where do you deliver?", "We deliver only within Altamonte Springs, ZIP 32714. Enter your ZIP at checkout to confirm. If you're outside 32714, you're welcome to shop in store."),
+    ("Is there an order minimum for delivery?", "No. There is no minimum order for delivery. The delivery fee and any free-delivery threshold are shown in your cart before you pay."),
+    ("How fast is delivery?", "Pick from the delivery windows shown at checkout. They reflect our current hours and driver capacity, so the earliest available window is always listed first."),
+    ("How do I track my order?", "After checkout you get an order number by email. Enter it on the Track Order page to follow your order from placed to out for delivery and delivered."),
+    ("Do I need to be 21?", "Yes. Every product we sell is for adults 21 and older only, both online and in store."),
+    ("What ID do I need at delivery?", "A valid, unexpired government-issued photo ID showing you are 21 or older. The person named on the order must show it. Orders are never left at the door or handed to anyone under 21."),
+    ("What payment methods do you accept?", "Online orders are paid at checkout with the secure payment options shown for your device. In store we accept cards. Our drivers don't accept cash."),
+    ("Where is HD Smoke Shop and what are your hours?", "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714, open 10 AM to 10 PM every day. Walk-ins are always welcome and parking is free in the plaza."),
+    ("What do you sell?", "Disposable vapes and pods, hemp-derived delta disposables, cartridges, edibles and smokeables, kratom, cigars and wraps, rolling papers and cones, glass, lighters, hookah supplies and other smoke shop essentials from well-known brands."),
+    ("Is the stock on the website accurate?", "Yes. The website is synced with our in-store register throughout the day, so what you see online reflects what's on our shelves."),
+    ("Can I return an item?", "Opened or used consumable products generally can't be returned. If an item is missing, wrong, damaged or defective, contact us right away with your order number. See our Refund Policy for details."),
+]
+
+
 def _money_text(value) -> str:
     try:
         return f"${float(value):.2f}"
@@ -6960,6 +7023,28 @@ async def _seo_body_html(path: str, meta: dict) -> str:
             more = await _seo_visible_products({**related_q, "brand": {"$ne": product.get("brand") or "__none"}}, limit=8)
             if more:
                 main += f"<h2>More {_h(_seo_display_name(product.get('category')))}</h2>" + _seo_product_list(more)
+            attrs = []
+            if product.get("brandName"):
+                attrs.append(f"Brand: {_h(product.get('brandName'))}")
+            flavors = [f for f in (product.get("flavors") or []) if f]
+            if flavors:
+                attrs.append("Flavors: " + _h(", ".join(flavors[:12])))
+            if product.get("puffs"):
+                attrs.append(f"Puffs: {_h(product.get('puffs'))}")
+            if product.get("size"):
+                attrs.append(f"Size: {_h(product.get('size'))}")
+            if attrs:
+                main += "<p>" + " · ".join(attrs) + "</p>"
+            pickup_line = ("You can order online for store pickup or local delivery within ZIP 32714."
+                           if (await get_settings()).get("pickupEnabled")
+                           else "You can order online for local delivery within ZIP 32714.")
+            main += ("<h2>Ordering from HD Smoke Shop</h2>"
+                     f"<p>{_h(_seo_display_name(product.get('name')))} is available at HD Smoke Shop, a locally owned smoke and vape shop at "
+                     "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714, open 10 AM–10 PM daily. Walk in to buy it in store, or "
+                     f"{pickup_line} All orders are for adults 21+ only; a valid, unexpired government-issued photo ID showing 21 or older is "
+                     "required in store and at the door. Online stock is synced with our in-store register through the day, so availability "
+                     "reflects what's on our shelves. Opened or used consumable products generally can't be returned — contact us with your "
+                     "order number if an item arrives missing, incorrect, damaged or defective.</p>")
     elif normalized == "guides":
         main = ("<h1>Smoke Shop Guides</h1><p>Plain-English buying and how-to guides from the HD Smoke Shop team.</p><ul>"
                 + "".join(f'<li><a href="/guides/{_h(g["slug"])}">{_h(g["title"])}</a> – {_h(g["description"])}</li>' for g in GUIDES) + "</ul>")
@@ -6975,6 +7060,10 @@ async def _seo_body_html(path: str, meta: dict) -> str:
         others = [o for o in GUIDES if o["slug"] != g["slug"]]
         parts.append("<h2>More guides</h2><ul>" + "".join(f'<li><a href="/guides/{_h(o["slug"])}">{_h(o["title"])}</a></li>' for o in others) + "</ul></article>")
         main = "".join(parts)
+    elif normalized == "faq":
+        main += "".join(f"<h2>{_h(q)}</h2><p>{_h(a)}</p>" for q, a in SEO_FAQ)
+    elif normalized in SEO_STATIC_SECTIONS:
+        main += "".join(f"<h2>{_h(h)}</h2><p>{_h(p)}</p>" for h, p in SEO_STATIC_SECTIONS[normalized])
     elif normalized in ("shop", "brands"):
         if normalized == "brands":
             brands = sorted((b for b in (await get_brand_map()).values() if b.get("active", True)), key=lambda b: str(b.get("displayName") or b.get("name") or "").lower())
