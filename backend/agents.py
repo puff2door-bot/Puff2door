@@ -492,6 +492,12 @@ async def agent_delivery(ctx: Ctx) -> dict:
 async def agent_social(ctx: Ctx) -> dict:
     st = await ctx.instagram_status()
     items, status = [], "ok"
+    if st.get("requiresReconnect"):
+        reason = st.get("connectionError") or st.get("lastPublishError") or "Meta blocked the saved authorization."
+        return _result("social", "alert", "Instagram needs to be reconnected", [
+            f"Posting is paused: {reason}",
+            "Open Agents and choose Reconnect Instagram. The saved account name alone does not mean Meta still permits posting.",
+        ])
     if not st.get("connected"):
         return _result("social", "alert", "Instagram is not connected. Open Agents → Connect Instagram.")
     if not st.get("autoPublishEnabled"):

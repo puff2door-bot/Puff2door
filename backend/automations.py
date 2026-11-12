@@ -26,6 +26,8 @@ from html import escape
 from typing import Any, Awaitable, Callable, Optional
 from zoneinfo import ZoneInfo
 
+from instagram import instagram_reconnect_required
+
 ET = ZoneInfo("America/New_York")
 STORE_PHONE = "(407) 625-6826"
 
@@ -141,15 +143,6 @@ def _footer(h: Hooks, email: str) -> str:
 
 
 # ---------------- 1. Instagram ----------------
-def instagram_reconnect_required(error: Exception | str) -> bool:
-    message = str(error or "").lower()
-    return any(phrase in message for phrase in (
-        "api access blocked", "access blocked", "error validating access token",
-        "invalid oauth", "session has been invalidated", "connection is no longer valid",
-        "permission", "reconnect instagram",
-    ))
-
-
 async def instagram_renew(h: Hooks) -> None:
     try:
         result = await h.instagram_factory().renew_token()

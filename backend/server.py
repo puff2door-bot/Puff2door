@@ -6565,15 +6565,8 @@ async def agent12_social_schedule():
                     await integration.run_daily()
             except Exception as exc:
                 logger.exception("Social Studio scheduler check failed: %s", exc)
-                try:
-                    await db.integrations.update_one(
-                        {"key": "instagram"},
-                        {"$set": {"lastPublishError": str(exc)[:300], "lastPublishErrorAt": now_utc()},
-                         "$inc": {"publishFailureCount": 1}},
-                        upsert=True,
-                    )
-                except Exception:
-                    logger.exception("Could not save the Social Studio failure status")
+                # InstagramIntegration.publish_draft records the provider error
+                # and marks reconnect-required when Meta blocks authorization.
             await asyncio.sleep(900)
 
     asyncio.create_task(loop())

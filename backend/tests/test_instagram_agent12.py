@@ -196,6 +196,20 @@ def test_username_and_caption_policy():
     assert "buy now" not in caption.lower()
 
 
+def test_status_treats_saved_account_with_blocked_api_as_reconnect_required():
+    db = FakeDB()
+    db.integrations.rows.append({
+        "key": "instagram", "verified": True, "username": "hdsmokeshop.altamonte",
+        "encryptedPageToken": "saved-token", "tokenNeverExpires": True,
+        "lastPublishError": "API access blocked.",
+    })
+
+    status = asyncio.run(integration(db).status())
+
+    assert status["connected"] is False
+    assert status["requiresReconnect"] is True
+
+
 def test_rendered_social_image_is_square_png():
     data = render_social_image(SAFE_TOPICS[1], 1)
     assert data.startswith(b"\x89PNG\r\n\x1a\n")

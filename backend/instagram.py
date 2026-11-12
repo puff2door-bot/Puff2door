@@ -97,6 +97,15 @@ class InstagramError(RuntimeError):
     pass
 
 
+def instagram_reconnect_required(error: Exception | str) -> bool:
+    message = str(error or "").lower()
+    return any(phrase in message for phrase in (
+        "api access blocked", "access blocked", "error validating access token",
+        "invalid oauth", "session has been invalidated", "connection is no longer valid",
+        "permission", "reconnect instagram",
+    ))
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -826,6 +835,21 @@ class InstagramIntegration:
         return draft
 
     async def publish_draft(self, draft_id: str, source: str = "admin") -> dict:
+        try:
+            return await self._publish_draft(draft_id, source)
+        except InstagramError as exc:
+            now = utcnow()
+            reconnect = instagram_reconnect_required(exc)
+            sets = {"lastPublishError": str(exc)[:300], "lastPublishErrorAt": now, "updatedAt": now}
+            if reconnect:
+                sets.update({"connectionState": "needs_reconnect", "connectionError": str(exc)[:300], "connectionErrorAt": now})
+            await self.db.integrations.update_one(
+                {"key": "instagram"}, {"$set": sets, "$inc": {"publishFailureCount": 1}}, upsert=True,
+            )
+            await self.log("publish", "failed", draftId=draft_id, source=source, reconnectRequired=reconnect, error=str(exc)[:300])
+            raise
+
+    async def _publish_draft(self, draft_id: str, source: str = "admin") -> dict:
         config = await self.config()
         if not config.get("verified") or normalize_username(config.get("username")) != self.expected_username:
             raise InstagramError(f"Verify @{self.expected_username} before publishing.")
@@ -983,7 +1007,7 @@ class InstagramIntegration:
     async def status(self) -> dict:
         config = await self.config()
         latest = await self.db.social_drafts.find_one({}, {"_id": 0, "caption": 0}, sort=[("createdAt", -1)])
-        requires_reconnect = config.get("connectionState") == "needs_reconnect"
+        requires_reconnect = config.get("connectionState") == "needs_reconnect" or instagram_reconnect_required(config.get("lastPublishError", ""))
         return {
             "configured": self.configured,
             "connected": bool(config.get("verified") and config.get("encryptedPageToken") and not requires_reconnect),

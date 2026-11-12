@@ -34,3 +34,10 @@ export const easternDateKey = (value = new Date()) => {
   const part = (type) => parts.find((item) => item.type === type)?.value || "";
   return `${part("year")}-${part("month")}-${part("day")}`;
 };
+
+export const shiftDateKey = (dateKey, days = 0) => {
+  const [year, month, day] = String(dateKey || "").split("-").map(Number);
+  if (!year || !month || !day) return "";
+  const shifted = new Date(Date.UTC(year, month - 1, day + Number(days || 0)));
+  return shifted.toISOString().slice(0, 10);
+};

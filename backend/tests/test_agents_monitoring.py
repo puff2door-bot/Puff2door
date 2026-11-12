@@ -110,3 +110,19 @@ def test_social_agent_surfaces_last_scheduler_error():
 
     assert result["status"] == "alert"
     assert any("Meta rejected the image" in item for item in result["items"])
+
+
+def test_social_agent_uses_one_reconnect_message_when_meta_blocks_access():
+    status = {
+        "connected": False, "verified": True, "requiresReconnect": True,
+        "username": "hdsmokeshop.altamonte", "autoPublishEnabled": True,
+        "tokenNeverExpires": True, "lastPublishError": "API access blocked.",
+        "connectionError": "API access blocked.",
+    }
+
+    result = asyncio.run(agent_social(context(FakeDB(), status)))
+
+    assert result["status"] == "alert"
+    assert result["headline"] == "Instagram needs to be reconnected"
+    assert any("API access blocked" in item for item in result["items"])
+    assert not any("doesn't expire" in item for item in result["items"])
