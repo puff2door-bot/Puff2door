@@ -161,9 +161,26 @@ export const productJsonLd = (p, price, imgAbs, reviews) => {
       url: absUrl(`/shop/${p.slug}`),
       priceCurrency: "USD",
       price: price.toFixed(2),
+      priceValidUntil: new Date(Date.now() + 365 * 864e5).toISOString().slice(0, 10),
       availability: p.inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
       itemCondition: "https://schema.org/NewCondition",
       seller: { "@id": `${SITE_URL}/#store` },
+      // Free local delivery on orders $99+, otherwise a flat $15 delivery fee.
+      hasMerchantReturnPolicy: {
+        "@type": "MerchantReturnPolicy",
+        applicableCountry: "US",
+        returnPolicyCategory: "https://schema.org/MerchantReturnNotPermitted",
+      },
+      shippingDetails: {
+        "@type": "OfferShippingDetails",
+        shippingRate: { "@type": "MonetaryAmount", value: price >= 99 ? "0.00" : "15.00", currency: "USD" },
+        shippingDestination: { "@type": "DefinedRegion", addressCountry: "US", addressRegion: "FL", postalCode: "32714" },
+        deliveryTime: {
+          "@type": "ShippingDeliveryTime",
+          handlingTime: { "@type": "QuantitativeValue", minValue: 0, maxValue: 1, unitCode: "DAY" },
+          transitTime: { "@type": "QuantitativeValue", minValue: 0, maxValue: 1, unitCode: "DAY" },
+        },
+      },
     },
   };
   if (p.brandName) data.brand = { "@type": "Brand", name: p.brandName };
