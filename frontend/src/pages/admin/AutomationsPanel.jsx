@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { CheckCircle2, Star, Zap } from "lucide-react";
 import api from "../../api";
+import { formatEasternDateTime } from "../../lib/easternTime";
 
-const when = (v) => (v ? new Date(v).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "");
+const when = (v) => formatEasternDateTime(v, "");
 
 // What the agents now do on their own, with an on/off switch for each and a log of what was done.
 const AutomationsPanel = () => {
@@ -34,7 +35,7 @@ const AutomationsPanel = () => {
     <section className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm space-y-4" data-testid="automations-panel">
       <div>
         <h3 className="font-heading text-xl flex items-center gap-2"><Zap className="w-5 h-5 text-emerald-600" />Runs automatically</h3>
-        <p className="text-sm text-neutral-500 mt-1">The agents do these on their own. Turn any of them off here. Everything they do is listed below and in your morning email.</p>
+        <p className="text-sm text-neutral-500 mt-1">The agents do these on their own. Turn any of them off here. Everything below is shown in Eastern Time (ET) and included in your morning email.</p>
       </div>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       <div className="grid md:grid-cols-2 gap-2">

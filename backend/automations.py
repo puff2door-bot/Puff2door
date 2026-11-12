@@ -141,11 +141,37 @@ def _footer(h: Hooks, email: str) -> str:
 
 
 # ---------------- 1. Instagram ----------------
+def instagram_reconnect_required(error: Exception | str) -> bool:
+    message = str(error or "").lower()
+    return any(phrase in message for phrase in (
+        "api access blocked", "access blocked", "error validating access token",
+        "invalid oauth", "session has been invalidated", "connection is no longer valid",
+        "permission", "reconnect instagram",
+    ))
+
+
 async def instagram_renew(h: Hooks) -> None:
     try:
         result = await h.instagram_factory().renew_token()
     except Exception as exc:
-        await log(h.db, "instagram_renew", f"Could not renew the Instagram connection: {exc}", ok=False)
+        needs_reconnect = instagram_reconnect_required(exc)
+        if needs_reconnect:
+            now = _now()
+            await h.db.integrations.update_one(
+                {"key": "instagram"},
+                {"$set": {"connectionState": "needs_reconnect", "connectionError": str(exc)[:300],
+                           "connectionErrorAt": now, "updatedAt": now}},
+                upsert=True,
+            )
+            # A provider-blocked token cannot heal through retries. Pause only
+            # this renewal job; a successful reconnect turns it back on.
+            await set_enabled(h.db, "instagram_renew", False)
+        await log(
+            h.db, "instagram_renew",
+            "Instagram authorization was blocked by Meta. Automatic renewal is paused; use Reconnect Instagram."
+            if needs_reconnect else f"Could not renew the Instagram connection: {exc}",
+            ok=False, reconnectRequired=needs_reconnect,
+        )
         return
     if result.get("status") == "renewed":
         exp = _aware(result.get("expiresAt"))

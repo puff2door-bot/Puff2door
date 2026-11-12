@@ -27,7 +27,7 @@ const AdminSettings = () => {
     countdownClosedDayText: data.countdownClosedDayText ?? "No local delivery today. Order now for the next available delivery day ({next}).", countdownPausedText: data.countdownPausedText ?? "Local delivery is currently paused. Please check back soon.",
     countdownHoursText: data.countdownHoursText ?? "Same-day cutoff is {cutoff} ET. No deliveries after {end} or before {start}.", countdownExtraLines: data.countdownExtraLines || [],
     deliverySlotCapacity: data.deliverySlotCapacity ?? 8, deliveryDriverCount: data.deliveryDriverCount ?? 1, ordersPerDriverPerWindow: data.ordersPerDriverPerWindow ?? 8, defaultEtaMinutes: data.defaultEtaMinutes ?? 45,
-    googleReviewUrl: data.googleReviewUrl || "", hideOutOfStock: data.hideOutOfStock ?? true,
+    googleReviewUrl: data.googleReviewUrl || "", hideOutOfStock: data.hideOutOfStock ?? true, liveShelfEnabled: data.liveShelfEnabled ?? false,
     pickupEnabled: data.pickupEnabled ?? false, pickupAddress: data.pickupAddress || "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714", pickupHoursText: data.pickupHoursText ?? "Pick up during store hours.",
     pickupReadyMinutes: data.pickupReadyMinutes ?? 15, pickupHoldDays: data.pickupHoldDays ?? 1, pickupInstructions: data.pickupInstructions ?? "Bring a valid, unexpired 21+ photo ID that matches the name on the order." });
 
@@ -42,7 +42,7 @@ const AdminSettings = () => {
       const { data } = await api.put("/admin/settings", { taxRate: Number(f.taxPercent) / 100, deliveryFee: Number(f.deliveryFee), freeDeliveryMin: Number(f.freeDeliveryMin), deliveryZip: f.deliveryZip, deliveryRadiusMiles: Number(f.deliveryRadiusMiles), allowedZipCodes: f.allowedZipCodes.split(/[\s,]+/).map((z) => z.trim()).filter(Boolean),
         sameDayEnabled: Boolean(f.sameDayEnabled), deliveryCutoff: f.deliveryCutoff, deliveryStart: f.deliveryStart, deliveryEnd: f.deliveryEnd, deliveryDays: f.deliveryDays, homepageLayout: f.homepageLayout,
         countdownVisible: Boolean(f.countdownVisible), countdownHeadlineVisible: Boolean(f.countdownHeadlineVisible), countdownHoursVisible: Boolean(f.countdownHoursVisible), countdownOpenText: f.countdownOpenText, countdownClosedText: f.countdownClosedText, countdownClosedDayText: f.countdownClosedDayText, countdownPausedText: f.countdownPausedText, countdownHoursText: f.countdownHoursText, countdownExtraLines: f.countdownExtraLines,
-        deliverySlotCapacity: Number(f.deliverySlotCapacity), deliveryDriverCount: Number(f.deliveryDriverCount), ordersPerDriverPerWindow: Number(f.ordersPerDriverPerWindow), defaultEtaMinutes: Number(f.defaultEtaMinutes), googleReviewUrl: f.googleReviewUrl.trim(), hideOutOfStock: Boolean(f.hideOutOfStock),
+        deliverySlotCapacity: Number(f.deliverySlotCapacity), deliveryDriverCount: Number(f.deliveryDriverCount), ordersPerDriverPerWindow: Number(f.ordersPerDriverPerWindow), defaultEtaMinutes: Number(f.defaultEtaMinutes), googleReviewUrl: f.googleReviewUrl.trim(), hideOutOfStock: Boolean(f.hideOutOfStock), liveShelfEnabled: Boolean(f.liveShelfEnabled),
         pickupEnabled: Boolean(f.pickupEnabled), pickupAddress: f.pickupAddress.trim(), pickupHoursText: f.pickupHoursText, pickupReadyMinutes: Number(f.pickupReadyMinutes), pickupHoldDays: Number(f.pickupHoldDays), pickupInstructions: f.pickupInstructions });
       setF(toForm(data));
       toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
@@ -208,6 +208,15 @@ const AdminSettings = () => {
           <span><span className="block text-sm font-bold text-neutral-900">Hide out-of-stock products</span><span className="block text-xs text-neutral-500 mt-1">Products at 0 stock drop off the shop, categories and brands, and come back on their own when Clover shows stock again.</span></span>
           <input type="checkbox" data-testid="settings-hide-oos" className="accent-emerald-600 h-4 w-4 shrink-0" checked={f.hideOutOfStock} onChange={(e) => setF({ ...f, hideOutOfStock: e.target.checked })} />
         </label>
+      </div>
+
+      <div className="border border-sky-200 bg-sky-50/50 rounded-2xl p-5 mb-6" data-testid="settings-live-shelf">
+        <label className="flex items-center justify-between gap-4 cursor-pointer">
+          <span><span className="block text-sm font-bold text-neutral-900">Live Store Shelf</span><span className="block text-xs text-neutral-500 mt-1">Show customers a fast, mobile shelf containing only products currently in stock. Availability refreshes automatically.</span></span>
+          <span className="flex items-center gap-2 text-sm font-bold">{f.liveShelfEnabled ? "Visible" : "Hidden"}<input type="checkbox" className="accent-sky-600 h-5 w-5 shrink-0" checked={f.liveShelfEnabled} onChange={(e) => setF({ ...f, liveShelfEnabled: e.target.checked })} /></span>
+        </label>
+        <a href="/live-shelf?preview=1" target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1 rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-bold text-sky-800"><Eye className="h-3.5 w-3.5" /> Private preview</a>
+        <p className="mt-2 text-[11px] text-neutral-500">Preview works while hidden. Customers only see the header link after you turn this on and save.</p>
       </div>
 
       <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-google-reviews">

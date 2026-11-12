@@ -41,7 +41,7 @@ export const CartProvider = ({ children }) => {
   const [pricing, setPricing] = useState(DEFAULT_PRICING);
   const [delivery, setDelivery] = useState(DEFAULT_DELIVERY);
   const [loyalty, setLoyalty] = useState(DEFAULT_LOYALTY);
-  const [presentation, setPresentation] = useState({ homepageLayout: "classic" });
+  const [presentation, setPresentation] = useState({ homepageLayout: "classic", liveShelfEnabled: false });
   const [trust, setTrust] = useState({ googleReviewUrl: "" });
   const [redeemPoints, setRedeemPoints] = useState(0);
   const [promo, setPromo] = useState(() => {

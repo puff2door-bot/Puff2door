@@ -283,6 +283,29 @@ async def send_restock_alert(email: str, product: dict):
     return await _send([email], title, layout(title, body), "restock_alert", {"productId": product["id"], "email": email})
 
 
+async def send_replacement_approval(order: dict, offer: dict, approval_url: str):
+    """Ask the customer to approve a same-price or cheaper replacement; never authorize an extra charge."""
+    shipping = order.get("shipping") or {}
+    first_name = escape(shipping.get("firstName") or "there")
+    difference = abs(float(offer.get("priceDifference", 0)))
+    price_note = (
+        f'<p style="font-size:13px;color:#065f46;"><strong>You will not be charged more.</strong> '
+        f'A ${difference:.2f} credit will be flagged for store review after approval.</p>'
+        if difference > 0.005 else
+        '<p style="font-size:13px;color:#065f46;"><strong>The replacement is the same price.</strong> You will not be charged more.</p>'
+    )
+    body = f"""
+<p style="font-size:14px;line-height:1.6;">Hi {first_name}, one item in order <strong>{escape(order.get('orderNumber', ''))}</strong> needs your approval before we finish packing.</p>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:18px 0;background:#f9fafb;border-radius:12px;padding:14px;">
+<tr><td style="font-size:13px;color:#737373;">Original</td><td style="font-size:14px;font-weight:700;">{escape(offer.get('originalName', 'Product'))}</td></tr>
+<tr><td style="font-size:13px;color:#737373;padding-top:8px;">Replacement</td><td style="font-size:14px;font-weight:700;padding-top:8px;">{escape(offer.get('replacementName', 'Product'))}</td></tr>
+</table>
+{price_note}
+<p style="margin:20px 0;">{button('Review replacement', approval_url)}</p>
+<p style="font-size:12px;color:#737373;">This secure approval link expires in 24 hours. If you decline, the store will contact you about the next step.</p>"""
+    return await _send([shipping.get("email", "")], f"Approve a replacement for {order.get('orderNumber', 'your order')}", layout("Replacement approval needed", body, "Please approve or decline an item replacement."), "replacement_approval", {"orderId": order.get("id"), "offerId": offer.get("id")})
+
+
 async def send_zelle_expired(order: dict, hours: int):
     to = order.get("shipping", {}).get("email")
     title = f"Order {order['orderNumber']} was cancelled"

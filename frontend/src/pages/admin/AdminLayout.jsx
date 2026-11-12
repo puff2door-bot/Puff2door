@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { NavLink, Link, Outlet } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle, Truck, ShieldCheck, BarChart3, Store, Camera, Bot, Barcode, Receipt, Wallet, FileText, UserRound, Sparkles, ClipboardList, Star } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle, Truck, ShieldCheck, BarChart3, Store, Camera, Bot, Barcode, Receipt, Wallet, FileText, UserRound, Sparkles, ClipboardList, Star, PackageSearch, ScanLine, Smartphone } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import api from "../../api";
 
@@ -20,6 +20,9 @@ const nav = [
   { to: "/admin/customers", label: "Customers", icon: UserRound },
   { to: "/admin/clover", label: "Clover Inventory", icon: Store },
   { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
+  { to: "/admin/picking", label: "Picking & Barcode", icon: ScanLine },
+  { to: "/driver-app", label: "Driver App", icon: Smartphone },
+  { to: "/admin/product-requests", label: "Product Requests", icon: PackageSearch },
   { to: "/admin/operations", label: "Delivery Operations", icon: Truck },
   { to: "/admin/compliance", label: "Compliance", icon: ShieldCheck },
   { to: "/admin/analytics", label: "Analytics", icon: BarChart3 },

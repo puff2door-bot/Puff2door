@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import api from "../../api";
 import AutomationsPanel from "./AutomationsPanel";
+import { formatEasternClock, formatEasternDateTime } from "../../lib/easternTime";
 
 const AGENT_ICONS = {
   operations: Bot, marketing: Megaphone, briefing: Sparkles, watchdog: Globe2, reputation: HeartHandshake,
@@ -33,12 +34,6 @@ const SUPPORT_TEMPLATES = [
   { title: "Payment", text: "You can pay online at checkout. For delivery, have your ID ready — the name must match the order." },
   { title: "Stock question", text: "Stock changes daily. If it shows on puff2door.com, it's on our shelf right now. Call (407) 625-6826 to double-check before you come in." },
 ];
-
-const formatWhen = (value) => {
-  if (!value) return "Not run yet";
-  const d = new Date(value);
-  return d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-};
 
 const CopyButton = ({ text }) => {
   const [done, setDone] = useState(false);
@@ -114,7 +109,7 @@ const AdminAgents = () => {
 
   const postHour = Number.isInteger(socialStatus?.scheduleHour) ? socialStatus.scheduleHour : 11;
   const postMinute = Number.isInteger(socialStatus?.scheduleMinute) ? socialStatus.scheduleMinute : 0;
-  const postTime = new Date(2000, 0, 1, postHour, postMinute).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const postTime = formatEasternClock(postHour, postMinute);
 
   const setDailyPublishing = async (enabled) => {
     const confirmed = enabled ? window.prompt("To enable daily publishing, type the exact Instagram username: hdsmokeshop.altamonte") : "";
@@ -126,7 +121,7 @@ const AdminAgents = () => {
         autoPublishEnabled: enabled, confirmUsername: confirmed || "", scheduleHour: postHour, scheduleMinute: postMinute,
       });
       setSocialStatus(data);
-      setNotice(enabled ? `Daily Instagram publishing is on for ${postTime} Eastern.` : "Daily Instagram publishing is paused.");
+      setNotice(enabled ? `Daily Instagram publishing is on for ${postTime}.` : "Daily Instagram publishing is paused.");
     } catch (error) {
       setNotice(socialError(error));
     } finally {
@@ -239,8 +234,9 @@ const AdminAgents = () => {
       <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="rounded-2xl border border-violet-200 bg-white p-5 shadow-sm">
           <div className="flex items-start justify-between gap-3"><div><p className="font-extrabold text-neutral-900">Instagram</p><p className="mt-1 text-xs text-neutral-500">{socialStatus?.connected ? `Verified @${socialStatus.username}` : "One-time secure Meta connection required"}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[.1em] ${socialStatus?.connected ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-600"}`}>{socialStatus?.connected ? "Connected" : "Not connected"}</span></div>
+          {socialStatus?.requiresReconnect && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900"><strong>Instagram needs to be reconnected.</strong> Meta blocked the saved authorization, so automatic renewal has been paused to prevent repeated failures. Reconnect below to request a fresh authorization.</div>}
           <div className="mt-4 flex flex-wrap gap-2">
-            {!socialStatus?.connected && <button onClick={connectInstagram} disabled={Boolean(socialBusy)} className="rounded-lg bg-violet-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{socialBusy === "connect" ? "Opening…" : "Connect Instagram"}</button>}
+            {(!socialStatus?.connected || socialStatus?.requiresReconnect) && <button onClick={connectInstagram} disabled={Boolean(socialBusy)} className="rounded-lg bg-violet-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{socialBusy === "connect" ? "Opening…" : socialStatus?.requiresReconnect ? "Reconnect Instagram" : "Connect Instagram"}</button>}
             <button onClick={createSocialDraft} disabled={Boolean(socialBusy)} className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 disabled:opacity-50">{socialBusy === "draft" ? "Creating…" : "Make a preview (doesn’t post)"}</button>
             {socialStatus?.connected && socialDraft?.status !== "published" && <button onClick={publishSocialTest} disabled={!socialDraft?.id || Boolean(socialBusy)} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 disabled:opacity-50">Post this preview to Instagram now</button>}
             {socialStatus?.connected && <button onClick={() => setDailyPublishing(!socialStatus.autoPublishEnabled)} disabled={Boolean(socialBusy)} className={`rounded-lg px-3 py-2 text-xs font-bold ${socialStatus.autoPublishEnabled ? "bg-rose-50 text-rose-700" : "bg-neutral-900 text-white"}`}>{socialStatus.autoPublishEnabled ? "Pause daily posts" : "Enable daily posts"}</button>}
@@ -280,7 +276,7 @@ const AdminAgents = () => {
                   <button onClick={() => setOpen(isOpen ? "" : agent.id)} className="mt-3 w-full rounded-xl bg-neutral-50 p-3 text-left hover:bg-neutral-100">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase ${st?.pill}`}>{st?.label}</span>
                     <p className="mt-1.5 text-sm font-semibold text-neutral-800">{agent.latest.headline}</p>
-                    <p className="mt-1 text-[11px] text-neutral-400">Checked {formatWhen(agent.latest.ranAt)}{Number.isFinite(agent.latest.durationMs) ? ` · ${(agent.latest.durationMs / 1000).toFixed(1)}s` : ""}{agent.latest.items?.length ? ` · ${isOpen ? "hide" : "show"} details` : ""}</p>
+                    <p className="mt-1 text-[11px] text-neutral-400">Checked {formatEasternDateTime(agent.latest.ranAt)}{Number.isFinite(agent.latest.durationMs) ? ` · ${(agent.latest.durationMs / 1000).toFixed(1)}s` : ""}{agent.latest.items?.length ? ` · ${isOpen ? "hide" : "show"} details` : ""}</p>
                   </button>
                 ) : <p className="mt-3 rounded-xl bg-neutral-50 p-3 text-sm text-neutral-500">Not run yet.</p>}
                 {isOpen && agent.latest?.items?.length > 0 && (

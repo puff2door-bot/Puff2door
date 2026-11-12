@@ -8,6 +8,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import server
+import automations
 
 
 class FakeCursor:
@@ -76,3 +77,32 @@ def test_order_response_exposes_audit_result_without_id_image():
     assert response["idCheck"]["status"] == "passed"
     assert response["idCheck"]["fullIdImageStored"] is False
     assert "idImage" not in response and "dateOfBirth" not in response
+
+
+def test_picking_state_preserves_progress_and_caps_scans():
+    order = {
+        "items": [{"productId": 12, "name": "Test item", "qty": 2}],
+        "picking": {"status": "in_progress", "items": [{"productId": 12, "scannedQty": 9, "manualReason": "Box checked"}]},
+    }
+    state = server.build_picking_state(order)
+    assert state["status"] == "verified"
+    assert state["items"][0]["scannedQty"] == 2
+    assert state["items"][0]["manualReason"] == "Box checked"
+
+
+def test_replacement_output_never_exposes_secure_token_hash():
+    result = server.replacement_offer_out({"id": "r1", "status": "pending", "tokenHash": "secret", "approvalUrl": "https://example.test"})
+    assert result == {"id": "r1", "status": "pending"}
+
+
+@pytest.mark.parametrize("message", [
+    "API access blocked",
+    "Error validating access token",
+    "Instagram permission was removed",
+])
+def test_instagram_provider_errors_require_reconnect(message):
+    assert automations.instagram_reconnect_required(message) is True
+
+
+def test_temporary_instagram_network_error_can_retry():
+    assert automations.instagram_reconnect_required("Temporary network timeout") is False

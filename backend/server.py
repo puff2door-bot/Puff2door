@@ -6,6 +6,7 @@ import asyncio
 import emails
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
+from pymongo import ReturnDocument
 from gridfs.errors import NoFile
 import os
 import logging
@@ -225,6 +226,55 @@ class IssueResolutionInput(BaseModel):
         return v
 
 
+class ProductRequestInput(BaseModel):
+    productName: str = Field(min_length=2, max_length=160)
+    brand: str = Field(default="", max_length=100)
+    flavor: str = Field(default="", max_length=100)
+    size: str = Field(default="", max_length=80)
+    email: EmailStr
+    phone: str = Field(default="", max_length=30)
+    notes: str = Field(default="", max_length=1000)
+
+
+class ProductRequestStatusInput(BaseModel):
+    status: str
+    adminNotes: str = Field(default="", max_length=1000)
+    matchedProductId: Optional[int] = Field(default=None, ge=1)
+
+    @field_validator("status")
+    @classmethod
+    def _request_status(cls, value):
+        if value not in {"new", "reviewing", "ordered", "added", "declined"}:
+            raise ValueError("Choose a valid request status")
+        return value
+
+
+class PickingScanInput(BaseModel):
+    barcode: str = Field(min_length=1, max_length=160)
+
+
+class PickingManualInput(BaseModel):
+    productId: int = Field(ge=1)
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class ReplacementOfferInput(BaseModel):
+    originalProductId: int = Field(ge=1)
+    replacementProductId: int = Field(ge=1)
+    note: str = Field(default="", max_length=500)
+
+
+class ReplacementDecisionInput(BaseModel):
+    decision: str
+
+    @field_validator("decision")
+    @classmethod
+    def _replacement_decision(cls, value):
+        if value not in {"approved", "declined"}:
+            raise ValueError("Choose approved or declined")
+        return value
+
+
 # ---- Payment providers config ----
 SQUARE_APP_ID = os.environ.get("SQUARE_APPLICATION_ID", "").strip()
 SQUARE_TOKEN = os.environ.get("SQUARE_ACCESS_TOKEN", "").strip()
@@ -260,7 +310,7 @@ DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99
                     "countdownHoursText": "Same-day cutoff is {cutoff} ET. No deliveries after {end} or before {start}.",
                     "countdownExtraLines": [],
                     "deliverySlotCapacity": 8, "deliveryDriverCount": 1, "ordersPerDriverPerWindow": 8, "defaultEtaMinutes": 45,
-                    "googleReviewUrl": "", "hideOutOfStock": True,
+                    "googleReviewUrl": "", "hideOutOfStock": True, "liveShelfEnabled": False,
                     "pickupEnabled": False, "pickupAddress": "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714",
                     "pickupHoursText": "Pick up during store hours.", "pickupReadyMinutes": 15, "pickupHoldDays": 1,
                     "pickupInstructions": "Bring a valid, unexpired 21+ photo ID that matches the name on the order."}
@@ -564,6 +614,7 @@ class StoreSettingsInput(BaseModel):
     defaultEtaMinutes: int = Field(default=45, ge=5, le=480)
     googleReviewUrl: str = Field(default="", max_length=500)
     hideOutOfStock: bool = True
+    liveShelfEnabled: bool = False
     pickupEnabled: bool = False
     pickupAddress: str = Field(default="481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714", max_length=200)
     pickupHoursText: str = Field(default="Pick up during store hours.", max_length=240)
@@ -1564,6 +1615,24 @@ def pickup_out(p: dict) -> dict:
     return out
 
 
+def json_ready(value):
+    """Convert nested Mongo values used by the new fulfillment tools to API-safe values."""
+    if isinstance(value, datetime):
+        return (value if value.tzinfo else value.replace(tzinfo=timezone.utc)).isoformat()
+    if isinstance(value, dict):
+        return {key: json_ready(item) for key, item in value.items() if key != "_id"}
+    if isinstance(value, list):
+        return [json_ready(item) for item in value]
+    return value
+
+
+def replacement_offer_out(offer: dict, include_link: bool = False) -> dict:
+    out = {key: value for key, value in offer.items() if key not in {"tokenHash", "_id"}}
+    if not include_link:
+        out.pop("approvalUrl", None)
+    return json_ready(out)
+
+
 def order_response(o: dict) -> dict:
     created = o["createdAt"]
     if isinstance(created, str):
@@ -1626,6 +1695,9 @@ def order_response(o: dict) -> dict:
             "etaAt": o.get("dispatch", {}).get("etaAt").isoformat() if isinstance(o.get("dispatch", {}).get("etaAt"), datetime) else o.get("dispatch", {}).get("etaAt"),
         },
         "returnProcedure": o.get("returnProcedure", {}),
+        "picking": json_ready(o.get("picking") or {"status": "pending", "items": []}),
+        "replacementOffers": [replacement_offer_out(offer) for offer in o.get("replacementOffers", [])],
+        "replacementCreditDue": round(float(o.get("replacementCreditDue", 0)), 2),
         "complianceSnapshot": o.get("complianceSnapshot", {}),
         "deliveryPhotoUrl": o.get("deliveryPhotoUrl", ""),
         "driverTextSent": bool(o.get("driverTextSentAt")),
@@ -2172,6 +2244,177 @@ async def list_orders(user: dict = Depends(get_current_user)):
     return {"orders": [order_response(o) for o in orders]}
 
 
+@api_router.post("/orders/{order_id}/reorder")
+async def reorder_order(order_id: str, user: dict = Depends(get_current_user)):
+    """Build a new cart from current catalog data instead of trusting an old order snapshot."""
+    order = await db.orders.find_one({"id": order_id, "userId": user["id"]})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    items, unavailable, adjusted = [], [], []
+    for old in order.get("items", []):
+        product = await db.products.find_one({"id": old.get("productId")})
+        name = old.get("name", "Product")
+        if not product or not product.get("active", True):
+            unavailable.append({"productId": old.get("productId"), "name": name, "reason": "No longer available"})
+            continue
+        stock = max(0, int(product.get("stock", 0)))
+        if stock == 0:
+            unavailable.append({"productId": product["id"], "name": product.get("name", name), "reason": "Sold out"})
+            continue
+        requested = max(1, int(old.get("qty", 1)))
+        quantity = min(requested, stock, 99)
+        if quantity != requested:
+            adjusted.append({"productId": product["id"], "name": product["name"], "requested": requested, "available": quantity})
+        current = product_out(product)
+        current_price = current.get("salePrice") if current.get("salePrice") and current["salePrice"] > 0 else current["price"]
+        items.append({
+            "productId": current["id"], "id": current["id"], "slug": current["slug"], "name": current["name"],
+            "price": round(float(current_price), 2), "image": current.get("image", ""), "category": current.get("category", ""),
+            "categorySlug": current.get("categorySlug", ""), "qty": quantity, "inStock": True,
+        })
+    if not items:
+        raise HTTPException(status_code=409, detail="None of the products in this order are currently available.")
+    return {"items": items, "unavailable": unavailable, "adjusted": adjusted}
+
+
+def product_request_out(row: dict) -> dict:
+    return json_ready({key: value for key, value in row.items() if key != "_id"})
+
+
+@api_router.post("/product-requests")
+async def create_product_request(inp: ProductRequestInput, request: Request, user: Optional[dict] = Depends(get_optional_user)):
+    await enforce_rate_limit(request, "product-request", 8, 3600)
+    row = {
+        "id": str(uuid.uuid4()), "userId": user.get("id") if user else None,
+        "productName": inp.productName.strip(), "brand": inp.brand.strip(), "flavor": inp.flavor.strip(),
+        "size": inp.size.strip(), "email": str(inp.email).lower(), "phone": inp.phone.strip(), "notes": inp.notes.strip(),
+        "status": "new", "adminNotes": "", "matchedProductId": None, "createdAt": now_utc(), "updatedAt": now_utc(),
+    }
+    await db.product_requests.insert_one(row)
+    return product_request_out(row)
+
+
+@api_router.get("/product-requests/mine")
+async def list_my_product_requests(user: dict = Depends(get_current_user)):
+    rows = await db.product_requests.find({"userId": user["id"]}).sort("createdAt", -1).to_list(200)
+    return {"requests": [product_request_out(row) for row in rows]}
+
+
+async def replacement_order_from_token(token: str) -> tuple[dict, dict]:
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    order = await db.orders.find_one({"replacementOffers.tokenHash": token_hash})
+    if not order:
+        raise HTTPException(status_code=404, detail="Replacement request not found")
+    offer = next((item for item in order.get("replacementOffers", []) if secrets.compare_digest(item.get("tokenHash", ""), token_hash)), None)
+    if not offer:
+        raise HTTPException(status_code=404, detail="Replacement request not found")
+    expires = _as_datetime(offer.get("expiresAt"))
+    if expires and expires < now_utc() and offer.get("status") == "pending":
+        await db.orders.update_one({"id": order["id"], "replacementOffers.id": offer["id"]}, {"$set": {"replacementOffers.$.status": "expired", "replacementOffers.$.decidedAt": now_utc()}})
+        offer = {**offer, "status": "expired", "decidedAt": now_utc()}
+    return order, offer
+
+
+@api_router.get("/replacement/{token}")
+async def get_replacement_offer(token: str):
+    order, offer = await replacement_order_from_token(token)
+    return {"orderNumber": order["orderNumber"], "offer": replacement_offer_out(offer)}
+
+
+@api_router.post("/replacement/{token}")
+async def decide_replacement_offer(token: str, inp: ReplacementDecisionInput):
+    order, offer = await replacement_order_from_token(token)
+    if offer.get("status") != "pending":
+        if offer.get("status") == inp.decision:
+            return {"orderNumber": order["orderNumber"], "offer": replacement_offer_out(offer)}
+        raise HTTPException(status_code=409, detail=f"This replacement request is already {offer.get('status', 'closed')}.")
+    now = now_utc()
+    if inp.decision == "declined":
+        updated = await db.orders.find_one_and_update(
+            {"id": order["id"], "replacementOffers": {"$elemMatch": {"id": offer["id"], "status": "pending"}}},
+            {"$set": {"replacementOffers.$.status": "declined", "replacementOffers.$.decidedAt": now}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if not updated:
+            current, current_offer = await replacement_order_from_token(token)
+            if current_offer.get("status") == "declined":
+                return {"orderNumber": current["orderNumber"], "offer": replacement_offer_out(current_offer)}
+            raise HTTPException(status_code=409, detail="This replacement request was already handled.")
+        decided = next(item for item in updated.get("replacementOffers", []) if item.get("id") == offer["id"])
+        return {"orderNumber": updated["orderNumber"], "offer": replacement_offer_out(decided)}
+
+    # Claim the approval before touching stock. This prevents a customer double-click,
+    # two browser tabs, or a retried request from reserving the replacement twice.
+    claimed = await db.orders.find_one_and_update(
+        {"id": order["id"], "replacementOffers": {"$elemMatch": {"id": offer["id"], "status": "pending"}}},
+        {"$set": {"replacementOffers.$.status": "processing", "replacementOffers.$.processingAt": now}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not claimed:
+        current, current_offer = await replacement_order_from_token(token)
+        if current_offer.get("status") == "approved":
+            return {"orderNumber": current["orderNumber"], "offer": replacement_offer_out(current_offer)}
+        raise HTTPException(status_code=409, detail="This replacement request is already being handled. Please refresh in a moment.")
+
+    async def reopen_offer():
+        await db.orders.update_one(
+            {"id": claimed["id"], "replacementOffers": {"$elemMatch": {"id": offer["id"], "status": "processing"}}},
+            {"$set": {"replacementOffers.$.status": "pending"}, "$unset": {"replacementOffers.$.processingAt": ""}},
+        )
+
+    replacement = await db.products.find_one({"id": offer["replacementProductId"], "active": True})
+    if not replacement:
+        await reopen_offer()
+        raise HTTPException(status_code=409, detail="The replacement is no longer available. Please contact the store.")
+    current_price = float(replacement.get("salePrice") or replacement.get("price", 0))
+    if current_price > float(offer["originalUnitPrice"]) + 0.005:
+        await reopen_offer()
+        raise HTTPException(status_code=409, detail="This replacement now costs more and cannot be approved without a new offer.")
+    qty = int(offer.get("qty", 1))
+    try:
+        await reserve_stock([{"productId": replacement["id"], "name": replacement["name"], "qty": qty}])
+    except Exception:
+        await reopen_offer()
+        raise
+    new_items, found = [], False
+    original_line = None
+    for item in claimed.get("items", []):
+        if item.get("productId") == offer["originalProductId"] and not found:
+            found = True
+            original_line = dict(item)
+            new_items.append({
+                **item, "productId": replacement["id"], "slug": replacement["slug"], "name": replacement["name"],
+                "image": replacement.get("image", ""), "category": replacement.get("category", ""),
+                "categorySlug": replacement.get("categorySlug", ""), "replacementCurrentPrice": round(current_price, 2),
+                "replacedProductId": offer["originalProductId"], "replacementOfferId": offer["id"],
+            })
+        else:
+            new_items.append(item)
+    if not found:
+        await release_stock([{"productId": replacement["id"], "qty": qty}])
+        await reopen_offer()
+        raise HTTPException(status_code=409, detail="The original item is no longer on this order.")
+    credit = round(max(0.0, (float(offer["originalUnitPrice"]) - current_price) * qty), 2)
+    result = await db.orders.update_one({"id": claimed["id"], "replacementOffers": {"$elemMatch": {"id": offer["id"], "status": "processing"}}}, {"$set": {
+        "items": new_items, "replacementOffers.$.status": "approved", "replacementOffers.$.decidedAt": now,
+        "replacementOffers.$.creditDue": credit, "replacementOffers.$.inventoryAdjustedAt": now,
+    }, "$unset": {"replacementOffers.$.processingAt": ""}, "$inc": {"replacementCreditDue": credit}})
+    if result.modified_count != 1:
+        await release_stock([{"productId": replacement["id"], "qty": qty}])
+        await reopen_offer()
+        raise HTTPException(status_code=409, detail="The order changed while the replacement was being approved. Please try again.")
+
+    # The original unit was reserved at checkout. Put it back, then reconcile the
+    # equivalent Clover adjustments (when Clover inventory sync is enabled).
+    await release_stock([{"productId": offer["originalProductId"], "qty": qty}])
+    updated_order = await db.orders.find_one({"id": claimed["id"]})
+    if original_line:
+        asyncio.create_task(restore_clover_order_stock({**updated_order, "items": [original_line]}))
+    asyncio.create_task(record_clover_order_stock(updated_order))
+    offer = {**offer, "status": "approved", "decidedAt": now, "creditDue": credit}
+    return {"orderNumber": claimed["orderNumber"], "offer": replacement_offer_out(offer)}
+
+
 @api_router.get("/orders/track/{order_number}")
 async def track_order(order_number: str, email: EmailStr, request: Request):
     await enforce_rate_limit(request, "track-order", 30, 600)
@@ -2428,7 +2671,8 @@ async def serve_file(path: str):
 async def public_settings():
     settings = await get_settings()
     return {"pricing": pricing_rules(settings), "delivery": delivery_rules(settings), "loyalty": loyalty_public_rules(settings),
-            "presentation": {"homepageLayout": settings.get("homepageLayout", "classic")},
+            "presentation": {"homepageLayout": settings.get("homepageLayout", "classic"),
+                             "liveShelfEnabled": bool(settings.get("liveShelfEnabled", False))},
             "trust": {"googleReviewUrl": settings.get("googleReviewUrl", "")},
             "pickup": pickup_rules(settings)}
 
@@ -3360,6 +3604,7 @@ async def instagram_oauth_callback(code: str = "", state: str = "", error: str =
         return RedirectResponse(f"{SITE_URL}/admin/agents?instagram=error", status_code=303)
     try:
         await instagram_integration().exchange_code(code, state)
+        await hd_automations.set_enabled(db, "instagram_renew", True)
         return RedirectResponse(f"{SITE_URL}/admin/agents?instagram=connected", status_code=303)
     except InstagramError as exc:
         # InstagramError messages are deliberately constructed without
@@ -4117,6 +4362,190 @@ async def admin_migrate_images_revert(admin: dict = Depends(get_admin_user)):
         await db.products.update_one({"id": p["id"]}, {"$set": upd, "$unset": {"imageOriginal": "", "image2Original": ""}})
         n += 1
     return {"reverted": n}
+
+
+@api_router.get("/admin/product-requests")
+async def admin_list_product_requests(status: str = "", admin: dict = Depends(get_admin_user)):
+    query = {"status": status} if status in {"new", "reviewing", "ordered", "added", "declined"} else {}
+    rows = await db.product_requests.find(query).sort("createdAt", -1).to_list(1000)
+    return {"requests": [product_request_out(row) for row in rows]}
+
+
+@api_router.put("/admin/product-requests/{request_id}")
+async def admin_update_product_request(request_id: str, inp: ProductRequestStatusInput, admin: dict = Depends(get_admin_user)):
+    row = await db.product_requests.find_one({"id": request_id})
+    if not row:
+        raise HTTPException(status_code=404, detail="Product request not found")
+    matched = None
+    if inp.matchedProductId is not None:
+        matched = await db.products.find_one({"id": inp.matchedProductId})
+        if not matched:
+            raise HTTPException(status_code=404, detail="Matched product not found")
+    updates = {
+        "status": inp.status, "adminNotes": inp.adminNotes.strip(), "matchedProductId": inp.matchedProductId,
+        "matchedProductName": matched.get("name", "") if matched else "", "updatedAt": now_utc(), "updatedBy": admin["id"],
+    }
+    await db.product_requests.update_one({"id": request_id}, {"$set": updates})
+    return product_request_out(await db.product_requests.find_one({"id": request_id}))
+
+
+def build_picking_state(order: dict) -> dict:
+    existing = order.get("picking") or {}
+    saved = {str(item.get("productId")): item for item in existing.get("items", [])}
+    items = []
+    for item in order.get("items", []):
+        key = str(item.get("productId"))
+        prior = saved.get(key, {})
+        items.append({
+            "productId": item.get("productId"), "name": item.get("name", "Product"), "image": item.get("image", ""),
+            "requiredQty": int(item.get("qty", 1)), "scannedQty": min(int(prior.get("scannedQty", 0)), int(item.get("qty", 1))),
+            "manualReason": prior.get("manualReason", ""), "lastBarcode": prior.get("lastBarcode", ""),
+        })
+    done = bool(items) and all(item["scannedQty"] >= item["requiredQty"] for item in items)
+    return {**existing, "status": "verified" if done else existing.get("status", "pending"), "items": items}
+
+
+@api_router.get("/admin/picking")
+async def admin_picking_orders(admin: dict = Depends(get_admin_user)):
+    rows = await db.orders.find({
+        "archived": {"$ne": True}, "paymentStatus": {"$in": ["paid", "awaiting_payment"]},
+        "manualStatus": {"$in": ["placed", "confirmed"]},
+    }).sort("createdAt", 1).to_list(500)
+    out = []
+    for order in rows:
+        response = order_response(order)
+        response["picking"] = json_ready(build_picking_state(order))
+        out.append(response)
+    return {"orders": out}
+
+
+@api_router.post("/admin/orders/{order_id}/picking/start")
+async def admin_start_picking(order_id: str, admin: dict = Depends(get_admin_user)):
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    picking = build_picking_state(order)
+    if picking.get("status") != "verified":
+        picking.update({"status": "in_progress", "startedAt": picking.get("startedAt") or now_utc(), "startedBy": admin["id"]})
+    await db.orders.update_one({"id": order_id}, {"$set": {"picking": picking}})
+    return order_response(await db.orders.find_one({"id": order_id}))
+
+
+@api_router.post("/admin/orders/{order_id}/picking/scan")
+async def admin_scan_picking_item(order_id: str, inp: PickingScanInput, admin: dict = Depends(get_admin_user)):
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    code = inp.barcode.strip()
+    product = await db.products.find_one({"$or": [{"barcode": code}, {"sku": {"$regex": f"^{re.escape(code)}$", "$options": "i"}}]})
+    if not product:
+        raise HTTPException(status_code=404, detail="Barcode or SKU was not found in the catalog.")
+    picking = build_picking_state(order)
+    target = next((item for item in picking["items"] if item["productId"] == product["id"]), None)
+    if not target:
+        raise HTTPException(status_code=409, detail=f"{product['name']} is not part of this order.")
+    if target["scannedQty"] >= target["requiredQty"]:
+        raise HTTPException(status_code=409, detail=f"All required units of {product['name']} are already verified.")
+    target["scannedQty"] += 1
+    target["lastBarcode"] = code
+    picking.update({"status": "in_progress", "startedAt": picking.get("startedAt") or now_utc(), "startedBy": picking.get("startedBy") or admin["id"], "lastScanAt": now_utc()})
+    await db.orders.update_one({"id": order_id}, {"$set": {"picking": picking}})
+    return order_response(await db.orders.find_one({"id": order_id}))
+
+
+@api_router.post("/admin/orders/{order_id}/picking/manual")
+async def admin_manual_picking_item(order_id: str, inp: PickingManualInput, admin: dict = Depends(get_admin_user)):
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    picking = build_picking_state(order)
+    target = next((item for item in picking["items"] if item["productId"] == inp.productId), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Order item not found")
+    target["scannedQty"] = target["requiredQty"]
+    target["manualReason"] = inp.reason.strip()
+    picking.update({"status": "in_progress", "startedAt": picking.get("startedAt") or now_utc(), "startedBy": picking.get("startedBy") or admin["id"], "lastScanAt": now_utc()})
+    await db.orders.update_one({"id": order_id}, {"$set": {"picking": picking}})
+    return order_response(await db.orders.find_one({"id": order_id}))
+
+
+@api_router.post("/admin/orders/{order_id}/picking/complete")
+async def admin_complete_picking(order_id: str, admin: dict = Depends(get_admin_user)):
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    picking = build_picking_state(order)
+    missing = [item["name"] for item in picking["items"] if item["scannedQty"] < item["requiredQty"]]
+    if missing:
+        raise HTTPException(status_code=409, detail="Verify every item first: " + ", ".join(missing))
+    now = now_utc()
+    picking.update({"status": "verified", "completedAt": now, "completedBy": admin["id"]})
+    updates = {"picking": picking}
+    if order.get("manualStatus") == "placed":
+        updates.update({"manualStatus": "confirmed", "statusUpdatedAt": now, "statusUpdatedBy": admin["id"], "statusHistory.confirmed": now})
+    await db.orders.update_one({"id": order_id}, {"$set": updates})
+    updated = await db.orders.find_one({"id": order_id})
+    if order.get("manualStatus") == "placed":
+        await record_clover_order_stock(updated)
+        asyncio.create_task(emails.send_status_update(updated, "confirmed"))
+        asyncio.create_task(send_order_push(updated, "confirmed"))
+    return order_response(updated)
+
+
+@api_router.get("/admin/orders/{order_id}/replacement-suggestions")
+async def admin_replacement_suggestions(order_id: str, product_id: int, admin: dict = Depends(get_admin_user)):
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    original = next((item for item in order.get("items", []) if item.get("productId") == product_id), None)
+    if not original:
+        raise HTTPException(status_code=404, detail="Original order item not found")
+    qty = int(original.get("qty", 1)); max_price = float(original.get("price", 0))
+    candidates = await db.products.find({
+        "id": {"$ne": product_id}, "active": True, "stock": {"$gte": qty}, "categorySlug": original.get("categorySlug", ""),
+    }).to_list(500)
+    choices = []
+    for product in candidates:
+        current_price = float(product.get("salePrice") or product.get("price", 0))
+        if current_price <= max_price + 0.005:
+            choices.append({**product_out(product), "currentPrice": round(current_price, 2), "priceDifference": round((current_price - max_price) * qty, 2)})
+    choices.sort(key=lambda item: (abs(item["priceDifference"]), item["name"]))
+    return {"original": original, "suggestions": choices[:12]}
+
+
+@api_router.post("/admin/orders/{order_id}/replacement-offers")
+async def admin_create_replacement_offer(order_id: str, inp: ReplacementOfferInput, admin: dict = Depends(get_admin_user)):
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    original = next((item for item in order.get("items", []) if item.get("productId") == inp.originalProductId), None)
+    replacement = await db.products.find_one({"id": inp.replacementProductId, "active": True})
+    if not original or not replacement:
+        raise HTTPException(status_code=404, detail="Original or replacement product not found")
+    qty = int(original.get("qty", 1))
+    if int(replacement.get("stock", 0)) < qty:
+        raise HTTPException(status_code=409, detail="The replacement does not have enough stock.")
+    current_price = float(replacement.get("salePrice") or replacement.get("price", 0))
+    original_price = float(original.get("price", 0))
+    if current_price > original_price + 0.005:
+        raise HTTPException(status_code=409, detail="Choose a replacement that is the same price or cheaper. Customers are never charged more through replacement approval.")
+    if any(offer.get("status") == "pending" and offer.get("originalProductId") == inp.originalProductId for offer in order.get("replacementOffers", [])):
+        raise HTTPException(status_code=409, detail="A replacement approval is already pending for this item.")
+    raw_token = secrets.token_urlsafe(32)
+    offer = {
+        "id": str(uuid.uuid4()), "status": "pending", "originalProductId": inp.originalProductId,
+        "originalName": original.get("name", "Product"), "originalImage": original.get("image", ""),
+        "originalUnitPrice": round(original_price, 2), "replacementProductId": replacement["id"],
+        "replacementName": replacement["name"], "replacementImage": replacement.get("image", ""),
+        "replacementSlug": replacement.get("slug", ""), "replacementUnitPrice": round(current_price, 2), "qty": qty,
+        "priceDifference": round((current_price - original_price) * qty, 2), "note": inp.note.strip(),
+        "tokenHash": hashlib.sha256(raw_token.encode("utf-8")).hexdigest(), "createdAt": now_utc(),
+        "createdBy": admin["id"], "expiresAt": now_utc() + timedelta(hours=24),
+    }
+    approval_url = f"{SITE_URL}/replacement/{raw_token}"
+    await db.orders.update_one({"id": order_id}, {"$push": {"replacementOffers": offer}})
+    asyncio.create_task(emails.send_replacement_approval(order, offer, approval_url))
+    return {**replacement_offer_out({**offer, "approvalUrl": approval_url}, include_link=True), "approvalUrl": approval_url}
 
 
 @api_router.get("/admin/orders")

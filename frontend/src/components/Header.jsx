@@ -23,7 +23,7 @@ import SmartSearch from "./SmartSearch";
 
 const Header = () => {
   const navigate = useNavigate();
-  const { count, delivery } = useCart();
+  const { count, delivery, presentation } = useCart();
   const { count: wishCount } = useWishlist();
   const { user } = useApp();
   const { activeCategories: categories, activeBrands: brands } = useCatalog();
@@ -199,6 +199,7 @@ const Header = () => {
                   Track Order
                 </Link>
               </li>
+              {presentation.liveShelfEnabled && <li><Link to="/live-shelf" className="block px-4 py-3.5 text-[13px] font-semibold tracking-wide uppercase text-sky-300 hover:text-sky-200 transition-colors">Live Shelf</Link></li>}
               <li className="ml-auto flex items-center gap-5 text-[12px] text-neutral-300">
                 <span className="flex items-center gap-1.5"><Phone className="h-4 w-4 text-emerald-400" /> {BRAND.phone}</span>
                 <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-emerald-400" /> Altamonte Springs, FL</span>
@@ -246,6 +247,7 @@ const Header = () => {
                 <Link to="/contact" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Contact</Link>
                 <Link to="/delivery-area" onClick={() => setMobileOpen(false)} data-testid="mobile-delivery-area" className="py-2.5 text-sm font-medium border-b border-neutral-100">Delivery Area</Link>
                 <Link to="/track" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Track Order</Link>
+                {presentation.liveShelfEnabled && <Link to="/live-shelf" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-bold text-sky-700 border-b border-neutral-100">Live Store Shelf</Link>}
                 <Link to="/wishlist" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Wishlist</Link>
                 <Link to="/my-account" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">My Account</Link>
                 {user?.role === "admin" && <Link to="/admin" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-bold border-b border-neutral-100 text-amber-600">Admin Panel</Link>}

@@ -699,7 +699,11 @@ class InstagramIntegration:
             "timezone": DEFAULT_TIMEZONE,
             "updatedAt": now,
         }
-        await self.db.integrations.update_one({"key": "instagram"}, {"$set": doc}, upsert=True)
+        await self.db.integrations.update_one(
+            {"key": "instagram"},
+            {"$set": doc, "$unset": {"connectionState": "", "connectionError": "", "connectionErrorAt": ""}},
+            upsert=True,
+        )
         await self.log("connect", "success", username=doc["username"], instagramUserId=doc["instagramUserId"])
         return doc
 
@@ -979,10 +983,14 @@ class InstagramIntegration:
     async def status(self) -> dict:
         config = await self.config()
         latest = await self.db.social_drafts.find_one({}, {"_id": 0, "caption": 0}, sort=[("createdAt", -1)])
+        requires_reconnect = config.get("connectionState") == "needs_reconnect"
         return {
             "configured": self.configured,
-            "connected": bool(config.get("verified") and config.get("encryptedPageToken")),
+            "connected": bool(config.get("verified") and config.get("encryptedPageToken") and not requires_reconnect),
             "verified": bool(config.get("verified")),
+            "requiresReconnect": requires_reconnect,
+            "connectionError": config.get("connectionError", "") if requires_reconnect else "",
+            "connectionErrorAt": config.get("connectionErrorAt") if requires_reconnect else None,
             "username": config.get("username", ""),
             "expectedUsername": self.expected_username,
             "autoPublishEnabled": bool(config.get("autoPublishEnabled")),

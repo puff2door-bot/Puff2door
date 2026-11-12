@@ -22,8 +22,8 @@ api.interceptors.response.use(
   (error) => {
     const status = error?.response?.status;
     const url = String(error?.config?.url || "");
-    const onAdmin = typeof window !== "undefined" && window.location.pathname.startsWith("/admin");
-    if (status === 401 && onAdmin && url.startsWith("/admin") && !redirecting) {
+    const protectedStaffPage = typeof window !== "undefined" && (window.location.pathname.startsWith("/admin") || window.location.pathname === "/driver-app");
+    if (status === 401 && protectedStaffPage && url.startsWith("/admin") && !redirecting) {
       redirecting = true;
       const next = encodeURIComponent(window.location.pathname + window.location.search);
       window.location.assign(`/my-account?expired=1&next=${next}`);

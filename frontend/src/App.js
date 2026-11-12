@@ -51,6 +51,12 @@ import AdminCustomers from "./pages/admin/AdminCustomers";
 import InventoryCapture from "./pages/admin/InventoryCapture";
 import MissingPhotos from "./pages/admin/MissingPhotos";
 import AdminClover from "./pages/admin/AdminClover";
+import ProductRequestPage from "./pages/ProductRequestPage";
+import ReplacementApproval from "./pages/ReplacementApproval";
+import AdminProductRequests from "./pages/admin/AdminProductRequests";
+import AdminPicking from "./pages/admin/AdminPicking";
+import AdminDriver from "./pages/admin/AdminDriver";
+import LiveShelfPage from "./pages/LiveShelfPage";
 import ChatWidget from "./components/chat/ChatWidget";
 import Seo, { setJsonLd } from "./seo/Seo";
 import Analytics from "./seo/Analytics";
@@ -138,17 +144,24 @@ const AppRoutes = () => {
       <Route path="/delivery-policy" element={<DeliveryPolicy />} />
       <Route path="/refund-policy" element={<RefundPolicy />} />
       <Route path="/age-and-id-policy" element={<AgeIdPolicy />} />
+      <Route path="/request-product" element={<ProductRequestPage />} />
+      <Route path="/replacement/:token" element={<ReplacementApproval />} />
+      <Route path="/live-shelf" element={<LiveShelfPage />} />
       <Route path="/cart" element={<Private title="Your Cart"><CartPage /></Private>} />
       <Route path="/wishlist" element={<Private title="Your Wishlist"><WishlistPage /></Private>} />
       <Route path="/checkout" element={<Private title="Checkout"><CheckoutPage /></Private>} />
       <Route path="/order/:id" element={<Private title="Order Details"><OrderPage /></Private>} />
       <Route path="/track" element={<Private title="Track Your Order"><TrackPage /></Private>} />
       <Route path="/my-account" element={<Private title="My Account"><AuthPage /></Private>} />
+      <Route path="/driver-app" element={<Private title="Driver App"><AdminDriver standalone /></Private>} />
       <Route path="/admin" element={<Private title="Admin"><AdminLayout /></Private>}>
         <Route index element={<AdminDashboard />} />
         <Route path="products" element={<AdminProducts />} />
         <Route path="orders" element={<AdminOrders />} />
         <Route path="operations" element={<AdminOperations />} />
+        <Route path="driver" element={<AdminDriver />} />
+        <Route path="picking" element={<AdminPicking />} />
+        <Route path="product-requests" element={<AdminProductRequests />} />
         <Route path="compliance" element={<AdminCompliance />} />
         <Route path="analytics" element={<AdminAnalytics />} />
         <Route path="agents" element={<AdminAgents />} />
@@ -178,6 +191,27 @@ const AppRoutes = () => {
   );
 };
 
+const AppFrame = () => {
+  const { pathname } = useLocation();
+  const dedicatedDriver = pathname === "/driver-app";
+  return <>
+    <SiteSeo />
+    <Analytics />
+    <ScrollToTop />
+    {!dedicatedDriver && <AgeGate />}
+    {!dedicatedDriver && <SiteTheme />}
+    {!dedicatedDriver && <Header />}
+    {!dedicatedDriver && <ServiceWakeBanner />}
+    <main><AppRoutes /></main>
+    {!dedicatedDriver && <Footer />}
+    {!dedicatedDriver && <ChatWidget />}
+    {!dedicatedDriver && <CompareTray />}
+    {!dedicatedDriver && <MobileBottomNav />}
+    {!dedicatedDriver && <PwaExperience />}
+    <Toaster />
+  </>;
+};
+
 function App() {
   return (
     <div className="App">
@@ -186,22 +220,7 @@ function App() {
           <WishlistProvider>
             <CatalogProvider>
             <BrowserRouter>
-              <SiteSeo />
-              <Analytics />
-              <ScrollToTop />
-              <AgeGate />
-              <SiteTheme />
-              <Header />
-              <ServiceWakeBanner />
-              <main>
-                <AppRoutes />
-              </main>
-              <Footer />
-              <ChatWidget />
-              <CompareTray />
-              <MobileBottomNav />
-              <PwaExperience />
-              <Toaster />
+              <AppFrame />
             </BrowserRouter>
             </CatalogProvider>
           </WishlistProvider>

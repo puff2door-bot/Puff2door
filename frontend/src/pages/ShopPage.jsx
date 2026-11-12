@@ -176,7 +176,7 @@ const ShopPage = () => {
               {activeFilterCount > 0 ? (
                 <button onClick={() => setFilters(EMPTY_FILTERS)} className="inline-block px-6 py-3 bg-emerald-600 text-white font-bold rounded-full">Clear Filters</button>
               ) : (
-                <Link to="/shop" className="inline-block px-6 py-3 bg-emerald-600 text-white font-bold rounded-full">Browse All</Link>
+                <div className="flex flex-wrap justify-center gap-3"><Link to="/shop" className="inline-block px-6 py-3 bg-emerald-600 text-white font-bold rounded-full">Browse All</Link><Link to="/request-product" className="inline-block px-6 py-3 border border-emerald-600 text-emerald-700 font-bold rounded-full">Request a Product</Link></div>
               )}
             </div>
           ) : (
@@ -202,6 +202,7 @@ const ShopPage = () => {
               })()}
             </nav>
           )}
+          {!loading && <div className="mt-10 rounded-xl border border-dashed p-5 flex flex-col sm:flex-row items-center justify-between gap-3"><div><p className="font-bold">Looking for something we don’t carry?</p><p className="text-sm text-neutral-500">Send a product request and we’ll track it in the store system.</p></div><Link to="/request-product" className="shrink-0 rounded-full bg-neutral-900 text-white px-5 py-2.5 text-sm font-bold">Request a Product</Link></div>}
         </div>
       </div>
     </div>

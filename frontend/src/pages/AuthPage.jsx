@@ -24,11 +24,23 @@ const AccountView = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const { addItem } = useCart();
+  const navigate = useNavigate();
+  const [reordering, setReordering] = useState("");
 
-  const buyAgain = (e, order) => {
+  const buyAgain = async (e, order) => {
     e.preventDefault();
-    (order.items || []).forEach((item) => addItem({ id: item.productId || item.id, slug: item.slug, name: item.name, price: item.price, image: item.image, category: item.category, categorySlug: item.categorySlug, inStock: true }, item.qty || 1));
-    toast({ title: "Order added to cart", description: `${order.items?.length || 0} item(s) are ready to review.` });
+    setReordering(order.id);
+    try {
+      const { data } = await api.post(`/orders/${order.id}/reorder`);
+      data.items.forEach((item) => addItem({ id: item.productId, slug: item.slug, name: item.name, price: item.price, image: item.image, category: item.category, categorySlug: item.categorySlug, inStock: true }, item.qty));
+      const notes = [];
+      if (data.unavailable?.length) notes.push(`${data.unavailable.length} unavailable item(s) skipped`);
+      if (data.adjusted?.length) notes.push(`${data.adjusted.length} quantity adjustment(s)`);
+      toast({ title: "Current items added to cart", description: notes.join(" · ") || "Prices and stock were checked just now." });
+      navigate("/cart");
+    } catch (error) {
+      toast({ title: "Could not buy this order again", description: error?.response?.data?.detail || "Please try again.", variant: "destructive" });
+    } finally { setReordering(""); }
   };
 
   useEffect(() => {
@@ -74,7 +86,7 @@ const AccountView = () => {
                       <p className="text-xs text-neutral-500">{new Date(o.createdAt).toLocaleString()} · {o.items.length} item(s)</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <button onClick={(e) => buyAgain(e, o)} className="hidden sm:inline-flex items-center gap-1 text-xs font-bold text-emerald-700 border border-emerald-200 rounded-full px-3 py-1.5 hover:bg-emerald-50"><RotateCcw className="h-3.5 w-3.5" /> Buy again</button>
+                      <button disabled={reordering === o.id} onClick={(e) => buyAgain(e, o)} className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 border border-emerald-200 rounded-full px-3 py-1.5 hover:bg-emerald-50 disabled:opacity-50"><RotateCcw className={`h-3.5 w-3.5 ${reordering === o.id ? "animate-spin" : ""}`} /> {reordering === o.id ? "Checking…" : "Buy again"}</button>
                       <span className={`text-xs font-bold px-3 py-1 rounded-full ${o.status === "delivered" ? "bg-emerald-100 text-emerald-700" : o.status === "cancelled" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
                         {STATUS_LABEL[o.status]}
                       </span>
