@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from html import escape
 from typing import List, Optional
 from urllib.parse import quote
@@ -34,6 +34,22 @@ def configure(db, public_url: str):
 
 def _money(v) -> str:
     return f"${float(v):.2f}"
+
+
+def _delivery_window_label(order: dict) -> str:
+    """Use an explicit date in email because relative words become stale after delivery day changes."""
+    window = order.get("deliveryWindow") or {}
+    try:
+        scheduled = date.fromisoformat(str(window.get("date") or order.get("deliveryDate")))
+        start_h, start_m = (int(value) for value in window["start"].split(":"))
+        end_h, end_m = (int(value) for value in window["end"].split(":"))
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return window.get("label", "")
+
+    def clock(hour: int, minute: int) -> str:
+        return f"{hour % 12 or 12}:{minute:02d} {'PM' if hour >= 12 else 'AM'}"
+
+    return f"{scheduled.strftime('%a, %b')} {scheduled.day} {clock(start_h, start_m)}–{clock(end_h, end_m)}"
 
 
 def layout(title: str, body: str, preheader: str = "") -> str:
@@ -184,8 +200,9 @@ async def send_order_confirmation(order: dict, zelle: Optional[dict] = None, rew
         body += f'<p style="font-size:12px;color:#6b7280;">{escape(pickup.get("instructions") or "Bring a valid 21+ photo ID matching the name on the order.")} Uncollected orders are cancelled after the hold time.</p>'
     else:
         body += f'<p style="font-size:13px;color:#6b7280;margin:0 0 6px;"><strong style="color:#171717;">Delivering to</strong><br>{address_block(order["shipping"])}</p>'
-        if order.get("deliveryWindow", {}).get("label"):
-            body += f'<p style="font-size:13px;color:#065f46;"><strong>Arrival window:</strong> {escape(order["deliveryWindow"]["label"])}</p>'
+        arrival_label = _delivery_window_label(order)
+        if arrival_label:
+            body += f'<p style="font-size:13px;color:#065f46;"><strong>Arrival window:</strong> {escape(arrival_label)}</p>'
         body += '<p style="font-size:12px;color:#6b7280;">A valid government-issued photo ID proving age 21+ is checked at the door. Orders cannot be left with anyone under 21.</p>'
     body += f'<p style="margin:24px 0 0;">{button("Track your order", order_link(order))}</p>'
     await _send([to], title, layout(title, body, intro), "order_confirmation", {"orderId": order["id"]})

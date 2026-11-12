@@ -1626,6 +1626,24 @@ def json_ready(value):
     return value
 
 
+def delivery_window_out(order: dict, today: Optional[date] = None) -> dict:
+    """Return a delivery window whose relative day label is current, not checkout-time text."""
+    window = dict(order.get("deliveryWindow") or {})
+    delivery_date = window.get("date") or order.get("deliveryDate")
+    if not delivery_date:
+        return window
+    try:
+        scheduled = date.fromisoformat(str(delivery_date))
+        start = parse_cutoff(window["start"])
+        end = parse_cutoff(window["end"])
+    except (KeyError, TypeError, ValueError):
+        return window
+    today = today or now_utc().astimezone(STORE_TZ).date()
+    window["date"] = scheduled.isoformat()
+    window["label"] = f"{day_label(scheduled, today)} {fmt_clock(start)}–{fmt_clock(end)}"
+    return window
+
+
 def replacement_offer_out(offer: dict, include_link: bool = False) -> dict:
     out = {key: value for key, value in offer.items() if key not in {"tokenHash", "_id"}}
     if not include_link:
@@ -1672,6 +1690,7 @@ def order_response(o: dict) -> dict:
         status, timeline = build_tracking(created_dt, "placed", o.get("statusHistory"), None, PICKUP_STAGE_LABELS if o.get("fulfillment") == "pickup" else None)
     else:
         status, timeline = build_tracking(created_dt, o.get("manualStatus"), o.get("statusHistory"), o.get("statusUpdatedAt"), PICKUP_STAGE_LABELS if o.get("fulfillment") == "pickup" else None)
+    current_delivery_window = delivery_window_out(o)
     return {
         "id": o["id"],
         "orderNumber": o["orderNumber"],
@@ -1680,8 +1699,8 @@ def order_response(o: dict) -> dict:
         "shipping": o["shipping"],
         "deliveryDate": o.get("deliveryDate"),
         "sameDay": o.get("sameDay"),
-        "deliveryWindow": o.get("deliveryWindow"),
-        "arrivalLabel": (o.get("deliveryWindow") or {}).get("label", ""),
+        "deliveryWindow": current_delivery_window,
+        "arrivalLabel": current_delivery_window.get("label", ""),
         "fulfillment": o.get("fulfillment", "delivery"),
         "pickup": pickup_out(o.get("pickup") or {}) if o.get("fulfillment") == "pickup" else None,
         "ageVerified": bool(o.get("ageVerifiedAt")),

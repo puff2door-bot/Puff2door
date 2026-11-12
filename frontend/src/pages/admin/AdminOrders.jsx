@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink, BadgeDollarSign, Camera, MessageSquareText, Save, Store, ShieldCheck, PackageCheck, BellRing } from "lucide-react";
+import { ExternalLink, BadgeDollarSign, Camera, MessageSquareText, Save, Store, ShieldCheck, PackageCheck, BellRing, Phone } from "lucide-react";
 import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
 
@@ -167,9 +167,13 @@ const AdminOrders = () => {
                 </div>
                 <div className="flex-1 min-w-0 text-sm">
                   <p className="font-medium text-neutral-900">{o.shipping.firstName} {o.shipping.lastName} <span className="text-neutral-400 font-normal">· {o.shipping.email || "guest"}</span></p>
+                  <p className="text-xs font-semibold text-neutral-700" data-testid={`order-phone-${o.orderNumber}`}>
+                    <Phone className="inline h-3 w-3 mr-1" />
+                    {o.shipping.phone ? <a className="hover:text-emerald-700 hover:underline" href={`tel:${o.shipping.phone}`}>{o.shipping.phone}</a> : <span className="text-red-600">Phone number missing</span>}
+                  </p>
                   <p className="text-xs text-neutral-500 line-clamp-1">{o.items.map((i) => `${i.qty}× ${i.name}`).join(", ")}</p>
                   {o.fulfillment === "pickup" ? (
-                    <p className="text-xs font-semibold text-purple-800">Store pickup · {o.shipping.phone}{o.pickup?.holdUntil && !["delivered", "cancelled"].includes(o.status) ? ` · held until ${new Date(o.pickup.holdUntil).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : ""}{o.pickup?.refundNeeded && o.paymentStatus === "paid" ? " · NOT COLLECTED — refund needed" : ""}</p>
+                    <p className="text-xs font-semibold text-purple-800">Store pickup{o.pickup?.holdUntil && !["delivered", "cancelled"].includes(o.status) ? ` · held until ${new Date(o.pickup.holdUntil).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : ""}{o.pickup?.refundNeeded && o.paymentStatus === "paid" ? " · NOT COLLECTED — refund needed" : ""}</p>
                   ) : <>
                   <p className="text-xs text-neutral-500">{[o.shipping.address, o.shipping.city, o.shipping.state, o.shipping.zip].filter(Boolean).join(", ")}</p>
                   {o.arrivalLabel && <p className="text-xs font-semibold text-emerald-700">Delivery window: {o.arrivalLabel}</p>}

@@ -1,7 +1,7 @@
 import asyncio
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -77,6 +77,21 @@ def test_order_response_exposes_audit_result_without_id_image():
     assert response["idCheck"]["status"] == "passed"
     assert response["idCheck"]["fullIdImageStored"] is False
     assert "idImage" not in response and "dateOfBirth" not in response
+
+
+def test_delivery_window_label_is_recalculated_for_current_day():
+    order = {
+        "deliveryDate": "2026-11-12",
+        "deliveryWindow": {
+            "date": "2026-11-12",
+            "start": "12:00",
+            "end": "14:00",
+            "label": "Tomorrow 12:00 PM–2:00 PM",
+        },
+    }
+    assert server.delivery_window_out(order, date(2026, 11, 12))["label"] == "Today 12:00 PM–2:00 PM"
+    assert server.delivery_window_out(order, date(2026, 11, 11))["label"] == "Tomorrow 12:00 PM–2:00 PM"
+    assert server.delivery_window_out(order, date(2026, 11, 13))["label"] == "Thu, Nov 12 12:00 PM–2:00 PM"
 
 
 def test_picking_state_preserves_progress_and_caps_scans():
