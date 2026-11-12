@@ -6809,6 +6809,10 @@ async def _seo_meta_for_path(path: str) -> dict:
             image = str(product.get("image") or "").strip()
             image = image if image.startswith("http") else SITE_URL + (image if image.startswith("/") else "/" + image) if image else SITE_URL + "/img/og-image.jpg"
             price = product.get("salePrice") if product.get("salePrice") is not None else product.get("price")
+            price_val = float(price or 0)
+            # Free local delivery on orders $99+, otherwise a flat $15 delivery fee (see store settings).
+            ship_rate = "0.00" if price_val >= 99 else "15.00"
+            price_valid_until = (datetime.now(timezone.utc) + timedelta(days=365)).strftime("%Y-%m-%d")
             schema = {
                 "@context": "https://schema.org",
                 "@type": "Product",
@@ -6822,10 +6826,35 @@ async def _seo_meta_for_path(path: str) -> dict:
                     "@type": "Offer",
                     "url": canonical,
                     "priceCurrency": "USD",
-                    "price": f"{float(price or 0):.2f}",
+                    "price": f"{price_val:.2f}",
+                    "priceValidUntil": price_valid_until,
                     "availability": "https://schema.org/InStock" if int(product.get("stock") or 0) > 0 else "https://schema.org/OutOfStock",
                     "itemCondition": "https://schema.org/NewCondition",
                     "seller": {"@id": SITE_URL + "/#store"},
+                    "hasMerchantReturnPolicy": {
+                        "@type": "MerchantReturnPolicy",
+                        "applicableCountry": "US",
+                        "returnPolicyCategory": "https://schema.org/MerchantReturnNotPermitted",
+                    },
+                    "shippingDetails": {
+                        "@type": "OfferShippingDetails",
+                        "shippingRate": {
+                            "@type": "MonetaryAmount",
+                            "value": ship_rate,
+                            "currency": "USD",
+                        },
+                        "shippingDestination": {
+                            "@type": "DefinedRegion",
+                            "addressCountry": "US",
+                            "addressRegion": "FL",
+                            "postalCode": "32714",
+                        },
+                        "deliveryTime": {
+                            "@type": "ShippingDeliveryTime",
+                            "handlingTime": {"@type": "QuantitativeValue", "minValue": 0, "maxValue": 1, "unitCode": "DAY"},
+                            "transitTime": {"@type": "QuantitativeValue", "minValue": 0, "maxValue": 1, "unitCode": "DAY"},
+                        },
+                    },
                 },
             }
             if brand:
