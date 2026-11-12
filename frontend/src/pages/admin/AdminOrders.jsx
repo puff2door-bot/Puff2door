@@ -27,6 +27,7 @@ const AdminOrders = () => {
   const [filter, setFilter] = useState("all");
   const [deliveryDrafts, setDeliveryDrafts] = useState({});
   const [pickupDrafts, setPickupDrafts] = useState({});
+  const [deliveryIdDrafts, setDeliveryIdDrafts] = useState({});
   const { toast } = useToast();
 
   const [showHidden, setShowHidden] = useState(false);
@@ -104,6 +105,35 @@ const AdminOrders = () => {
       const { data } = await api.put(`/admin/orders/${o.id}/issues/${issue.id}`, { status, resolution });
       setOrders((prev) => prev.map((x) => x.id === o.id ? data : x));
       toast({ title: "Help request updated" });
+    } catch (e) {
+      toast({ title: "Update failed", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
+    }
+  };
+
+  // Delivery door 21+ ID check, recorded straight from the Orders page (same record the Driver App writes).
+  const deliveryIdDraft = (o) => deliveryIdDrafts[o.id] || { idType: ID_TYPES[0], checked: false };
+  const setDeliveryIdDraft = (o, patch) => setDeliveryIdDrafts((prev) => ({ ...prev, [o.id]: { ...deliveryIdDraft(o), ...patch } }));
+  const passIdAndDeliver = async (o) => {
+    const d = deliveryIdDraft(o);
+    if (!d.checked) return toast({ title: "Check the ID first", description: "Tick the ID box after checking photo, age 21+, name and expiry.", variant: "destructive" });
+    try {
+      await api.put(`/admin/orders/${o.id}/id-check`, { result: "passed", idType: d.idType, photoIdValid: true, age21Confirmed: true, nameMatchesOrder: true, expirationValid: true, checkedBy: "Store staff" });
+      const dd = draftFor(o);
+      if (dd.deliveryPhotoUrl || dd.driverTextSent) { try { await api.put(`/admin/orders/${o.id}/delivery-details`, dd); } catch (_) {} }
+      const { data } = await api.put(`/admin/orders/${o.id}/status`, { status: "delivered" });
+      setOrders((prev) => prev.map((x) => (x.id === o.id ? data : x)));
+      toast({ title: "Delivered", description: `${o.orderNumber} — 21+ ID check recorded and marked delivered.` });
+    } catch (e) {
+      toast({ title: "Update failed", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
+    }
+  };
+  const failDeliveryId = async (o) => {
+    const reason = window.prompt(`Why couldn't ${o.orderNumber} be delivered? (e.g. no ID, under 21, name doesn't match)`, "");
+    if (!reason) return;
+    try {
+      const { data } = await api.put(`/admin/orders/${o.id}/id-check`, { result: "failed", idType: deliveryIdDraft(o).idType, failureReason: reason, checkedBy: "Store staff" });
+      setOrders((prev) => prev.map((x) => (x.id === o.id ? data : x)));
+      toast({ title: "ID check failed recorded", description: "Order set to returning to store. Handle the refund in Delivery Operations." });
     } catch (e) {
       toast({ title: "Update failed", description: e?.response?.data?.detail || "Try again", variant: "destructive" });
     }
@@ -221,16 +251,37 @@ const AdminOrders = () => {
                   )}
                 </div>)
               ) : (
-              <div className="mt-4 pt-4 border-t border-neutral-100 grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-3 items-center" data-testid={`delivery-details-${o.orderNumber}`}>
-                <label className="flex items-center gap-2 rounded-lg border border-neutral-300 px-3 focus-within:border-emerald-600">
-                  <Camera className="h-4 w-4 text-neutral-400 shrink-0" />
-                  <input type="url" placeholder="Optional delivery photo URL (https://…)" value={draftFor(o).deliveryPhotoUrl} onChange={(e) => updateDraft(o, { deliveryPhotoUrl: e.target.value })} className="w-full py-2 text-xs outline-none" />
-                </label>
-                <label className="flex items-center gap-2 text-xs font-semibold text-neutral-700 cursor-pointer">
-                  <input type="checkbox" checked={draftFor(o).driverTextSent} onChange={(e) => updateDraft(o, { driverTextSent: e.target.checked })} className="accent-emerald-600" />
-                  <MessageSquareText className="h-4 w-4 text-emerald-600" /> Driver text sent
-                </label>
-                <button type="button" onClick={() => saveDelivery(o)} className="inline-flex items-center justify-center gap-1.5 rounded-full bg-neutral-900 text-white px-4 py-2 text-xs font-bold hover:bg-emerald-600"><Save className="h-3.5 w-3.5" /> Save tracking details</button>
+              <div className="mt-4 pt-4 border-t border-neutral-100 space-y-3" data-testid={`delivery-details-${o.orderNumber}`}>
+                {!["delivered", "cancelled", "returning_to_store", "returned", "id_check_failed"].includes(o.status) && o.paymentStatus !== "awaiting_payment" && (
+                  o.idCheck?.status === "passed" ? (
+                    <div className="flex flex-wrap items-center gap-3 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2" data-testid={`delivery-id-verified-${o.orderNumber}`}>
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800"><ShieldCheck className="h-4 w-4" /> 21+ ID verified{o.idCheck.checkedBy ? ` · ${o.idCheck.checkedBy}` : ""}</span>
+                      <button type="button" onClick={() => setStatus(o, "delivered")} data-testid={`delivery-done-${o.orderNumber}`} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-700 text-white px-4 py-1.5 text-xs font-bold hover:bg-emerald-800"><PackageCheck className="h-3.5 w-3.5" /> Mark delivered</button>
+                    </div>
+                  ) : o.status === "out_for_delivery" ? (
+                    <div className="flex flex-wrap items-center gap-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5" data-testid={`delivery-id-panel-${o.orderNumber}`}>
+                      <span className="text-xs font-bold text-amber-900">Door 21+ ID check</span>
+                      <select value={deliveryIdDraft(o).idType} onChange={(e) => setDeliveryIdDraft(o, { idType: e.target.value })} className="border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold">{ID_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
+                      <label className="flex items-center gap-2 text-xs font-semibold text-neutral-700 cursor-pointer">
+                        <input type="checkbox" checked={deliveryIdDraft(o).checked} onChange={(e) => setDeliveryIdDraft(o, { checked: e.target.checked })} className="accent-emerald-600 h-4 w-4" data-testid={`delivery-id-ok-${o.orderNumber}`} />
+                        <ShieldCheck className="h-4 w-4 text-emerald-600" /> ID checked: photo matches, 21+, name matches order, not expired
+                      </label>
+                      <button type="button" onClick={() => passIdAndDeliver(o)} data-testid={`delivery-deliver-${o.orderNumber}`} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 text-white px-4 py-2 text-xs font-bold hover:bg-emerald-700"><PackageCheck className="h-3.5 w-3.5" /> ID passed &amp; delivered</button>
+                      <button type="button" onClick={() => failDeliveryId(o)} className="text-xs font-bold text-red-700 underline">ID failed</button>
+                    </div>
+                  ) : null
+                )}
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-3 items-center">
+                  <label className="flex items-center gap-2 rounded-lg border border-neutral-300 px-3 focus-within:border-emerald-600">
+                    <Camera className="h-4 w-4 text-neutral-400 shrink-0" />
+                    <input type="url" placeholder="Optional delivery photo URL (https://…)" value={draftFor(o).deliveryPhotoUrl} onChange={(e) => updateDraft(o, { deliveryPhotoUrl: e.target.value })} className="w-full py-2 text-xs outline-none" />
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-semibold text-neutral-700 cursor-pointer">
+                    <input type="checkbox" checked={draftFor(o).driverTextSent} onChange={(e) => updateDraft(o, { driverTextSent: e.target.checked })} className="accent-emerald-600" />
+                    <MessageSquareText className="h-4 w-4 text-emerald-600" /> Driver text sent
+                  </label>
+                  <button type="button" onClick={() => saveDelivery(o)} className="inline-flex items-center justify-center gap-1.5 rounded-full bg-neutral-900 text-white px-4 py-2 text-xs font-bold hover:bg-emerald-600"><Save className="h-3.5 w-3.5" /> Save tracking details</button>
+                </div>
               </div>)}
               {(o.issues || []).length > 0 && <div className="mt-4 border-t pt-4 space-y-2">{o.issues.map((i)=><div key={i.id} className="rounded-xl bg-amber-50 border border-amber-200 p-3 flex flex-wrap items-center gap-2 text-sm"><b className="capitalize">{i.kind.replaceAll("_"," ")}</b><span className="text-neutral-600 flex-1">{i.message || "No details provided"}</span><select value={i.status} onChange={(e)=>resolveIssue(o,i,e.target.value)} className="border rounded-lg px-2 py-1 text-xs"><option value="open">Open</option><option value="working">Working</option><option value="resolved">Resolved</option></select></div>)}</div>}
             </div>
