@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Truck, Clock } from "lucide-react";
 import api from "../api";
 
@@ -9,6 +10,12 @@ const fmt = (secs) => {
   if (h > 0) return `${h}h ${m}m`;
   if (m > 0) return `${m}m ${String(s).padStart(2, "0")}s`;
   return `${s}s`;
+};
+
+const shortClock = (hhmm) => {
+  const [h, m] = String(hhmm || "").split(":").map(Number);
+  if (Number.isNaN(h)) return "";
+  return `${h % 12 || 12}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h >= 12 ? "PM" : "AM"}`;
 };
 
 const fillTokens = (template, values) => String(template || "").replace(/\{(countdown|cutoff|start|end|next)\}/g, (_, key) => values[key] || "");
@@ -78,6 +85,27 @@ const DeliveryCountdown = ({ variant = "home" }) => {
       <div data-testid="checkout-delivery-countdown" className={`mt-2 flex items-start gap-2 rounded-lg px-4 py-2.5 text-xs sm:text-sm ${sameDayOpen ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-700 border border-neutral-200"}`}>
         {sameDayOpen ? <Truck className="h-4 w-4 mt-0.5 shrink-0 text-emerald-400" /> : <Clock className="h-4 w-4 mt-0.5 shrink-0 text-neutral-500" />}
         <span>{showHeadline && <span className="block font-semibold">{sameDayOpen ? renderOpenTemplate(template, values) : text}</span>}{showHours && <span className="block font-normal mt-0.5">{hoursText}</span>}{extraLines.map((line, i) => <span className="block font-normal mt-0.5" key={`${line}-${i}`}>{line}</span>)}</span>
+      </div>
+    );
+  }
+
+  if (copy.countdownStyle !== "classic") {
+    const first = (win.availableWindows || [])[0];
+    const nextTime = first ? shortClock(first.start) : win.deliveryStartLabel?.replace(":00", "");
+    const nextDay = first ? (first.label || "").replace(/\s\d{1,2}:\d{2}.*$/, "") : win.nextDeliveryLabel;
+    const chip = sameDayOpen ? `Same-day open · ${values.countdown} left` : win.todayOpen ? "Closed for today" : "No delivery today";
+    const detail = sameDayOpen ? `Order by ${values.cutoff} for delivery today` : nextDay ? `Next delivery: ${nextDay.toLowerCase() === "tomorrow" ? "tomorrow" : nextDay}${nextTime ? `, ${nextTime}` : ""}` : "";
+    return (
+      <div data-testid="delivery-countdown" className="bg-neutral-950 text-white">
+        <div className="max-w-[1280px] mx-auto px-4 py-2 flex items-center justify-between gap-3 flex-wrap sm:justify-center sm:gap-5">
+          <div className="flex items-center gap-2.5 flex-wrap text-xs sm:text-sm">
+            <span data-testid="delivery-countdown-chip" className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold tabular-nums ${sameDayOpen ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>
+              {sameDayOpen ? <Truck className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}{chip}
+            </span>
+            {detail && <span data-testid="delivery-countdown-text" className="text-neutral-200">{detail}</span>}
+          </div>
+          <Link to="/shop" data-testid="delivery-countdown-shop" className="shrink-0 rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition-colors">Shop now</Link>
+        </div>
       </div>
     );
   }

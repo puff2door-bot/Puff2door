@@ -299,7 +299,7 @@ VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
 VAPID_SUBJECT = os.environ.get("VAPID_SUBJECT", "mailto:puff2door@gmail.com").strip()
 WEB_PUSH_ENABLED = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY and VAPID_SUBJECT and webpush)
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "apple_pay", "zelle"}
-DEFAULT_SETTINGS = {"taxRate": 0.065, "zipTaxRates": {"32827": 0.065, "32832": 0.065}, "lakeNonaEnabled": False, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32714", "deliveryRadiusMiles": 20.0, "allowedZipCodes": ["32714"],
+DEFAULT_SETTINGS = {"taxRate": 0.065, "zipTaxRates": {"32827": 0.065, "32832": 0.065}, "lakeNonaEnabled": False, "countdownStyle": "chip", "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32714", "deliveryRadiusMiles": 20.0, "allowedZipCodes": ["32714"],
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
                     "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryStart": "11:00", "deliveryEnd": "21:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6], "homepageLayout": "classic",
                     "countdownVisible": True, "countdownHeadlineVisible": True, "countdownHoursVisible": True,
@@ -585,7 +585,7 @@ def delivery_window(settings: dict, now: Optional[datetime] = None) -> dict:
         "nextDeliveryDate": windows[0]["date"] if windows else (next_day.isoformat() if next_day else None), "nextDeliveryLabel": day_label(next_day, today) if next_day else None, "message": message,
         "countdownCopy": {key: settings.get(key, DEFAULT_SETTINGS[key]) for key in (
             "countdownVisible", "countdownHeadlineVisible", "countdownHoursVisible", "countdownOpenText", "countdownClosedText",
-            "countdownClosedDayText", "countdownPausedText", "countdownHoursText", "countdownExtraLines"
+            "countdownClosedDayText", "countdownPausedText", "countdownHoursText", "countdownExtraLines", "countdownStyle"
         )},
         "availableWindows": windows,
     }
@@ -627,6 +627,7 @@ class StoreSettingsInput(BaseModel):
     pickupHoldDays: int = Field(default=1, ge=0, le=14)
     pickupInstructions: str = Field(default="Bring a valid, unexpired 21+ photo ID that matches the name on the order.", max_length=400)
     lakeNonaEnabled: bool = False
+    countdownStyle: str = "chip"
     zipTaxRates: Dict[str, float] = Field(default_factory=lambda: {"32827": 0.065, "32832": 0.065})
 
     @field_validator("homepageLayout")
@@ -676,6 +677,13 @@ class StoreSettingsInput(BaseModel):
         if not zip_lookup(v):
             raise ValueError("Delivery ZIP must be a valid US ZIP code")
         return re.sub(r"\D", "", v)[:5]
+
+    @field_validator("countdownStyle")
+    @classmethod
+    def _countdown_style(cls, v):
+        if v not in {"chip", "classic"}:
+            raise ValueError("Choose a valid delivery banner style")
+        return v
 
     @field_validator("zipTaxRates")
     @classmethod
