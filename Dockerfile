@@ -31,6 +31,9 @@ RUN pip install --no-cache-dir -r requirements.txt -r requirements-photo-process
 COPY backend/ ./
 RUN python scripts/install_photo_model.py
 COPY --from=frontend-build /app/frontend/build /app/frontend/build
+# Pre-build phone/tablet image sizes so first visitors after a deploy don't wait for resizing.
+ENV IMAGE_CACHE_DIR=/app/image-cache
+RUN python scripts/pregenerate_image_sizes.py /app/frontend/build
 
 EXPOSE 10000
 CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-10000} --no-access-log"]
