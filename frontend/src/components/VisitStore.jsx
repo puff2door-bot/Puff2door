@@ -30,7 +30,7 @@ const LazyMap = () => {
           allowFullScreen
         />
       ) : (
-        <a href={STORE.directionsUrl} target="_blank" rel="noopener noreferrer" className="flex h-full min-h-[320px] items-center justify-center gap-2 text-sm font-semibold text-neutral-500">
+        <a href={STORE.directionsUrl} target="_blank" rel="noopener noreferrer" className="flex h-full min-h-[320px] items-center justify-center gap-2 text-sm font-semibold text-neutral-600">
           <MapPin className="h-4 w-4" /> Loading map…
         </a>
       )}

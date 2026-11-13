@@ -83,13 +83,16 @@ const HeroSlider = () => {
         <ChevronRight className="h-6 w-6" />
       </button>
 
-      <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex gap-2">
+      {/* Dots look the same, but each has a 24px tap area so they're easy to hit on a phone. */}
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex">
         {heroSlides.map((_, i) => (
           <button
             key={i}
             onClick={() => setIdx(i)} aria-label={`Go to slide ${i + 1}`}
-            className={`h-2 rounded-full transition-all ${i === safeIdx ? "w-8 bg-emerald-500" : "w-2 bg-white/60"}`}
-          />
+            className="grid h-6 min-w-6 place-items-center px-1"
+          >
+            <span className={`block h-2 rounded-full transition-all ${i === safeIdx ? "w-8 bg-emerald-500" : "w-2 bg-white/60"}`} />
+          </button>
         ))}
       </div>
     </section>
