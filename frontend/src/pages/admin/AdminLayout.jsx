@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { NavLink, Link, Outlet } from "react-router-dom";
 import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle, Truck, ShieldCheck, BarChart3, Store, Camera, Bot, Barcode, Receipt, Wallet, FileText, UserRound, Sparkles, ClipboardList, Star, PackageSearch, ScanLine, Smartphone } from "lucide-react";
 import { useApp } from "../../context/AppContext";
@@ -86,7 +86,7 @@ const AdminLayout = () => {
           </div>
         </aside>
         <section className="min-w-0">
-          <Outlet />
+          <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}><Outlet /></Suspense>
         </section>
       </div>
     </div>
