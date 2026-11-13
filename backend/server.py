@@ -310,7 +310,7 @@ DEFAULT_SETTINGS = {"taxRate": 0.065, "zipTaxRates": {"32827": 0.065, "32832": 0
                     "countdownHoursText": "Same-day cutoff is {cutoff} ET. No deliveries after {end} or before {start}.",
                     "countdownExtraLines": [],
                     "deliverySlotCapacity": 8, "deliveryDriverCount": 1, "ordersPerDriverPerWindow": 8, "defaultEtaMinutes": 45,
-                    "googleReviewUrl": "", "hideOutOfStock": True, "liveShelfEnabled": False,
+                    "googleReviewUrl": "", "hideOutOfStock": True, "liveShelfEnabled": False, "downloadAppEnabled": False,
                     "pickupEnabled": False, "pickupAddress": "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714",
                     "pickupHoursText": "Pick up during store hours.", "pickupReadyMinutes": 15, "pickupHoldDays": 1,
                     "pickupInstructions": "Bring a valid, unexpired 21+ photo ID that matches the name on the order."}
@@ -620,6 +620,7 @@ class StoreSettingsInput(BaseModel):
     googleReviewUrl: str = Field(default="", max_length=500)
     hideOutOfStock: bool = True
     liveShelfEnabled: bool = False
+    downloadAppEnabled: bool = False
     pickupEnabled: bool = False
     pickupAddress: str = Field(default="481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714", max_length=200)
     pickupHoursText: str = Field(default="Pick up during store hours.", max_length=240)
