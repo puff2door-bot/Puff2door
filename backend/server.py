@@ -2964,21 +2964,37 @@ def _resize_to_webp(data: bytes, width: int) -> bytes:
         return out.getvalue()
 
 
-async def resized_image_response(key: str, width: int, load_bytes) -> Optional[Response]:
-    """Return a cached WebP copy of an image at the requested width, or None if it can't be made."""
-    cache_file = IMAGE_CACHE_DIR / f"{hashlib.sha256(key.encode()).hexdigest()}-{width}.webp"
+_RESIZE_SLOTS = asyncio.Semaphore(1)
+_RESIZES_IN_FLIGHT: set = set()
+
+
+async def _make_resized_copy(key: str, width: int, load_bytes, cache_file: Path) -> None:
     try:
-        if not cache_file.is_file():
+        async with _RESIZE_SLOTS:
+            if cache_file.is_file():
+                return
             data = await load_bytes()
             webp = await asyncio.to_thread(_resize_to_webp, data, width)
             IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            tmp = cache_file.with_suffix(".tmp")
+            tmp = cache_file.with_suffix(f".{os.getpid()}.tmp")
             tmp.write_bytes(webp)
             tmp.replace(cache_file)
-        return FileResponse(cache_file, media_type="image/webp", headers=IMAGE_CACHE_HEADERS)
     except Exception as exc:
         logger.warning("Image resize failed for %s at %s: %s", key, width, exc)
-        return None
+    finally:
+        _RESIZES_IN_FLIGHT.discard(cache_file.name)
+
+
+async def resized_image_response(key: str, width: int, load_bytes) -> Optional[Response]:
+    """Return the cached WebP copy at this width. If it isn't made yet, start making it in the
+    background and return None so the caller serves the full image right away (never makes shoppers wait)."""
+    cache_file = IMAGE_CACHE_DIR / f"{hashlib.sha256(key.encode()).hexdigest()}-{width}.webp"
+    if cache_file.is_file():
+        return FileResponse(cache_file, media_type="image/webp", headers=IMAGE_CACHE_HEADERS)
+    if cache_file.name not in _RESIZES_IN_FLIGHT and len(_RESIZES_IN_FLIGHT) < 200:
+        _RESIZES_IN_FLIGHT.add(cache_file.name)
+        asyncio.create_task(_make_resized_copy(key, width, load_bytes, cache_file))
+    return None
 
 
 @api_router.get("/files/{path:path}")
@@ -2993,13 +3009,18 @@ async def serve_file(path: str, request: Request):
         resized = await resized_image_response(f"files:{path}", width, load)
         if resized:
             return resized
+        short_cache = True
+    else:
+        short_cache = False
     try:
         data, content_type = await get_object(path)
     except Exception as e:
         logger.warning("Object store unavailable for %s: %s", path, e)
         raise HTTPException(status_code=502, detail="Image storage is temporarily unavailable")
-    # Uploaded files get a new unique name, so browsers can keep them for 30 days.
-    return Response(content=data, media_type=record.get("content_type", content_type), headers={"Cache-Control": "public, max-age=2592000"})
+    # Uploaded files get a new unique name, so browsers can keep them for 30 days. A full-size stand-in
+    # for a ?w= copy that isn't ready yet is only kept briefly, so the small copy is used once it exists.
+    cache = "public, max-age=300" if short_cache else "public, max-age=2592000"
+    return Response(content=data, media_type=record.get("content_type", content_type), headers={"Cache-Control": cache})
 
 
 # ---- Settings & promo codes ----
@@ -7599,7 +7620,7 @@ if FRONTEND_BUILD_DIR.exists():
                     resized = await resized_image_response(f"uploads:{full_path}", width, lambda: asyncio.to_thread(source.read_bytes))
                     if resized:
                         return resized
-                headers = {"Cache-Control": "public, max-age=2592000", "Vary": "Accept"}
+                headers = {"Cache-Control": "public, max-age=300" if width else "public, max-age=2592000", "Vary": "Accept"}
                 if "image/webp" in request.headers.get("accept", "") and webp.is_file():
                     return FileResponse(webp, media_type="image/webp", headers=headers)
                 return FileResponse(candidate, headers=headers)
