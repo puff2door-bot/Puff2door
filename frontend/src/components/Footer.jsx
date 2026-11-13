@@ -108,7 +108,7 @@ const Footer = () => {
       </div>
 
       <div className="border-t border-neutral-800">
-        <div className="max-w-[1280px] mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-neutral-500">
+        <div className="max-w-[1280px] mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-neutral-400">
           <p>© {new Date().getFullYear()} HD Smoke Shop. All rights reserved.</p>
           <p className="text-center">These products are not intended to diagnose, treat, cure or prevent any disease. Keep out of reach of children.</p>
           {user?.role === "admin" && <Link to="/admin" data-testid="footer-admin-link" className="font-bold text-amber-300 hover:text-amber-200">Admin Panel</Link>}
