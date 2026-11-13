@@ -128,7 +128,9 @@ const Divider = () => (
 );
 
 const AuthPage = () => {
-  const { user, login, register, resetPassword, loginWithGoogle, googleSignInEnabled, authLoading } = useApp();
+  const { user, login, register, resetPassword, loginWithGoogle, prepareGoogleSignIn, googleSignInEnabled, authLoading } = useApp();
+  // Load Google's sign-in script only on this page, so the popup opens instantly when the button is tapped.
+  useEffect(() => { if (googleSignInEnabled) prepareGoogleSignIn(); }, [googleSignInEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
   const { toast } = useToast();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();

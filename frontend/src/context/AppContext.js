@@ -60,7 +60,7 @@ export const AppProvider = ({ children }) => {
     api.get("/auth/providers").then(({ data }) => {
       const clientId = data?.google?.clientId || "";
       setGoogleClientId(clientId);
-      if (clientId) loadGoogleScript().catch(() => {});
+      // The Google sign-in script (~100 KB) is loaded by the sign-in page (prepareGoogleSignIn), not on every page.
     }).catch(() => {});
   }, []);
 
@@ -84,6 +84,8 @@ export const AppProvider = ({ children }) => {
     setUser(data.user);
     return { ...data.user, signupBonusPoints: data.signupBonusPoints || 0 };
   };
+
+  const prepareGoogleSignIn = () => { if (googleClientId) loadGoogleScript().catch(() => {}); };
 
   const loginWithGoogle = async () => {
     if (!googleClientId) throw new Error("Google sign-in has not been configured yet");
@@ -120,7 +122,7 @@ export const AppProvider = ({ children }) => {
 
   return (
     <AppContext.Provider
-      value={{ ageVerified, verifyAge, user, setUser, login, register, resetPassword, loginWithGoogle, googleSignInEnabled: Boolean(googleClientId), logout, authLoading }}
+      value={{ ageVerified, verifyAge, user, setUser, login, register, resetPassword, loginWithGoogle, prepareGoogleSignIn, googleSignInEnabled: Boolean(googleClientId), logout, authLoading }}
     >
       {children}
     </AppContext.Provider>
