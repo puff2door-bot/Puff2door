@@ -1111,3 +1111,11 @@ html.site-theme-neon:not(.p2d-dark) .home-layout-neon .home-feature { border-col
 html.site-theme-neon:not(.p2d-dark) .home-layout-neon .home-intro { border-color: #c9e5bd; background: linear-gradient(135deg, #fff, #f0faeb); box-shadow: 0 18px 50px rgb(47 96 40 / .07); }
 html.site-theme-neon:not(.p2d-dark) .home-layout-neon section > div.border.rounded-xl,
 html.site-theme-neon:not(.p2d-dark) .home-layout-neon [data-testid="home-faq"] > div { background: #fff; }
+
+/* Explicit dark-mode contrast for all four homepage feature cards. */
+html.p2d-dark .home-feature-bar { background: #101010 !important; border-color: #404040 !important; }
+html.p2d-dark .home-feature-grid { border-color: #404040 !important; }
+html.p2d-dark .home-feature { background: #171717 !important; border-color: #404040 !important; }
+html.p2d-dark .home-feature h3 { color: #fafafa !important; }
+html.p2d-dark .home-feature p { color: #d4d4d4 !important; }
+html.p2d-dark .home-feature > span { background: #064e3b !important; color: #a7f3d0 !important; }
