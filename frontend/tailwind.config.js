@@ -13,6 +13,9 @@ module.exports = {
         sm: 'calc(var(--radius) - 4px)'
       },
       colors: {
+        // Brand green one shade darker, so white text on green buttons is easy to read
+        // (#059669 failed Google's contrast check; #047857 passes). Hover goes one darker still.
+        emerald: { 600: '#047857', 700: '#065f46' },
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         card: {

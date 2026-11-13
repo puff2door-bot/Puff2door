@@ -60,7 +60,7 @@ const DealBanner = ({ deal }) => {
             <p className="text-neutral-400 text-sm mb-4">Today only. Price resets at midnight, so grab it before the clock hits zero.</p>
             <div className="flex items-center gap-4 flex-wrap">
               <span className="font-heading text-4xl text-emerald-400" data-testid="deal-price">${dealPrice.toFixed(2)}</span>
-              <span className="text-neutral-500 line-through text-lg">${product.price.toFixed(2)}</span>
+              <span className="text-neutral-400 line-through text-lg">${product.price.toFixed(2)}</span>
               <button onClick={add} data-testid="deal-add-to-cart" className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors text-sm">
                 <ShoppingCart className="h-4 w-4" /> Grab the Deal
               </button>

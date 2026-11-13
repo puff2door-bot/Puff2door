@@ -17,7 +17,7 @@ const SmartSearch = ({ query, setQuery, onSubmit, mobile = false }) => {
       <div className="flex w-full items-center border border-neutral-300 rounded-full overflow-hidden focus-within:border-emerald-600 transition-colors bg-white">
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={mobile ? "Search products..." : "Search products, brands, flavors..."} className="flex-1 px-5 py-2.5 text-sm outline-none min-w-0" aria-label="Search products" autoComplete="off" />
         {query && <button type="button" onClick={() => setQuery("")} className="p-2 text-neutral-400 hover:text-neutral-900" aria-label="Clear search"><X className="h-4 w-4" /></button>}
-        <button type="submit" className="px-4 sm:px-5 py-2.5 bg-emerald-600 text-white hover:bg-emerald-700"><Search className="h-5 w-5" /></button>
+        <button type="submit" aria-label="Search" className="px-4 sm:px-5 py-2.5 bg-emerald-600 text-white hover:bg-emerald-700"><Search className="h-5 w-5" /></button>
       </div>
       {matches.length > 0 && (
         <div className="absolute z-[80] top-full mt-2 left-0 right-0 bg-white border border-neutral-200 rounded-xl shadow-2xl overflow-hidden">

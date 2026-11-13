@@ -3,7 +3,7 @@ import { Star } from "lucide-react";
 import api from "../api";
 
 // Real 5-star reviews copied from the shop's Google Business Profile (first name + last initial only).
-const Stars = ({ n = 5 }) => <span className="flex gap-0.5" aria-label={`${n} out of 5 stars`}>{Array.from({ length: 5 }, (_, i) => <Star key={i} className={`h-4 w-4 ${i < n ? "fill-amber-400 text-amber-400" : "text-neutral-300"}`} />)}</span>;
+const Stars = ({ n = 5 }) => <span className="flex gap-0.5" role="img" aria-label={`${n} out of 5 stars`}>{Array.from({ length: 5 }, (_, i) => <Star key={i} className={`h-4 w-4 ${i < n ? "fill-amber-400 text-amber-400" : "text-neutral-300"}`} />)}</span>;
 const month = (iso) => { try { return new Date(iso).toLocaleDateString("en-US", { month: "short", year: "numeric" }); } catch { return ""; } };
 
 const GoogleReviews = ({ reviewUrl, fallback = null, title = "" }) => {
