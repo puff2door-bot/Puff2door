@@ -28,6 +28,7 @@ const Header = () => {
   const { user } = useApp();
   const { activeCategories: categories, activeBrands: brands } = useCatalog();
   const [scrolled, setScrolled] = useState(false);
+  const [installHelp, setInstallHelp] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [openMenu, setOpenMenu] = useState(null);
@@ -64,6 +65,8 @@ const Header = () => {
         </div>
       </div>
 
+      {presentation?.downloadAppEnabled && <div className="bg-emerald-950 text-white text-center py-2"><button type="button" data-testid="download-app-button" onClick={() => setInstallHelp(true)} className="text-xs font-bold underline">Download App</button></div>}
+      {presentation?.downloadAppEnabled && installHelp && <div role="dialog" aria-modal="true" aria-label="Install app" className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4"><div className="bg-white text-neutral-900 rounded-xl p-6 max-w-sm"><h2 className="font-bold mb-3">Install Puff2Door</h2><p className="text-sm mb-4">On iPhone Safari, tap Share then Add to Home Screen. On Android or desktop, use the browser menu and select Install app or Add to Home Screen if available.</p><button type="button" onClick={() => setInstallHelp(false)} className="bg-emerald-700 text-white rounded-lg px-4 py-2">Close</button></div></div>}
       {/* Main bar */}
       <div className={`bg-white border-b transition-shadow ${scrolled ? "shadow-md" : ""}`}>
         <div className="max-w-[1280px] mx-auto px-4">
