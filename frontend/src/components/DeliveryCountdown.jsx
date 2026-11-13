@@ -99,7 +99,7 @@ const DeliveryCountdown = ({ variant = "home" }) => {
       <div data-testid="delivery-countdown" className="bg-neutral-950 text-white">
         <div className="max-w-[1280px] mx-auto px-4 py-2 flex items-center justify-between gap-3 flex-wrap sm:justify-center sm:gap-5">
           <div className="flex items-center gap-2.5 flex-wrap text-xs sm:text-sm">
-            <span data-testid="delivery-countdown-chip" className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold tabular-nums ${sameDayOpen ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>
+            <span data-testid="delivery-countdown-chip" className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold tabular-nums" style={sameDayOpen ? { background: "#d1fae5", color: "#065f46" } : { background: "#fef3c7", color: "#78350f" }}>
               {sameDayOpen ? <Truck className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}{chip}
             </span>
             {detail && <span data-testid="delivery-countdown-text" className="text-neutral-200">{detail}</span>}

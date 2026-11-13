@@ -220,6 +220,12 @@ html.p2d-dark .border-neutral-300 { border-color: #404040 !important; }
 html.p2d-dark input,
 html.p2d-dark select,
 html.p2d-dark textarea { background: #171717; color: #f5f5f5; }
+/* Light hover fills stay "stuck" after a tap on phones; keep them dark so white icons stay visible. */
+html.p2d-dark .hover\:bg-neutral-100:hover,
+html.p2d-dark .hover\:bg-neutral-50:hover { background-color: #262626 !important; }
+html.p2d-dark .mobile-bottom-nav { background: rgb(23 23 23 / .96) !important; border-color: #404040 !important; }
+html.p2d-dark .mobile-bottom-nav a { color: #b5b5b5; }
+html.p2d-dark .mobile-bottom-nav a.active { color: #34d399; }
 
 /* Admin-selectable homepage presets. Content and commerce behavior remain shared. */
 .home-layout-showcase {
