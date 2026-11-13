@@ -16,9 +16,10 @@ export const DeliveryBanner = () => {
   const message = useMemo(() => deliveryBannerText(area), [area]);
   return (
     <div data-testid="delivery-banner" className="bg-emerald-700 text-white">
-      <p className="max-w-[1280px] mx-auto px-4 py-1.5 flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold tracking-wide text-center">
+      {/* Fixed height (2 lines on phones, 1 on larger screens) so the page doesn't jump when the delivery area loads. */}
+      <p className="max-w-[1280px] mx-auto px-4 py-1.5 h-[44px] sm:h-[32px] flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold tracking-wide text-center overflow-hidden">
         <MapPin className="h-3.5 w-3.5 shrink-0" />
-        {message}
+        <span className="line-clamp-2 sm:line-clamp-1">{message}</span>
         <Link to="/delivery-area" data-testid="delivery-banner-link" className="underline underline-offset-2 hover:text-emerald-100 font-medium">See delivery area</Link>
       </p>
     </div>
