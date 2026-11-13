@@ -7639,12 +7639,20 @@ async def _inject_hero_preload(document: str) -> str:
     except Exception as exc:
         logger.warning("Hero preload skipped: %s", exc)
         return document
+    # Hand the banner slides to the app with the page, so the banner can show as soon as the
+    # app starts instead of waiting for the full product list to download.
+    try:
+        home = await get_home_content()
+        payload = json.dumps({"heroSlides": home.get("heroSlides") or [], "promoBlocks": home.get("promoBlocks") or []}, default=str)
+        script = "<script>window.__P2D_HOME__=" + payload.replace("</", "<\\/") + "</script>"
+    except Exception:
+        script = ""
     if not image.startswith(("/uploads/", "/api/files/")):
-        return document
+        return document.replace("</head>", script + "</head>", 1)
     src = html_escape(image, quote=True)
     srcset = ", ".join(f"{src}?w={w} {w}w" for w in HERO_SRCSET_WIDTHS)
     tag = f'<link rel="preload" as="image" fetchpriority="high" href="{src}?w=800" imagesrcset="{srcset}" imagesizes="100vw"/>'
-    return document.replace("</head>", tag + "</head>", 1)
+    return document.replace("</head>", tag + script + "</head>", 1)
 
 
 async def _hero_fallback_img() -> str:
