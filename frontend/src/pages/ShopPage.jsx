@@ -5,7 +5,20 @@ import ProductCard from "../components/ProductCard";
 import ShopFilters, { buildFilterOptions, applyFilters } from "../components/ShopFilters";
 import { useCatalog } from "../context/CatalogContext";
 import Seo from "../seo/Seo";
-import { brandSeo, breadcrumbJsonLd, categorySeo, titleCase } from "../seo/config";
+import { brandSeo, breadcrumbJsonLd, categorySeo, titleCase, CATEGORY_SEO } from "../seo/config";
+
+// The server already puts the category's name in the page title ("Delta Disposables – Shop Online…").
+// Reuse it for the heading while products load, so the banner keeps its final size.
+const FIRST_PATH = typeof window !== "undefined" ? window.location.pathname : "";
+const FIRST_TITLE = typeof document !== "undefined" ? document.title : "";
+const pendingName = (slug) => {
+  const fromTitle = FIRST_TITLE.split(" – ")[0];
+  if (typeof window !== "undefined" && window.location.pathname === FIRST_PATH && FIRST_TITLE.includes(" – ")
+      && fromTitle.toLowerCase().includes(slug.split("-")[0].toLowerCase())) {
+    return fromTitle;
+  }
+  return titleCase(slug.replace(/-/g, " "));
+};
 
 const SORTS = [
   { key: "popular", label: "Popularity" },
@@ -78,6 +91,8 @@ const ShopPage = () => {
     ? currentBrand.name
     : currentCat
     ? currentCat.name
+    : slug && loading
+    ? pendingName(slug)
     : "Shop All";
 
   const seo = searchQuery
@@ -89,6 +104,9 @@ const ShopPage = () => {
     : slug
     ? { title: "Page not found | HD Smoke Shop", description: "This category does not exist.", noindex: true }
     : { title: "Shop Smoke Shop Accessories Online – HD Smoke Shop", description: "Browse vaporizers, hookah, glass and smoke shop accessories at HD Smoke Shop in Altamonte Springs. Local delivery or in-store pickup. 21+ only.", intro: "Every product we carry, from disposable vapes to glass and kratom — shop online for local delivery in ZIP 32714, or visit our Altamonte Springs store.", path: "/shop" };
+  // While the catalog loads, show the category's own heading and intro text so the banner
+  // doesn't change height (and push the products down) once the data arrives.
+  const pendingIntro = loading && slug && !isBrand && !searchQuery ? CATEGORY_SEO[slug]?.intro || "" : "";
   const crumbs = [{ name: "Home", path: "/" }, { name: "Shop", path: "/shop" }];
   if (currentCat) crumbs.push({ name: titleCase(currentCat.name), path: `/product-category/${currentCat.slug}` });
   if (isBrand && currentBrand) crumbs.push({ name: currentBrand.name, path: `/brand/${currentBrand.slug}` });
@@ -114,7 +132,10 @@ const ShopPage = () => {
       <div className="relative overflow-hidden rounded-xl bg-neutral-900 px-8 py-10 mb-8">
         <div className="absolute -right-10 -bottom-16 h-56 w-56 rounded-full bg-emerald-600/20 blur-2xl" />
         <h1 className="font-heading text-3xl sm:text-4xl font-700 text-white uppercase tracking-tight relative">{title}</h1>
-        <p className="text-neutral-400 text-sm mt-1 relative">{baseList.length} {baseList.length === 1 ? "product" : "products"} available{seo.intro ? ` · ${seo.intro}` : ""}</p>
+        <p className="text-neutral-400 text-sm mt-1 relative">
+          {loading ? "Loading products" : `${baseList.length} ${baseList.length === 1 ? "product" : "products"} available`}
+          {(seo.intro || pendingIntro) ? ` · ${seo.intro || pendingIntro}` : ""}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-8">
@@ -168,7 +189,14 @@ const ShopPage = () => {
           )}
 
           {loading ? (
-            <div className="py-24 text-center text-neutral-500">Loading products...</div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4" aria-label="Loading products">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="rounded-lg border border-neutral-200 overflow-hidden">
+                  <div className="aspect-square bg-neutral-100 animate-pulse" />
+                  <div className="p-3 space-y-2"><div className="h-3 bg-neutral-100 rounded" /><div className="h-3 w-1/2 bg-neutral-100 rounded" /><div className="h-9" /></div>
+                </div>
+              ))}
+            </div>
           ) : pageList.length === 0 ? (
             <div className="py-24 text-center">
               <p className="font-heading text-2xl text-neutral-800 mb-2">No products found</p>
@@ -181,7 +209,7 @@ const ShopPage = () => {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4" data-testid="shop-product-grid">
-              {pageList.map((p) => (<ProductCard key={p.id} product={p} />))}
+              {pageList.map((p, i) => (<ProductCard key={p.id} product={p} priority={i < 2} />))}
             </div>
           )}
 

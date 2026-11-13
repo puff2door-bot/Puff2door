@@ -8,7 +8,7 @@ import { useCatalog } from "../context/CatalogContext";
 import { imgUrl, imgSrcSet } from "../api";
 import { toggleCompare } from "../lib/customerExperience";
 
-const ProductCard = ({ product }) => {
+const ProductCard = ({ product, priority = false }) => {
   const { addItem } = useCart();
   const { has, toggle } = useWishlist();
   const { getPrice, isOnDeal } = useCatalog();
@@ -41,7 +41,8 @@ const ProductCard = ({ product }) => {
           src={imgUrl(product.image)}
           srcSet={imgSrcSet(product.image)}
           alt={`${product.name} – ${product.category} from HD Smoke Shop`}
-          loading="lazy"
+          loading={priority ? "eager" : "lazy"}
+          fetchpriority={priority ? "high" : undefined}
           decoding="async"
           width="300"
           height="300"

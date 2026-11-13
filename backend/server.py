@@ -7601,6 +7601,34 @@ async def _inject_hero_preload(document: str) -> str:
     return document.replace("</head>", tag + "</head>", 1)
 
 
+CARD_SRCSET_WIDTHS = (320, 480, 640)
+
+
+async def _inject_first_product_preload(document: str, category_slug: str = "") -> str:
+    """Start downloading the first product photo on shop/category pages before the app's JavaScript runs.
+
+    It is the biggest thing on screen there, and otherwise the browser only finds it after the
+    product list has loaded."""
+    try:
+        query: dict = {"active": True}
+        if (await get_settings()).get("hideOutOfStock", True):
+            query["stock"] = {"$gt": 0}
+        if category_slug:
+            query["categorySlug"] = category_slug
+        first = await db.products.find_one(query, {"image": 1}, sort=[("id", 1)])
+    except Exception as exc:
+        logger.warning("Product preload skipped: %s", exc)
+        return document
+    image = (first or {}).get("image") or ""
+    if not image.startswith(("/uploads/", "/api/files/")) or "?" in image:
+        return document
+    src = html_escape(image, quote=True)
+    srcset = ", ".join(f"{src}?w={w} {w}w" for w in CARD_SRCSET_WIDTHS)
+    sizes = "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px"
+    tag = f'<link rel="preload" as="image" fetchpriority="high" href="{src}?w=480" imagesrcset="{srcset}" imagesizes="{sizes}"/>'
+    return document.replace("</head>", tag + "</head>", 1)
+
+
 def _seo_inject_html(document: str, meta: dict, body_html: str = "") -> str:
     title = html_escape(meta["title"], quote=True)
     description = html_escape(meta["description"], quote=True)
@@ -7705,4 +7733,8 @@ if FRONTEND_BUILD_DIR.exists():
             body_html = ""
         if normalized_path == "":
             document = await _inject_hero_preload(document)
+        elif normalized_path == "shop" and not request.query_params.get("search"):
+            document = await _inject_first_product_preload(document)
+        elif normalized_path.startswith("product-category/") and normalized_path.count("/") == 1:
+            document = await _inject_first_product_preload(document, normalized_path.split("/", 1)[1])
         return HTMLResponse(_seo_inject_html(document, meta, body_html), headers=headers)
