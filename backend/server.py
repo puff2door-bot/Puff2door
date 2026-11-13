@@ -54,7 +54,9 @@ load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
+# Times are stored in UTC. Read them back marked as UTC, so the website sends "…+00:00" and
+# browsers convert to Eastern correctly (unmarked times were shown 5 hours late, e.g. 2 PM as 7 PM).
+client = AsyncIOMotorClient(mongo_url, tz_aware=True, tzinfo=timezone.utc)
 db = client[os.environ['DB_NAME']]
 file_bucket = AsyncIOMotorGridFSBucket(db, bucket_name="uploads")
 
