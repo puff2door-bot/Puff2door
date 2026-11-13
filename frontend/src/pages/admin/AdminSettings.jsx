@@ -30,7 +30,7 @@ const AdminSettings = () => {
     googleReviewUrl: data.googleReviewUrl || "", hideOutOfStock: data.hideOutOfStock ?? true, liveShelfEnabled: data.liveShelfEnabled ?? false,
     pickupEnabled: data.pickupEnabled ?? false, pickupAddress: data.pickupAddress || "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714", pickupHoursText: data.pickupHoursText ?? "Pick up during store hours.",
     pickupReadyMinutes: data.pickupReadyMinutes ?? 15, pickupHoldDays: data.pickupHoldDays ?? 1, pickupInstructions: data.pickupInstructions ?? "Bring a valid, unexpired 21+ photo ID that matches the name on the order.",
-    lakeNonaEnabled: data.lakeNonaEnabled ?? false, zipTaxRates: Object.entries(data.zipTaxRates || {}).map(([z, r]) => `${z}=${+(r * 100).toFixed(3)}`).join(", ") });
+    lakeNonaEnabled: data.lakeNonaEnabled ?? false, countdownStyle: data.countdownStyle || "chip", zipTaxRates: Object.entries(data.zipTaxRates || {}).map(([z, r]) => `${z}=${+(r * 100).toFixed(3)}`).join(", ") });
 
   useEffect(() => {
     api.get("/admin/settings").then(({ data }) => setF(toForm(data)));
@@ -45,7 +45,7 @@ const AdminSettings = () => {
         countdownVisible: Boolean(f.countdownVisible), countdownHeadlineVisible: Boolean(f.countdownHeadlineVisible), countdownHoursVisible: Boolean(f.countdownHoursVisible), countdownOpenText: f.countdownOpenText, countdownClosedText: f.countdownClosedText, countdownClosedDayText: f.countdownClosedDayText, countdownPausedText: f.countdownPausedText, countdownHoursText: f.countdownHoursText, countdownExtraLines: f.countdownExtraLines,
         deliverySlotCapacity: Number(f.deliverySlotCapacity), deliveryDriverCount: Number(f.deliveryDriverCount), ordersPerDriverPerWindow: Number(f.ordersPerDriverPerWindow), defaultEtaMinutes: Number(f.defaultEtaMinutes), googleReviewUrl: f.googleReviewUrl.trim(), hideOutOfStock: Boolean(f.hideOutOfStock), liveShelfEnabled: Boolean(f.liveShelfEnabled),
         pickupEnabled: Boolean(f.pickupEnabled), pickupAddress: f.pickupAddress.trim(), pickupHoursText: f.pickupHoursText, pickupReadyMinutes: Number(f.pickupReadyMinutes), pickupHoldDays: Number(f.pickupHoldDays), pickupInstructions: f.pickupInstructions,
-        lakeNonaEnabled: Boolean(f.lakeNonaEnabled), zipTaxRates: Object.fromEntries(f.zipTaxRates.split(/[\s,]+/).filter(Boolean).map((pair) => { const [z, r] = pair.split("="); return [z.trim(), Number(r) / 100]; })) });
+        lakeNonaEnabled: Boolean(f.lakeNonaEnabled), countdownStyle: f.countdownStyle, zipTaxRates: Object.fromEntries(f.zipTaxRates.split(/[\s,]+/).filter(Boolean).map((pair) => { const [z, r] = pair.split("="); return [z.trim(), Number(r) / 100]; })) });
       setF(toForm(data));
       toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
     } catch (err) {
@@ -142,6 +142,15 @@ const AdminSettings = () => {
           <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer"><input type="checkbox" data-testid="settings-sameday-enabled" className="accent-emerald-600 h-4 w-4" checked={f.sameDayEnabled} onChange={(e) => setF({ ...f, sameDayEnabled: e.target.checked })} /> {f.sameDayEnabled ? "ON" : "OFF"}</label>
         </div>
         <p className="text-xs text-neutral-500 mb-4">Shows "Order within Xh Ym for today's local delivery" on the homepage and checkout. Times are Orlando (Eastern) time on the server — customers' device clocks are ignored, and checkout re-checks the cutoff.</p>
+        <div className="rounded-xl border border-neutral-200 p-4 mb-4" data-testid="settings-countdown-style">
+          <p className="text-sm font-bold text-neutral-900 mb-1">Homepage banner style</p>
+          <p className="text-xs text-neutral-600 mb-3">Compact shows a status chip ("Same-day open · 2h 14m left" or "Closed for today"), the next delivery time and a Shop now button. Classic shows the text lines below.</p>
+          <div className="flex gap-4 flex-wrap text-sm">
+            {[["chip", "Compact with Shop now button"], ["classic", "Classic text"]].map(([value, label]) => (
+              <label key={value} className="flex items-center gap-2 cursor-pointer"><input type="radio" name="countdownStyle" className="accent-emerald-600 h-4 w-4" checked={f.countdownStyle === value} onChange={() => setF({ ...f, countdownStyle: value })} /> {label}</label>
+            ))}
+          </div>
+        </div>
         <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 mb-4" data-testid="settings-countdown-copy">
           <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
             <div><p className="text-sm font-bold text-neutral-900">Countdown text &amp; visibility</p><p className="text-xs text-neutral-600 mt-0.5">Edit every message without changing delivery scheduling. Available placeholders: <code>{'{countdown}'}</code>, <code>{'{cutoff}'}</code>, <code>{'{start}'}</code>, <code>{'{end}'}</code>, <code>{'{next}'}</code>.</p></div>
