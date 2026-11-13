@@ -43,4 +43,10 @@ export const getToken = () => localStorage.getItem("p2d_token");
 
 export const imgUrl = (u) => (u && u.startsWith("/api/") ? `${BACKEND_URL}${u}` : u);
 
+// Smaller copies for images our server can resize (?w=); undefined for any other image.
+export const imgSrcSet = (u, widths = [320, 480, 640]) =>
+  u && (u.startsWith("/uploads/") || u.startsWith("/api/files/")) && !u.includes("?")
+    ? widths.map((w) => `${imgUrl(u)}?w=${w} ${w}w`).join(", ")
+    : undefined;
+
 export default api;

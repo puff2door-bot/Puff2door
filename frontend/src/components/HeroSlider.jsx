@@ -2,7 +2,9 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCatalog } from "../context/CatalogContext";
-import { imgUrl } from "../api";
+import { imgUrl, imgSrcSet } from "../api";
+
+const HERO_WIDTHS = [640, 800, 1200, 1600];
 
 const HeroSlider = () => {
   const { heroSlides } = useCatalog();
@@ -27,7 +29,12 @@ const HeroSlider = () => {
       preload.dataset.p2dHeroPreload = "true";
       document.head.appendChild(preload);
     }
-    preload.href = href;
+    const srcset = imgSrcSet(firstImage, HERO_WIDTHS);
+    preload.href = srcset ? `${href}?w=800` : href;
+    if (srcset) {
+      preload.setAttribute("imagesrcset", srcset);
+      preload.setAttribute("imagesizes", "100vw");
+    }
     preload.fetchPriority = "high";
     return undefined;
   }, [heroSlides]);
@@ -44,7 +51,7 @@ const HeroSlider = () => {
           key={s.id}
           className={`hero-slide absolute inset-0 ${i === safeIdx ? "opacity-100 z-10" : "opacity-0 z-0"}`}
         >
-          <img src={imgUrl(s.image)} alt={s.title} loading={i === 0 ? "eager" : "lazy"} fetchPriority={i === 0 ? "high" : "auto"} decoding={i === 0 ? "sync" : "async"} width="1264" height="848" sizes="100vw" className="h-full w-full object-cover object-right" />
+          <img src={imgUrl(s.image)} srcSet={imgSrcSet(s.image, HERO_WIDTHS)} alt={s.title} loading={i === 0 ? "eager" : "lazy"} fetchPriority={i === 0 ? "high" : "auto"} decoding={i === 0 ? "sync" : "async"} width="1264" height="848" sizes="100vw" className="h-full w-full object-cover object-right" />
           <div className="absolute inset-0 bg-gradient-to-r from-neutral-900/90 via-neutral-900/50 to-transparent" />
           <div className="absolute inset-0 flex items-center">
             <div className="max-w-[1280px] w-full mx-auto px-6 lg:px-4">
