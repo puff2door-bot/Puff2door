@@ -22,6 +22,8 @@ import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from pymongo.errors import DuplicateKeyError
 
+from catalog_text import canonical_product_slug, normalize_catalog_text, slugify_catalog
+
 
 
 # Removed-in-Clover products are hidden automatically unless more than this many
@@ -33,8 +35,7 @@ MISSING_HIDE_SHARE = 0.05
 
 
 def _slug(value: str) -> str:
-    text = re.sub(r"[^a-z0-9]+", "-", str(value or "").lower().replace("&", " and ")).strip("-")
-    return text[:80] or "item"
+    return slugify_catalog(value)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -918,7 +919,7 @@ class CloverIntegration:
                 continue
             if await self.db.products.find_one({"cloverItemId": clover_id}, {"_id": 1}):
                 continue
-            name = str(item.get("name") or "").strip() or "Clover item"
+            name = normalize_catalog_text(item.get("name") or "") or "Clover item"
             price = float(item.get("price") or 0)
             category_slug = item.get("mappedCategorySlug") or ""
             live = bool(category_slug) and price > 0 and not item.get("needsReview")
@@ -959,7 +960,7 @@ class CloverIntegration:
                 last = await self.db.products.find_one(sort=[("id", -1)])
                 next_id = int(last["id"]) + 1 if last and last.get("id") else 1
                 try:
-                    await self.db.products.insert_one({**doc, "id": next_id, "slug": f"{_slug(name)}-{next_id}"})
+                    await self.db.products.insert_one({**doc, "id": next_id, "slug": canonical_product_slug(name, next_id)})
                 except DuplicateKeyError:
                     if await self.db.products.find_one({"cloverItemId": clover_id}, {"_id": 1}):
                         break
@@ -981,10 +982,11 @@ class CloverIntegration:
         for item in remote:
             if item["id"] in existing_ids or item.get("needsReview") or not item.get("mappedCategorySlug") or not item.get("mappedBrandSlug"):
                 continue
+            name = normalize_catalog_text(item.get("name") or "") or "Clover item"
             await self.db.products.insert_one({
                 "id": next_id,
-                "slug": f"clover-{next_id}",
-                "name": item.get("name") or "Clover item",
+                "slug": canonical_product_slug(name, next_id),
+                "name": name,
                 "price": item.get("price") or 0,
                 "stock": item.get("stock") or 0,
                 "sku": item.get("sku") or "",

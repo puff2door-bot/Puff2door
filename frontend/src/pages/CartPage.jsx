@@ -21,7 +21,7 @@ const CartPage = () => {
   const navigate = useNavigate();
   const [code, setCode] = useState("");
   const [applying, setApplying] = useState(false);
-  const { shipping, tax, discount, total } = totals;
+  const { shipping, tax, discount, bundleDiscount = 0, total } = totals;
 
   const onApply = async () => {
     if (!code.trim()) return;
@@ -65,6 +65,7 @@ const CartPage = () => {
                   <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide">{it.category}</p>
                   <Link to={`/shop/${it.slug}`} className="block text-sm font-medium text-neutral-800 line-clamp-2 hover:text-emerald-600">{it.name}</Link>
                   <StockNote item={it} />
+                  {it.mixSaveQty > 0 && <p className="mt-1 text-[10px] font-black uppercase tracking-wider text-emerald-600">{it.mixSaveQty} in Mix &amp; Save bundle</p>}
                   <p className="font-heading text-lg mt-1">${it.price.toFixed(2)}</p>
                 </div>
                 <div className="flex flex-col items-end justify-between">
@@ -105,6 +106,8 @@ const CartPage = () => {
             <div className="space-y-3 text-sm border-t pt-4">
               <div className="flex justify-between"><span className="text-neutral-500">Subtotal</span><span className="font-semibold">${subtotal.toFixed(2)}</span></div>
               {discount > 0 && (<div className="flex justify-between text-emerald-600" data-testid="cart-discount"><span>Discount ({promo.code})</span><span className="font-semibold">-${discount.toFixed(2)}</span></div>)}
+              {bundleDiscount > 0 && (<div className="flex justify-between text-emerald-600" data-testid="cart-bundle-discount"><span>Mix &amp; Save discount</span><span className="font-semibold">-${bundleDiscount.toFixed(2)}</span></div>)}
+              {totals.mixSave?.selectedQuantity > 0 && !totals.mixSave?.qualified && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">Mix &amp; Save is not active yet. {totals.mixSave.itemsRemaining > 0 ? `Add ${totals.mixSave.itemsRemaining} eligible item(s).` : `Add $${totals.mixSave.amountRemaining.toFixed(2)} in bundle items.`}</p>}
               {totals.reward > 0 && (<div className="flex justify-between text-emerald-600" data-testid="cart-reward"><span>Rewards applied</span><span className="font-semibold">-${totals.reward.toFixed(2)}</span></div>)}
               <div className="flex justify-between"><span className="text-neutral-500">Delivery</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
               <div className="flex justify-between" data-testid="cart-tax"><span className="text-neutral-500">{pricing.taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>

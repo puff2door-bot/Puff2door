@@ -11,7 +11,7 @@ from gridfs.errors import NoFile
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, EmailStr, field_validator
+from pydantic import BaseModel, Field, EmailStr, field_validator, model_validator
 from typing import Any, Dict, List, Optional
 import uuid
 import random
@@ -33,6 +33,13 @@ from zoneinfo import ZoneInfo
 import jwt
 from passlib.context import CryptContext
 from clover import CloverError, CloverIntegration, order_should_sync_stock
+from catalog_text import (
+    CATEGORY_SLUG_ALIASES,
+    canonical_category_slug,
+    canonical_product_slug,
+    normalize_catalog_text,
+    slugify_catalog,
+)
 from instagram import InstagramError, InstagramIntegration, normalize_username
 from guides import GUIDES, GUIDES_BY_SLUG, GUIDES_INDEX_META, guide_summary
 
@@ -138,10 +145,20 @@ class CartItem(BaseModel):
     categorySlug: str = Field(default="", max_length=120)
     slug: str = Field(default="", max_length=200)
     qty: int = Field(default=1, ge=1, le=99)
+    # Quantity intentionally placed in the Mix & Save tray. The server still
+    # verifies that the referenced catalog product is eligible.
+    mixSaveQty: int = Field(default=0, ge=0, le=99)
 
 
 class CartInput(BaseModel):
     items: List[CartItem] = Field(default_factory=list, max_length=100)
+
+
+class CartQuoteInput(BaseModel):
+    items: List[CartItem] = Field(default_factory=list, max_length=100)
+    promoCode: str = Field(default="", max_length=80)
+    redeemPoints: int = Field(default=0, ge=0)
+    pickup: bool = False
 
 
 class ReviewInput(BaseModel):
@@ -311,6 +328,11 @@ DEFAULT_SETTINGS = {"taxRate": 0.065, "zipTaxRates": {"32827": 0.065, "32832": 0
                     "countdownExtraLines": [],
                     "deliverySlotCapacity": 8, "deliveryDriverCount": 1, "ordersPerDriverPerWindow": 8, "defaultEtaMinutes": 45,
                     "googleReviewUrl": "", "hideOutOfStock": True, "liveShelfEnabled": False, "downloadAppEnabled": False,
+                    "mixSaveEnabled": True, "mixSaveAnimationEnabled": True, "mixSaveAnimationStyle": "shimmer",
+                    "mixSaveDiscountType": "percent", "mixSaveDiscountValue": 10.0,
+                    "mixSaveMinQuantity": 2, "mixSaveMinSubtotal": 50.0,
+                    "mixSaveCategorySlugs": ["disposable", "delta-smokeables", "delta", "delta-cartridges"],
+                    "mixSaveProductIds": [], "mixSaveButtonText": "Mix & Save 10%",
                     "pickupEnabled": False, "pickupAddress": "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714",
                     "pickupHoursText": "Pick up during store hours.", "pickupReadyMinutes": 15, "pickupHoldDays": 1,
                     "pickupInstructions": "Bring a valid, unexpired 21+ photo ID that matches the name on the order."}
@@ -621,6 +643,16 @@ class StoreSettingsInput(BaseModel):
     hideOutOfStock: bool = True
     liveShelfEnabled: bool = False
     downloadAppEnabled: bool = False
+    mixSaveEnabled: bool = True
+    mixSaveAnimationEnabled: bool = True
+    mixSaveAnimationStyle: str = "shimmer"
+    mixSaveDiscountType: str = "percent"
+    mixSaveDiscountValue: float = Field(default=10.0, ge=0, le=100000)
+    mixSaveMinQuantity: int = Field(default=2, ge=2, le=99)
+    mixSaveMinSubtotal: float = Field(default=50.0, ge=0, le=1000000)
+    mixSaveCategorySlugs: List[str] = Field(default_factory=lambda: ["disposable", "delta-smokeables", "delta", "delta-cartridges"])
+    mixSaveProductIds: List[int] = Field(default_factory=list)
+    mixSaveButtonText: str = Field(default="Mix & Save 10%", min_length=1, max_length=40)
     pickupEnabled: bool = False
     pickupAddress: str = Field(default="481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714", max_length=200)
     pickupHoursText: str = Field(default="Pick up during store hours.", max_length=240)
@@ -637,6 +669,55 @@ class StoreSettingsInput(BaseModel):
         if v not in {"classic", "showcase", "minimal", "neon", "blue"}:
             raise ValueError("Choose a valid homepage layout")
         return v
+
+    @field_validator("mixSaveAnimationStyle")
+    @classmethod
+    def _mix_save_animation(cls, v):
+        if v not in {"pulse", "shimmer", "glow", "none"}:
+            raise ValueError("Choose Pulse, Shimmer, Glow, or None")
+        return v
+
+    @field_validator("mixSaveDiscountType")
+    @classmethod
+    def _mix_save_discount_type(cls, v):
+        if v not in {"percent", "flat"}:
+            raise ValueError("Choose a percentage or flat bundle discount")
+        return v
+
+    @field_validator("mixSaveCategorySlugs")
+    @classmethod
+    def _mix_save_categories(cls, values):
+        cleaned = []
+        for value in values:
+            slug = re.sub(r"[^a-z0-9-]", "", str(value or "").strip().lower())
+            if slug and slug not in cleaned:
+                cleaned.append(slug)
+        if len(cleaned) > 100:
+            raise ValueError("Choose no more than 100 eligible categories")
+        return cleaned
+
+    @field_validator("mixSaveProductIds")
+    @classmethod
+    def _mix_save_product_ids(cls, values):
+        cleaned = []
+        for value in values:
+            product_id = int(value)
+            if product_id > 0 and product_id not in cleaned:
+                cleaned.append(product_id)
+        if len(cleaned) > 1000:
+            raise ValueError("Choose no more than 1,000 eligible products")
+        return cleaned
+
+    @field_validator("mixSaveButtonText")
+    @classmethod
+    def _mix_save_button_text(cls, value):
+        return str(value or "").strip()
+
+    @model_validator(mode="after")
+    def _mix_save_discount_value(self):
+        if self.mixSaveDiscountType == "percent" and self.mixSaveDiscountValue > 100:
+            raise ValueError("A percentage bundle discount cannot be more than 100%")
+        return self
 
     @field_validator("deliveryCutoff")
     @classmethod
@@ -963,7 +1044,13 @@ async def loyalty_award_for_order(o: dict):
     rules = loyalty_rules(settings)
     if not rules["loyaltyEnabled"] or not o.get("userId") or o.get("paymentStatus") != "paid" or o.get("manualStatus") == "cancelled":
         return
-    points = int(math.floor(round(o.get("subtotal", 0) - o.get("discount", 0) - o.get("rewardDiscount", 0), 2) * rules["pointsPerDollar"]))
+    points = int(math.floor(round(
+        o.get("subtotal", 0)
+        - o.get("discount", 0)
+        - o.get("bundleDiscount", 0)
+        - o.get("rewardDiscount", 0),
+        2,
+    ) * rules["pointsPerDollar"]))
     if points <= 0:
         return
     if await loyalty_add(o["userId"], "earn", points, f"earn:{o['id']}", f"Order #{o['orderNumber']}", o):
@@ -1104,6 +1191,75 @@ def require_pickup(settings: dict) -> dict:
             "holdUntil": hold_until.astimezone(timezone.utc)}
 
 
+def mix_save_public_rules(settings: dict) -> dict:
+    """Customer-safe Mix & Save configuration shared by the drawer and cart."""
+    return {
+        "enabled": bool(settings.get("mixSaveEnabled", DEFAULT_SETTINGS["mixSaveEnabled"])),
+        "animationEnabled": bool(settings.get("mixSaveAnimationEnabled", DEFAULT_SETTINGS["mixSaveAnimationEnabled"])),
+        "animationStyle": settings.get("mixSaveAnimationStyle", DEFAULT_SETTINGS["mixSaveAnimationStyle"]),
+        "discountType": settings.get("mixSaveDiscountType", DEFAULT_SETTINGS["mixSaveDiscountType"]),
+        "discountValue": float(settings.get("mixSaveDiscountValue", DEFAULT_SETTINGS["mixSaveDiscountValue"])),
+        "minQuantity": int(settings.get("mixSaveMinQuantity", DEFAULT_SETTINGS["mixSaveMinQuantity"])),
+        "minSubtotal": float(settings.get("mixSaveMinSubtotal", DEFAULT_SETTINGS["mixSaveMinSubtotal"])),
+        "eligibleCategorySlugs": list(settings.get("mixSaveCategorySlugs", DEFAULT_SETTINGS["mixSaveCategorySlugs"]) or []),
+        "eligibleProductIds": [int(value) for value in (settings.get("mixSaveProductIds", []) or [])],
+        "buttonText": str(settings.get("mixSaveButtonText", DEFAULT_SETTINGS["mixSaveButtonText"]) or DEFAULT_SETTINGS["mixSaveButtonText"]),
+    }
+
+
+def calculate_mix_save_discount(priced: List[dict], settings: dict, promo_discount_amount: float = 0.0, cart_subtotal: Optional[float] = None) -> dict:
+    """Calculate the secure bundle discount from catalog-backed priced lines.
+
+    Promo savings are allocated proportionally to bundle lines before testing
+    the strict minimum-spend rule. This prevents discount stacking from leaving
+    an effective bundle subtotal at or below the configured threshold.
+    """
+    rules = mix_save_public_rules(settings)
+    eligible_categories = set(rules["eligibleCategorySlugs"])
+    eligible_products = set(rules["eligibleProductIds"])
+    selected_quantity = 0
+    selected_subtotal = 0.0
+
+    for item in priced:
+        product_id = int(item.get("productId") or item.get("id") or 0)
+        is_eligible = product_id in eligible_products or item.get("categorySlug", "") in eligible_categories
+        requested = int(item.get("mixSaveQty") or 0)
+        selected = min(max(requested, 0), int(item.get("qty") or 0)) if is_eligible else 0
+        item["mixSaveEligible"] = is_eligible
+        item["mixSaveQty"] = selected
+        selected_quantity += selected
+        selected_subtotal += float(item.get("price") or 0) * selected
+
+    selected_subtotal = r2(selected_subtotal)
+    subtotal = r2(cart_subtotal if cart_subtotal is not None else sum(float(i.get("price") or 0) * int(i.get("qty") or 0) for i in priced))
+    allocated_promo = r2(float(promo_discount_amount or 0) * (selected_subtotal / subtotal)) if subtotal > 0 else 0.0
+    qualifying_subtotal = r2(max(selected_subtotal - allocated_promo, 0))
+    quantity_ok = selected_quantity >= rules["minQuantity"]
+    subtotal_ok = qualifying_subtotal > rules["minSubtotal"]
+    qualified = bool(rules["enabled"] and quantity_ok and subtotal_ok)
+
+    discount = 0.0
+    if qualified:
+        if rules["discountType"] == "flat":
+            discount = min(rules["discountValue"], qualifying_subtotal)
+        else:
+            discount = qualifying_subtotal * min(rules["discountValue"], 100) / 100
+    discount = r2(discount)
+    amount_remaining = 0.0 if subtotal_ok else r2(max(rules["minSubtotal"] - qualifying_subtotal + 0.01, 0.01))
+
+    return {
+        **rules,
+        "qualified": qualified,
+        "selectedQuantity": selected_quantity,
+        "bundleSubtotal": selected_subtotal,
+        "qualifyingSubtotal": qualifying_subtotal,
+        "promoAllocated": allocated_promo,
+        "itemsRemaining": max(rules["minQuantity"] - selected_quantity, 0),
+        "amountRemaining": amount_remaining,
+        "discount": discount,
+    }
+
+
 async def price_cart(items: List[CartItem], promo_code: str = "", redeem_points: int = 0, user: Optional[dict] = None, tip: float = 0, pickup: bool = False, zip_code: str = ""):
     problems, priced = [], []
     for it in items:
@@ -1123,16 +1279,30 @@ async def price_cart(items: List[CartItem], promo_code: str = "", redeem_points:
             deal = round(base * 0.8, 2)
             if it.price <= deal + 0.005:
                 price = min(price, deal)
-        priced.append({**it.model_dump(), "name": prod["name"], "price": round(price, 2), "image": prod.get("image", ""), "slug": prod["slug"]})
+        priced.append({
+            **it.model_dump(),
+            "name": prod["name"],
+            "price": round(price, 2),
+            "image": prod.get("image", ""),
+            "slug": prod["slug"],
+            # Catalog-owned fields replace every customer-supplied eligibility
+            # field before the bundle rules are calculated.
+            "category": prod.get("category", ""),
+            "categorySlug": prod.get("categorySlug", ""),
+        })
     if problems:
         raise HTTPException(status_code=409, detail="; ".join(problems))
     settings = await get_settings()
     subtotal = round(sum(i["price"] * i["qty"] for i in priced), 2)
     promo = await resolve_promo(promo_code, subtotal) if promo_code.strip() else None
     pdisc = round(min(promo_discount(promo, subtotal) if promo else 0.0, subtotal), 2)
-    reward = await loyalty_validate_redeem(user, int(redeem_points or 0), round(subtotal - pdisc, 2), settings)
-    totals = compute_totals(subtotal, settings, pdisc + reward, pickup=pickup, zip_code=zip_code)
+    bundle = calculate_mix_save_discount(priced, settings, pdisc, subtotal)
+    bundle_discount = bundle["discount"]
+    reward = await loyalty_validate_redeem(user, int(redeem_points or 0), round(subtotal - pdisc - bundle_discount, 2), settings)
+    totals = compute_totals(subtotal, settings, pdisc + bundle_discount + reward, pickup=pickup, zip_code=zip_code)
     totals["discount"] = pdisc
+    totals["bundleDiscount"] = bundle_discount
+    totals["mixSave"] = bundle
     totals["rewardDiscount"] = reward
     totals["rewardPoints"] = int(redeem_points or 0) if reward else 0
     totals["promoCode"] = promo["code"] if promo else ""
@@ -1189,6 +1359,26 @@ class ProductInput(BaseModel):
     confirmCloverPrice: bool = False
     createInClover: bool = False
     confirmCloverStock: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def _catalog_name(cls, value):
+        cleaned = normalize_catalog_text(value)
+        if not cleaned:
+            raise ValueError("Product name is required")
+        if len(cleaned) > 180:
+            raise ValueError("Product name must be 180 characters or fewer")
+        return cleaned
+
+    @field_validator("categorySlug")
+    @classmethod
+    def _catalog_category_slug(cls, value):
+        return canonical_category_slug(value)
+
+    @field_validator("category")
+    @classmethod
+    def _catalog_category(cls, value):
+        return normalize_catalog_text(value)
 
     @field_validator("sku", "barcode")
     @classmethod
@@ -1327,7 +1517,7 @@ def is_admin(user: Optional[dict]) -> bool:
 
 
 def slugify(name: str) -> str:
-    return re.sub(r"(^-|-$)", "", re.sub(r"[^a-z0-9]+", "-", name.lower()))[:60]
+    return slugify_catalog(name)
 
 
 def brand_slug(p: dict) -> str:
@@ -1774,6 +1964,8 @@ def order_response(o: dict) -> dict:
         "tax": o.get("tax", 0),
         "taxRate": o.get("taxRate", 0),
         "discount": o.get("discount", 0),
+        "bundleDiscount": o.get("bundleDiscount", 0),
+        "mixSave": o.get("mixSave", {}),
         "promoCode": o.get("promoCode", ""),
         "tip": o.get("tip", 0),
         "total": o["total"],
@@ -2068,10 +2260,28 @@ async def put_cart(inp: CartInput, user: dict = Depends(get_current_user)):
     return {"items": items}
 
 
+@api_router.post("/cart/quote")
+async def quote_cart(inp: CartQuoteInput, user: Optional[dict] = Depends(get_optional_user)):
+    """Authoritative cart quote used by cart, checkout, and payment screens."""
+    if not inp.items:
+        settings = await get_settings()
+        empty_totals = compute_totals(0, settings, 0, pickup=inp.pickup)
+        empty_totals.update({"discount": 0.0, "bundleDiscount": 0.0, "rewardDiscount": 0.0,
+                             "rewardPoints": 0, "promoCode": "", "tip": 0.0,
+                             "mixSave": calculate_mix_save_discount([], settings)})
+        return {"items": [], "totals": empty_totals}
+    items, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user, pickup=inp.pickup)
+    return {"items": items, "totals": totals}
+
+
 # ---- Reviews ----
 @api_router.get("/reviews/{product_slug}")
 async def get_reviews(product_slug: str):
-    reviews = await db.reviews.find({"productSlug": product_slug}).sort("createdAt", -1).to_list(500)
+    product = await db.products.find_one({"$or": [{"slug": product_slug}, {"legacySlugs": product_slug}], "active": True})
+    slugs = [product_slug]
+    if product:
+        slugs = list(dict.fromkeys([product.get("slug"), *(product.get("legacySlugs") or []), product_slug]))
+    reviews = await db.reviews.find({"productSlug": {"$in": [value for value in slugs if value]}}).sort("createdAt", -1).to_list(500)
     out = []
     for r in reviews:
         out.append({
@@ -2089,11 +2299,12 @@ async def get_reviews(product_slug: str):
 @api_router.post("/reviews")
 async def create_review(inp: ReviewInput, request: Request):
     await enforce_rate_limit(request, "review", 5, 3600)
-    if not await db.products.find_one({"slug": inp.productSlug, "active": True}):
+    product = await db.products.find_one({"$or": [{"slug": inp.productSlug}, {"legacySlugs": inp.productSlug}], "active": True})
+    if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     review = {
         "id": str(uuid.uuid4()),
-        "productSlug": inp.productSlug,
+        "productSlug": product["slug"],
         "name": inp.name.strip() or "Anonymous",
         "rating": inp.rating,
         "comment": inp.comment.strip(),
@@ -2274,6 +2485,8 @@ async def create_order(inp: OrderInput, request: Request, user: Optional[dict] =
         "tax": totals["tax"],
         "taxRate": totals["taxRate"],
         "discount": totals["discount"],
+        "bundleDiscount": totals.get("bundleDiscount", 0),
+        "mixSave": totals.get("mixSave", {}),
         "promoCode": totals["promoCode"],
         "rewardDiscount": totals["rewardDiscount"],
         "rewardPoints": totals["rewardPoints"],
@@ -2624,12 +2837,17 @@ async def list_brands():
 
 
 # ---- Categories: centralized source of truth (id, slug, name, order, active) ----
-DEFAULT_CATEGORIES = [("disposable", "DISPOSABLE VAPES"), ("delta", "DELTA DISPOSABLES"), ("delta-cartridges", "DELTA CARTRIDGES"), ("delta-edibles", "DELTA EDIBLES"), ("delta-smokeables", "DELTA SMOKEABLES"), ("vape-accessories", "VAPE ACCESSORIES"), ("hemp-wraps", "HEMP WRAPS"), ("e-liquids", "PODS"), ("paper-cones", "PAPER & CONES"), ("kratom", "KRATOM"), ("glass-pipes", "GLASS PIPES"), ("lighter", "LIGHTER"), ("air-freshner", "AIR FRESHNER"), ("hookah-accessories", "HOOKAH ACCESSORIES"), ("miscellaneous", "MISCELLANEOUS"), ("munchies", "MUNCHIES"), ("cigars", "CIGARS")]
+DEFAULT_CATEGORIES = [("disposable", "DISPOSABLE VAPES"), ("delta", "DELTA DISPOSABLES"), ("delta-cartridges", "DELTA CARTRIDGES"), ("delta-edibles", "DELTA EDIBLES"), ("delta-smokeables", "DELTA SMOKEABLES"), ("vape-accessories", "VAPE ACCESSORIES"), ("hemp-wraps", "HEMP WRAPS"), ("e-liquids", "PODS"), ("paper-cones", "PAPER & CONES"), ("kratom", "KRATOM"), ("glass-pipes", "GLASS PIPES"), ("lighter", "LIGHTER"), ("air-freshener", "AIR FRESHENER"), ("hookah-accessories", "HOOKAH ACCESSORIES"), ("miscellaneous", "MISCELLANEOUS"), ("munchies", "MUNCHIES"), ("cigars", "CIGARS")]
 
 
 class CategoryInput(BaseModel):
     name: str = ""
     active: bool = True
+
+    @field_validator("name")
+    @classmethod
+    def _catalog_category_name(cls, value):
+        return normalize_catalog_text(value)
 
 
 class ReorderInput(BaseModel):
@@ -2714,7 +2932,7 @@ async def list_categories():
 
 @api_router.get("/products/{slug}")
 async def get_product(slug: str):
-    p = await db.products.find_one({"slug": slug, "active": True})
+    p = await db.products.find_one({"$or": [{"slug": slug}, {"legacySlugs": slug}], "active": True})
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
     return product_out(p)
@@ -2741,6 +2959,7 @@ async def public_settings():
             "presentation": {"homepageLayout": settings.get("homepageLayout", "classic"),
                              "liveShelfEnabled": bool(settings.get("liveShelfEnabled", False)),
                              "downloadAppEnabled": bool(settings.get("downloadAppEnabled", False))},
+            "mixSave": mix_save_public_rules(settings),
             "trust": {"googleReviewUrl": settings.get("googleReviewUrl", "")},
             "pickup": pickup_rules(settings)}
 
@@ -3010,6 +3229,10 @@ async def delivery_window_public():
 
 
 _area_cache: dict = {}
+ZIP_AREA_LABELS = {
+    "32827": "Lake Nona",
+    "32832": "Lake Nona",
+}
 
 
 @api_router.get("/delivery/area")
@@ -3026,7 +3249,8 @@ async def delivery_area():
         for code in allowed:
             z = zip_lookup(code)
             if z:
-                cities.setdefault(z["city"].title(), []).append({"zip": z["zip"], "distanceMiles": round(miles_between(center, z), 1) if center else None})
+                area_name = ZIP_AREA_LABELS.get(z["zip"], z["city"].title())
+                cities.setdefault(area_name, []).append({"zip": z["zip"], "distanceMiles": round(miles_between(center, z), 1) if center else None})
     elif center:
         for z in zipcodes.filter_by_state(center["state"]):
             if z.get("zip_code_type") != "STANDARD" or not z.get("lat") or z.get("active") is False:
@@ -3286,7 +3510,7 @@ async def admin_create_product(inp: ProductInput, admin: dict = Depends(get_admi
     doc = inp.dict(exclude={"confirmCloverPrice", "createInClover", "confirmCloverStock"})
     doc.update({
         "id": pid,
-        "slug": f"{slugify(inp.name)}-{pid}",
+        "slug": canonical_product_slug(inp.name, pid),
         "image2": inp.image2 or inp.image,
         "brandName": await resolve_brand_name(inp),
         "category": await resolve_category_name(inp),
@@ -3317,8 +3541,19 @@ async def admin_update_product(product_id: int, inp: ProductInput, admin: dict =
     doc["image2"] = inp.image2 or inp.image
     doc["brandName"] = await resolve_brand_name(inp)
     doc["category"] = await resolve_category_name(inp)
+    old_slug = str(existing.get("slug") or "").strip()
+    name_changed = inp.name != str(existing.get("name") or "").strip()
+    new_slug = canonical_product_slug(inp.name, product_id) if name_changed or not old_slug else old_slug
+    aliases = [str(value).strip() for value in existing.get("legacySlugs", []) if str(value).strip()]
+    if old_slug and old_slug != new_slug and old_slug not in aliases:
+        aliases.append(old_slug)
+    doc["slug"] = new_slug
+    doc["legacySlugs"] = [value for value in dict.fromkeys(aliases) if value != new_slug]
     doc["updatedAt"] = now_utc()
     await db.products.update_one({"id": product_id}, {"$set": doc})
+    if old_slug and old_slug != new_slug:
+        await db.reviews.update_many({"productSlug": old_slug}, {"$set": {"productSlug": new_slug}})
+        await db.stock_alerts.update_many({"productId": product_id}, {"$set": {"productSlug": new_slug, "name": inp.name}})
     await hd_details.drop_drafts(db, [product_id], "edited by owner")  # owner's own edit wins over a waiting draft
     restocked = int(existing.get("stock", 0)) == 0 and inp.stock > 0
     notified = 0
@@ -4055,7 +4290,7 @@ async def admin_clover_import(inp: CloverImportInput, admin: dict = Depends(get_
         safe_name = "Clover item"
         defaults = {
             "id": pid,
-            "slug": f"{slugify(safe_name)}-{pid}",
+            "slug": canonical_product_slug(safe_name, pid),
             "category": "Clover imports",
             "categorySlug": "clover-imports",
             "salePrice": None,
@@ -4078,8 +4313,10 @@ async def admin_clover_import(inp: CloverImportInput, admin: dict = Depends(get_
         product["minimumAge"] = defaults["minimumAge"]
         product["active"] = False
         # The integration supplies the final name after the ID is assigned.
-        final_slug = f"{slugify(product['name'])}-{pid}"
-        await db.products.update_one({"id": pid}, {"$set": {"slug": final_slug}})
+        final_name = normalize_catalog_text(product["name"])
+        final_slug = canonical_product_slug(final_name, pid)
+        await db.products.update_one({"id": pid}, {"$set": {"name": final_name, "slug": final_slug}})
+        product["name"] = final_name
         product["slug"] = final_slug
         asyncio.create_task(refresh_static_sitemap())
         return {"ok": True, "product": product_out(product), "reviewRequired": bool(product.get("cloverNeedsReview", True))}
@@ -4974,7 +5211,10 @@ async def admin_update_order_payment(order_id: str, inp: PaymentStatusInput, adm
             await release_stock(o["items"])
             updates["stockReleased"] = True
             await restore_clover_order_stock(o)
-        updates["refundedAmount"] = round(o.get("subtotal", 0) - o.get("discount", 0) - o.get("rewardDiscount", 0), 2)
+        updates["refundedAmount"] = round(
+            o.get("subtotal", 0) - o.get("discount", 0) - o.get("bundleDiscount", 0) - o.get("rewardDiscount", 0),
+            2,
+        )
     await db.orders.update_one({"id": order_id}, {"$set": updates})
     updated = await db.orders.find_one({"id": order_id})
     if "paidAt" in updates:
@@ -4999,7 +5239,14 @@ async def admin_partial_refund(order_id: str, inp: RefundInput, admin: dict = De
         raise HTTPException(status_code=404, detail="Order not found")
     if o.get("paymentStatus") != "paid":
         raise HTTPException(status_code=400, detail="Only paid orders can be refunded")
-    max_refund = round(o.get("subtotal", 0) - o.get("discount", 0) - o.get("rewardDiscount", 0) - o.get("refundedAmount", 0), 2)
+    max_refund = round(
+        o.get("subtotal", 0)
+        - o.get("discount", 0)
+        - o.get("bundleDiscount", 0)
+        - o.get("rewardDiscount", 0)
+        - o.get("refundedAmount", 0),
+        2,
+    )
     amount = round(min(inp.amount, max_refund), 2)
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Nothing left to refund on this order")
@@ -5617,6 +5864,63 @@ async def migrate_legacy_brand_copy():
         if updates:
             updates["updatedAt"] = now_utc()
             await db.products.update_one({"_id": product["_id"]}, {"$set": updates})
+
+
+async def migrate_catalog_spelling():
+    """Correct known catalog typos once while keeping every old URL working."""
+    migration_key = "catalog_spelling_and_urls_v1"
+    if await db.site_migrations.find_one({"key": migration_key}):
+        return
+
+    old_category = await db.categories.find_one({"slug": "air-freshner"})
+    new_category = await db.categories.find_one({"slug": "air-freshener"})
+    if old_category and not new_category:
+        await db.categories.update_one(
+            {"_id": old_category["_id"]},
+            {"$set": {"slug": "air-freshener", "name": "AIR FRESHENER", "legacySlugs": ["air-freshner"], "updatedAt": now_utc()}},
+        )
+    elif old_category and new_category:
+        aliases = list(dict.fromkeys([*(new_category.get("legacySlugs") or []), "air-freshner"]))
+        await db.categories.update_one({"_id": new_category["_id"]}, {"$set": {"name": "AIR FRESHENER", "legacySlugs": aliases, "updatedAt": now_utc()}})
+        await db.categories.update_one({"_id": old_category["_id"]}, {"$set": {"active": False, "updatedAt": now_utc()}})
+
+    await db.products.update_many(
+        {"categorySlug": "air-freshner"},
+        {"$set": {"categorySlug": "air-freshener", "category": "AIR FRESHENER", "updatedAt": now_utc()}},
+    )
+
+    async for product in db.products.find({}, {"id": 1, "slug": 1, "legacySlugs": 1, "name": 1, "category": 1, "categorySlug": 1}):
+        product_id = product.get("id")
+        if product_id is None:
+            continue
+        old_slug = str(product.get("slug") or "").strip()
+        old_name = str(product.get("name") or "")
+        new_name = normalize_catalog_text(old_name)
+        new_slug = canonical_product_slug(new_name, int(product_id)) if new_name != old_name or not old_slug else old_slug
+        aliases = [str(value).strip() for value in product.get("legacySlugs", []) if str(value).strip()]
+        if old_slug and old_slug != new_slug and old_slug not in aliases:
+            aliases.append(old_slug)
+        updates = {
+            "name": new_name,
+            "slug": new_slug,
+            "legacySlugs": [value for value in dict.fromkeys(aliases) if value != new_slug],
+            "category": normalize_catalog_text(product.get("category") or ""),
+            "categorySlug": canonical_category_slug(product.get("categorySlug") or ""),
+        }
+        if any(updates.get(key) != product.get(key) for key in ("name", "slug", "legacySlugs", "category", "categorySlug")):
+            updates["updatedAt"] = now_utc()
+            await db.products.update_one({"_id": product["_id"]}, {"$set": updates})
+        if old_slug and old_slug != new_slug:
+            await db.reviews.update_many({"productSlug": old_slug}, {"$set": {"productSlug": new_slug}})
+            await db.stock_alerts.update_many({"productId": product_id}, {"$set": {"productSlug": new_slug, "name": new_name}})
+
+    await db.site_migrations.update_one(
+        {"key": migration_key},
+        {"$set": {"key": migration_key, "completedAt": now_utc()}},
+        upsert=True,
+    )
+    invalidate_categories()
+    logger.info("Catalog spelling and canonical URL migration completed")
 
 
 ORPHAN_UPLOAD_CLEANUP_TOKEN = "385:310691623"
@@ -6693,6 +6997,7 @@ async def seed_data():
     await seed_brands()
     await seed_categories()
     await migrate_legacy_brand_copy()
+    await migrate_catalog_spelling()
     await assign_known_brandless_products()
     await restore_enhanced_placeholders()
     await refresh_static_sitemap()
@@ -6761,7 +7066,7 @@ CATEGORY_INTROS = {
     "lighter": "Torch lighters, refillable lighters and butane from Special Blue, Clipper, Zippo and more. Pick one up in our Altamonte Springs store or add it to a delivery order.",
     "hookah": "Hookah tobacco and coals from Al Fakher, Coco Nara and other favorites. Visit our Altamonte Springs smoke shop or order online for local delivery in ZIP 32714.",
     "kratom": "Kratom capsules, powders and shots from popular brands. Adults 21+ only — available in our Altamonte Springs store or for local delivery.",
-    "air-freshner": "Candles, sprays and odor eliminators from Kadilo, Blunteffects and more, in store or for local delivery.",
+    "air-freshener": "Candles, sprays and odor eliminators from Kadilo, Blunteffects and more, in store or for local delivery.",
     "miscellaneous": "Smoke shop extras like cleaners, scales, bags and more — in store on SR 434 or for local delivery.",
     "munchies": "Snacks and drinks to grab with your order, in store or for local delivery.",
     "merchandise": "HD Smoke Shop merchandise, available in our Altamonte Springs store."
@@ -6839,7 +7144,7 @@ async def _seo_meta_for_path(path: str) -> dict:
         return {"title": "Private page | HD Smoke Shop", "description": "Private HD Smoke Shop page.", "canonical": canonical, "robots": "noindex, nofollow", "type": "website", "jsonLd": []}
 
     if normalized.startswith("product-category/"):
-        slug = normalized.split("/", 1)[1]
+        slug = canonical_category_slug(normalized.split("/", 1)[1])
         category = next((row for row in await get_categories() if row.get("slug") == slug and row.get("active", True)), None)
         if category:
             name = _seo_display_name(category.get("name") or slug.replace("-", " "))
@@ -6868,8 +7173,10 @@ async def _seo_meta_for_path(path: str) -> dict:
 
     if normalized.startswith("shop/"):
         slug = normalized.split("/", 1)[1]
-        product = await db.products.find_one({"slug": slug, "active": True})
+        product = await db.products.find_one({"$or": [{"slug": slug}, {"legacySlugs": slug}], "active": True})
         if product:
+            canonical_product_path = f"shop/{product['slug']}"
+            canonical = _seo_canonical(canonical_product_path)
             name = _seo_display_name(product.get("name") or slug.replace("-", " "))
             brand = str(product.get("brandName") or "").strip()
             category = _seo_display_name(product.get("category") or "Smoke shop products")
@@ -6927,7 +7234,7 @@ async def _seo_meta_for_path(path: str) -> dict:
             }
             if brand:
                 schema["brand"] = {"@type": "Brand", "name": brand}
-            schema_blocks = [schema, _seo_breadcrumb([("Home", ""), (category, f"product-category/{product.get('categorySlug', '')}"), (name, normalized)])]
+            schema_blocks = [schema, _seo_breadcrumb([("Home", ""), (category, f"product-category/{product.get('categorySlug', '')}"), (name, canonical_product_path)])]
             return {"title": f"{name} | HD Smoke Shop", "description": description, "canonical": canonical, "robots": "index, follow, max-image-preview:large", "type": "product", "image": image, "jsonLd": schema_blocks}
 
     return {"title": "Page not found | HD Smoke Shop", "description": "The page you followed does not exist or has moved.", "canonical": canonical, "robots": "noindex, nofollow", "type": "website", "jsonLd": []}
@@ -7074,7 +7381,7 @@ async def _seo_body_html(path: str, meta: dict) -> str:
         if picks:
             main += "<h2>Recently updated in store</h2>" + _seo_product_list(picks)
     elif normalized.startswith("product-category/"):
-        slug = normalized.split("/", 1)[1]
+        slug = canonical_category_slug(normalized.split("/", 1)[1])
         if CATEGORY_INTROS.get(slug):
             main += f"<p>{_h(CATEGORY_INTROS[slug])}</p>"
         main += "<h2>In stock now</h2>" + _seo_product_list(await _seo_visible_products({"categorySlug": slug}))
@@ -7082,7 +7389,8 @@ async def _seo_body_html(path: str, meta: dict) -> str:
         slug = normalized.split("/", 1)[1]
         main += "<h2>In stock now</h2>" + _seo_product_list(await _seo_visible_products({"brand": slug}))
     elif normalized.startswith("shop/"):
-        product = await db.products.find_one({"slug": normalized.split("/", 1)[1], "active": True})
+        requested_slug = normalized.split("/", 1)[1]
+        product = await db.products.find_one({"$or": [{"slug": requested_slug}, {"legacySlugs": requested_slug}], "active": True})
         if product:
             stock = int(product.get("stock") or 0)
             price = product.get("salePrice") or product.get("price")
@@ -7215,6 +7523,19 @@ if FRONTEND_BUILD_DIR.exists():
             immutable = bool(re.search(r"\.[0-9a-f]{8,}\.", candidate.name))
             headers = {"Cache-Control": "public, max-age=31536000, immutable" if immutable else "public, max-age=3600"}
             return FileResponse(candidate, headers=headers)
+        normalized_path = full_path.strip("/")
+        if normalized_path == "product-category/air-freshner":
+            query = f"?{request.url.query}" if request.url.query else ""
+            return RedirectResponse(url=f"/product-category/air-freshener{query}", status_code=301)
+        if normalized_path.startswith("shop/"):
+            requested_slug = normalized_path.split("/", 1)[1]
+            product = await db.products.find_one(
+                {"$or": [{"slug": requested_slug}, {"legacySlugs": requested_slug}], "active": True},
+                {"_id": 0, "slug": 1},
+            )
+            if product and product.get("slug") and product["slug"] != requested_slug:
+                query = f"?{request.url.query}" if request.url.query else ""
+                return RedirectResponse(url=f"/shop/{quote(product['slug'], safe='-._~')}{query}", status_code=301)
         meta = await _seo_meta_for_path(full_path)
         if request.query_params.get("search"):
             meta = {**meta, "robots": "noindex, nofollow"}

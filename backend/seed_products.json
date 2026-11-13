@@ -230,8 +230,8 @@
     "id": 68,
     "slug": "febreze-air-downy-april-fresh-scented-8-1-oz-68",
     "name": "Febreze Air Downy April Fresh Scented 8.1 oz",
-    "category": "AIR FRESHNER",
-    "categorySlug": "air-freshner",
+    "category": "AIR FRESHENER",
+    "categorySlug": "air-freshener",
     "price": 4.99,
     "salePrice": null,
     "image": "/uploads/puff2door/products/3b07d06e-3b77-4335-ac90-d6a0c7ae2bb5.jpg",
@@ -1169,7 +1169,7 @@
     "puffs": null,
     "stock": 1,
     "active": true,
-    "description": "Swisher Sweets Bluberry Cigarillos is a blueberry flavored cigarillo wrapped in an all natural cigar leaf. A flavorful and fun smoke for sure!"
+    "description": "Swisher Sweets Blueberry Cigarillos is a blueberry flavored cigarillo wrapped in an all natural cigar leaf. A flavorful and fun smoke for sure!"
   },
   {
     "id": 119,
@@ -1211,8 +1211,8 @@
   },
   {
     "id": 121,
-    "slug": "swisher-sweets-whitegrape-121",
-    "name": "Swisher Sweets - WhiteGrape ",
+    "slug": "swisher-sweets-white-grape-121",
+    "name": "Swisher Sweets - White Grape",
     "category": "CIGARS",
     "categorySlug": "cigars",
     "price": 1.49,
@@ -1513,8 +1513,8 @@
   },
   {
     "id": 137,
-    "slug": "lost-mary-mo5000-disposable-watermelon-cherr-137",
-    "name": "LOST MARY MO5000 DISPOSABLE WATERMELON CHERR",
+    "slug": "lost-mary-mo5000-disposable-watermelon-cherry-137",
+    "name": "LOST MARY MO5000 DISPOSABLE WATERMELON CHERRY",
     "category": "DISPOSABLE VAPES",
     "categorySlug": "disposable",
     "price": 24.99,

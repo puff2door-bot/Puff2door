@@ -20,6 +20,7 @@ import { useWishlist } from "../context/WishlistContext";
 import { useApp } from "../context/AppContext";
 import AnimatedLogo from "./AnimatedLogo";
 import SmartSearch from "./SmartSearch";
+import MixSaveBuilder, { MixSaveButton } from "./MixSaveBuilder";
 
 const Header = () => {
   const navigate = useNavigate();
@@ -33,6 +34,12 @@ const Header = () => {
   const [query, setQuery] = useState("");
   const [openMenu, setOpenMenu] = useState(null);
   const [dark, setDark] = useState(() => localStorage.getItem("p2d_theme") === "dark");
+  const [mixSaveOpen, setMixSaveOpen] = useState(false);
+  const [mixSaveInitial, setMixSaveInitial] = useState(null);
+  // The private feature-review build must keep Live Shelf visible even when the
+  // production settings request is unavailable. Production still respects the
+  // administrator's Live Shelf on/off setting.
+  const liveShelfVisible = presentation.liveShelfEnabled || process.env.REACT_APP_MIX_SAVE_PREVIEW === "1";
   const visibleAnnouncements = announcements.filter((text) => delivery.sameDayEnabled === true || !text.includes("SAME-DAY"));
 
   useEffect(() => {
@@ -44,6 +51,12 @@ const Header = () => {
     const onScroll = () => setScrolled(window.scrollY > 60);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const openBuilder = (event) => { setMixSaveInitial(event.detail?.productId || null); setMixSaveOpen(true); };
+    window.addEventListener("p2d-open-mix-save", openBuilder);
+    return () => window.removeEventListener("p2d-open-mix-save", openBuilder);
   }, []);
 
   const submitSearch = (e) => {
@@ -202,7 +215,8 @@ const Header = () => {
                   Track Order
                 </Link>
               </li>
-              {presentation.liveShelfEnabled && <li><Link to="/live-shelf" className="block px-4 py-3.5 text-[13px] font-semibold tracking-wide uppercase text-sky-300 hover:text-sky-200 transition-colors">Live Shelf</Link></li>}
+              {liveShelfVisible && <li><Link to="/live-shelf" data-testid="nav-live-shelf" className="block px-3 py-3.5 text-[13px] font-semibold tracking-wide uppercase text-sky-300 hover:text-sky-200 transition-colors">Live Shelf</Link></li>}
+              <li><MixSaveButton onClick={() => { setMixSaveInitial(null); setMixSaveOpen(true); }} /></li>
               <li className="ml-auto flex items-center gap-5 text-[12px] text-neutral-300">
                 <span className="flex items-center gap-1.5"><Phone className="h-4 w-4 text-emerald-400" /> {BRAND.phone}</span>
                 <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-emerald-400" /> Altamonte Springs, FL</span>
@@ -250,7 +264,10 @@ const Header = () => {
                 <Link to="/contact" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Contact</Link>
                 <Link to="/delivery-area" onClick={() => setMobileOpen(false)} data-testid="mobile-delivery-area" className="py-2.5 text-sm font-medium border-b border-neutral-100">Delivery Area</Link>
                 <Link to="/track" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Track Order</Link>
-                {presentation.liveShelfEnabled && <Link to="/live-shelf" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-bold text-sky-700 border-b border-neutral-100">Live Store Shelf</Link>}
+                <div className="grid grid-cols-2 gap-2 py-2 border-b border-neutral-100">
+                  {liveShelfVisible && <Link to="/live-shelf" data-testid="mobile-live-shelf" onClick={() => setMobileOpen(false)} className="min-h-11 grid place-items-center rounded-lg border border-sky-200 bg-sky-50 px-2 text-center text-[11px] font-bold text-sky-700">Live Shelf</Link>}
+                  <MixSaveButton compact onClick={() => { setMobileOpen(false); setMixSaveInitial(null); setMixSaveOpen(true); }} />
+                </div>
                 <Link to="/wishlist" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">Wishlist</Link>
                 <Link to="/my-account" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-medium border-b border-neutral-100">My Account</Link>
                 {user?.role === "admin" && <Link to="/admin" onClick={() => setMobileOpen(false)} className="py-2.5 text-sm font-bold border-b border-neutral-100 text-amber-600">Admin Panel</Link>}
@@ -259,6 +276,7 @@ const Header = () => {
           </div>
         </div>
       )}
+      <MixSaveBuilder open={mixSaveOpen} initialProductId={mixSaveInitial} onClose={() => { setMixSaveOpen(false); setMixSaveInitial(null); }} />
     </header>
   );
 };

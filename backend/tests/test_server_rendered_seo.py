@@ -62,7 +62,11 @@ def test_catalog_route_metadata(monkeypatch):
 
     class Products:
         async def find_one(self, query):
-            if query.get("slug") != "geek-bar-pulse":
+            requested_slugs = {
+                clause.get("slug") or clause.get("legacySlugs")
+                for clause in query.get("$or", [])
+            }
+            if "geek-bar-pulse" not in requested_slugs:
                 return None
             return {
                 "slug": "geek-bar-pulse",

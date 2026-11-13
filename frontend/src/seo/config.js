@@ -60,7 +60,7 @@ export const CATEGORY_SEO = {
   lighter: { intro: "Torch lighters, refillable lighters and butane from Special Blue, Clipper, Zippo and more. Pick one up in our Altamonte Springs store or add it to a delivery order." },
   hookah: { intro: "Hookah tobacco and coals from Al Fakher, Coco Nara and other favorites. Visit our Altamonte Springs smoke shop or order online for local delivery in ZIP 32714." },
   kratom: { intro: "Kratom capsules, powders and shots from popular brands. Adults 21+ only — available in our Altamonte Springs store or for local delivery." },
-  "air-freshner": { intro: "Candles, sprays and odor eliminators from Kadilo, Blunteffects and more, in store or for local delivery." },
+  "air-freshener": { intro: "Candles, sprays and odor eliminators from Kadilo, Blunteffects and more, in store or for local delivery." },
   miscellaneous: { intro: "Smoke shop extras like cleaners, scales, bags and more — in store on SR 434 or for local delivery." },
   munchies: { intro: "Snacks and drinks to grab with your order, in store or for local delivery." },
   merchandise: { intro: "HD Smoke Shop merchandise, available in our Altamonte Springs store." },

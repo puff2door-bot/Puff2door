@@ -1,15 +1,24 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { MapPin, CheckCircle2, XCircle, Search } from "lucide-react";
 import api from "../api";
-import { STORE } from "../seo/config";
+import { deliveryBannerText } from "./deliveryAreaText";
 
 export const DeliveryBanner = () => {
+  const [area, setArea] = useState(null);
+  useEffect(() => {
+    let active = true;
+    api.get("/delivery/area")
+      .then(({ data }) => { if (active) setArea(data); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+  const message = useMemo(() => deliveryBannerText(area), [area]);
   return (
     <div data-testid="delivery-banner" className="bg-emerald-700 text-white">
       <p className="max-w-[1280px] mx-auto px-4 py-1.5 flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold tracking-wide text-center">
         <MapPin className="h-3.5 w-3.5 shrink-0" />
-        {`Walk-ins welcome · Delivery within Altamonte Springs, ZIP ${STORE.deliveryZip}.`}
+        {message}
         <Link to="/delivery-area" data-testid="delivery-banner-link" className="underline underline-offset-2 hover:text-emerald-100 font-medium">See delivery area</Link>
       </p>
     </div>

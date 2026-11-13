@@ -1,8 +1,18 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import api, { getToken } from "../api";
 import { ecommerce } from "../seo/Analytics";
+import { calculateMixSave, DEFAULT_MIX_SAVE } from "../utils/mixSave";
 
 const CartContext = createContext(null);
+
+const MIX_SAVE_PREVIEW = process.env.REACT_APP_MIX_SAVE_PREVIEW === "1";
+const PREVIEW_MIX_SAVE = {
+  ...DEFAULT_MIX_SAVE,
+  enabled: true,
+  animationEnabled: true,
+  animationStyle: "shimmer",
+  eligibleCategorySlugs: ["disposable", "delta-smokeables", "delta", "delta-cartridges", "flower", "3-5g-flower"],
+};
 
 const readLocal = () => {
   try {
@@ -22,6 +32,7 @@ const toServerItem = (i) => ({
   categorySlug: i.categorySlug || "",
   slug: i.slug || "",
   qty: i.qty,
+  mixSaveQty: Math.min(Number(i.mixSaveQty || 0), Number(i.qty || 0)),
 });
 
 const fromServerItem = (i) => ({
@@ -34,6 +45,7 @@ const fromServerItem = (i) => ({
   categorySlug: i.categorySlug,
   slug: i.slug,
   qty: i.qty,
+  mixSaveQty: Math.min(Number(i.mixSaveQty || 0), Number(i.qty || 0)),
 });
 
 export const CartProvider = ({ children }) => {
@@ -42,6 +54,8 @@ export const CartProvider = ({ children }) => {
   const [delivery, setDelivery] = useState(DEFAULT_DELIVERY);
   const [loyalty, setLoyalty] = useState(DEFAULT_LOYALTY);
   const [presentation, setPresentation] = useState({ homepageLayout: "classic", liveShelfEnabled: false });
+  const [mixSave, setMixSave] = useState(MIX_SAVE_PREVIEW ? PREVIEW_MIX_SAVE : DEFAULT_MIX_SAVE);
+  const [serverQuote, setServerQuote] = useState(null);
   const [trust, setTrust] = useState({ googleReviewUrl: "" });
   const [redeemPoints, setRedeemPoints] = useState(0);
   const [promo, setPromo] = useState(() => {
@@ -55,6 +69,7 @@ export const CartProvider = ({ children }) => {
       if (data.delivery) setDelivery(data.delivery);
       if (data.loyalty) setLoyalty(data.loyalty);
       if (data.presentation) setPresentation(data.presentation);
+      if (data.mixSave && !MIX_SAVE_PREVIEW) setMixSave({ ...DEFAULT_MIX_SAVE, ...data.mixSave });
       if (data.trust) setTrust(data.trust);
       settingsLoadFailed.current = false;
     }).catch(() => { settingsLoadFailed.current = true; });
@@ -130,12 +145,13 @@ export const CartProvider = ({ children }) => {
     return () => window.removeEventListener("p2d-auth-change", handleAuth);
   }, []);
 
-  const addItem = (product, qty = 1) => {
+  const addItem = (product, qty = 1, options = {}) => {
     ecommerce.addToCart(product, qty, product.price);
     setItems((prev) => {
       const existing = prev.find((i) => i.id === product.id);
-      if (existing) return prev.map((i) => (i.id === product.id ? { ...i, qty: i.qty + qty } : i));
-      return [...prev, { ...product, qty }];
+      const bundleQty = options.mixSaveQty == null ? 0 : Math.min(Number(options.mixSaveQty || 0), qty);
+      if (existing) return prev.map((i) => (i.id === product.id ? { ...i, qty: i.qty + qty, mixSaveQty: Number(i.mixSaveQty || 0) + bundleQty } : i));
+      return [...prev, { ...product, qty, mixSaveQty: bundleQty }];
     });
   };
   const removeItem = (id) => {
@@ -144,16 +160,33 @@ export const CartProvider = ({ children }) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
   };
   const updateQty = (id, qty) =>
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, qty: Math.max(1, qty) } : i)));
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, qty: Math.max(1, qty), mixSaveQty: Math.min(Number(i.mixSaveQty || 0), Math.max(1, qty)) } : i)));
   const clearCart = () => { setItems([]); setPromo(null); setRedeemPoints(0); };
 
   const count = items.reduce((s, i) => s + i.qty, 0);
   const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
-  const totals = computeTotals(subtotal, pricing, promo, redeemPoints, loyalty);
+  const localTotals = computeTotals(subtotal, pricing, promo, redeemPoints, loyalty, items, mixSave);
+  const totals = serverQuote || localTotals;
+
+  useEffect(() => {
+    setServerQuote(null);
+    const fallbackTotals = computeTotals(subtotal, pricing, promo, redeemPoints, loyalty, items, mixSave);
+    const timer = setTimeout(() => {
+      api.post("/cart/quote", { items: items.map(toServerItem), promoCode: promo?.code || "", redeemPoints, pickup: false })
+        .then(({ data }) => setServerQuote({
+          ...fallbackTotals,
+          ...(data.totals || {}),
+          shipping: data.totals?.shippingCost ?? fallbackTotals.shipping,
+          reward: data.totals?.rewardDiscount ?? fallbackTotals.reward,
+        }))
+        .catch(() => setServerQuote(null));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [items, subtotal, promo, redeemPoints, pricing, loyalty, mixSave]);
 
   return (
     <CartContext.Provider
-      value={{ items, addItem, removeItem, updateQty, clearCart, count, subtotal, toServerItem, pricing, delivery, presentation, trust, promo, applyPromo, removePromo, totals, loyalty, redeemPoints, setRedeemPoints }}
+      value={{ items, addItem, removeItem, updateQty, clearCart, count, subtotal, toServerItem, pricing, delivery, presentation, mixSave, trust, promo, applyPromo, removePromo, totals, loyalty, redeemPoints, setRedeemPoints }}
     >
       {children}
     </CartContext.Provider>
@@ -172,13 +205,15 @@ export const promoDiscount = (promo, subtotal) => {
 
 export const rewardValue = (points, loyalty = DEFAULT_LOYALTY) => Math.round((points / loyalty.pointsPerReward) * loyalty.rewardValue * 100) / 100;
 
-export const computeTotals = (subtotal, rules = DEFAULT_PRICING, promo = null, redeemPoints = 0, loyalty = DEFAULT_LOYALTY) => {
+export const computeTotals = (subtotal, rules = DEFAULT_PRICING, promo = null, redeemPoints = 0, loyalty = DEFAULT_LOYALTY, items = [], mixSaveRules = DEFAULT_MIX_SAVE) => {
   const discount = promoDiscount(promo, subtotal);
-  const reward = Math.min(rewardValue(redeemPoints, loyalty), Math.round((subtotal - discount) * 100) / 100);
+  const mixSave = calculateMixSave(items, mixSaveRules, discount, subtotal);
+  const bundleDiscount = mixSave.discount;
+  const reward = Math.min(rewardValue(redeemPoints, loyalty), Math.round((subtotal - discount - bundleDiscount) * 100) / 100);
   const shipping = subtotal >= rules.freeDeliveryMin || subtotal === 0 ? 0 : rules.deliveryFee;
-  const tax = Math.round((subtotal - discount - reward) * rules.taxRate * 100) / 100;
-  const pointsToEarn = Math.floor(Math.max(subtotal - discount - reward, 0) * (loyalty.pointsPerDollar || 0));
-  return { subtotal, discount, reward, shipping, tax, pointsToEarn, total: Math.round((subtotal - discount - reward + shipping + tax) * 100) / 100 };
+  const tax = Math.round((subtotal - discount - bundleDiscount - reward) * rules.taxRate * 100) / 100;
+  const pointsToEarn = Math.floor(Math.max(subtotal - discount - bundleDiscount - reward, 0) * (loyalty.pointsPerDollar || 0));
+  return { subtotal, discount, bundleDiscount, mixSave, reward, shipping, tax, pointsToEarn, total: Math.round((subtotal - discount - bundleDiscount - reward + shipping + tax) * 100) / 100 };
 };
 
 export const useCart = () => useContext(CartContext);

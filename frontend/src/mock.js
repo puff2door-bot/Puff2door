@@ -28,7 +28,7 @@ export const categories = [
   { name: "KRATOM", slug: "kratom" },
   { name: "GLASS PIPES", slug: "glass-pipes" },
   { name: "LIGHTER", slug: "lighter" },
-  { name: "AIR FRESHNER", slug: "air-freshner" },
+  { name: "AIR FRESHENER", slug: "air-freshener" },
   { name: "HOOKAH ACCESSORIES", slug: "hookah-accessories" },
   { name: "MISCELLANEOUS", slug: "miscellaneous" },
 ];

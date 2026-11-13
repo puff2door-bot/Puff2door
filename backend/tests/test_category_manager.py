@@ -29,7 +29,7 @@ EXPECTED_COUNTS = {
     "delta-smokeables": 11, "kratom": 2, "glass-pipes": 6,
 }
 EXPECTED_ZERO = ["vape-accessories", "hemp-wraps", "paper-cones", "lighter",
-                 "air-freshner", "hookah-accessories", "miscellaneous"]
+                 "air-freshener", "hookah-accessories", "miscellaneous"]
 
 
 # ---------- fixtures ----------

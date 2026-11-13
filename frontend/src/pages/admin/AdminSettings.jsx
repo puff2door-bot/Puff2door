@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Save, Percent, Truck, Gift, MapPin, Radius, Clock, LayoutTemplate, Gauge, Plus, Trash2, Eye, EyeOff, Star, Store } from "lucide-react";
+import { Save, Percent, Truck, Gift, MapPin, Radius, Clock, LayoutTemplate, Gauge, Plus, Trash2, Eye, EyeOff, Star, Store, Sparkles, Search } from "lucide-react";
 import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
 
@@ -18,6 +18,9 @@ const Field = ({ icon: Icon, label, hint, children }) => (
 const AdminSettings = () => {
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [categories, setCategories] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [productSearch, setProductSearch] = useState("");
   const { toast } = useToast();
 
   const toForm = (data) => ({ taxPercent: +(data.taxRate * 100).toFixed(3), deliveryFee: data.deliveryFee, freeDeliveryMin: data.freeDeliveryMin, deliveryZip: data.deliveryZip || "32714", deliveryRadiusMiles: data.deliveryRadiusMiles ?? 20, allowedZipCodes: (data.allowedZipCodes || []).join(", "),
@@ -28,12 +31,19 @@ const AdminSettings = () => {
     countdownHoursText: data.countdownHoursText ?? "Same-day cutoff is {cutoff} ET. No deliveries after {end} or before {start}.", countdownExtraLines: data.countdownExtraLines || [],
     deliverySlotCapacity: data.deliverySlotCapacity ?? 8, deliveryDriverCount: data.deliveryDriverCount ?? 1, ordersPerDriverPerWindow: data.ordersPerDriverPerWindow ?? 8, defaultEtaMinutes: data.defaultEtaMinutes ?? 45,
     googleReviewUrl: data.googleReviewUrl || "", hideOutOfStock: data.hideOutOfStock ?? true, liveShelfEnabled: data.liveShelfEnabled ?? false, downloadAppEnabled: data.downloadAppEnabled ?? false,
+    mixSaveEnabled: data.mixSaveEnabled ?? true, mixSaveAnimationEnabled: data.mixSaveAnimationEnabled ?? true, mixSaveAnimationStyle: data.mixSaveAnimationStyle || "shimmer",
+    mixSaveDiscountType: data.mixSaveDiscountType || "percent", mixSaveDiscountValue: data.mixSaveDiscountValue ?? 10, mixSaveMinQuantity: data.mixSaveMinQuantity ?? 2, mixSaveMinSubtotal: data.mixSaveMinSubtotal ?? 50,
+    mixSaveCategorySlugs: data.mixSaveCategorySlugs || ["disposable", "delta-smokeables", "delta", "delta-cartridges"], mixSaveProductIds: data.mixSaveProductIds || [], mixSaveButtonText: data.mixSaveButtonText || "Mix & Save 10%",
     pickupEnabled: data.pickupEnabled ?? false, pickupAddress: data.pickupAddress || "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714", pickupHoursText: data.pickupHoursText ?? "Pick up during store hours.",
     pickupReadyMinutes: data.pickupReadyMinutes ?? 15, pickupHoldDays: data.pickupHoldDays ?? 1, pickupInstructions: data.pickupInstructions ?? "Bring a valid, unexpired 21+ photo ID that matches the name on the order.",
     lakeNonaEnabled: data.lakeNonaEnabled ?? false, countdownStyle: data.countdownStyle || "chip", zipTaxRates: Object.entries(data.zipTaxRates || {}).map(([z, r]) => `${z}=${+(r * 100).toFixed(3)}`).join(", ") });
 
   useEffect(() => {
-    api.get("/admin/settings").then(({ data }) => setF(toForm(data)));
+    Promise.all([api.get("/admin/settings"), api.get("/categories"), api.get("/products")]).then(([settings, categoryData, productData]) => {
+      setF(toForm(settings.data));
+      setCategories(categoryData.data.categories || []);
+      setProducts(productData.data.products || []);
+    });
   }, []);
 
   const save = async (e) => {
@@ -44,6 +54,9 @@ const AdminSettings = () => {
         sameDayEnabled: Boolean(f.sameDayEnabled), deliveryCutoff: f.deliveryCutoff, deliveryStart: f.deliveryStart, deliveryEnd: f.deliveryEnd, deliveryDays: f.deliveryDays, homepageLayout: f.homepageLayout,
         countdownVisible: Boolean(f.countdownVisible), countdownHeadlineVisible: Boolean(f.countdownHeadlineVisible), countdownHoursVisible: Boolean(f.countdownHoursVisible), countdownOpenText: f.countdownOpenText, countdownClosedText: f.countdownClosedText, countdownClosedDayText: f.countdownClosedDayText, countdownPausedText: f.countdownPausedText, countdownHoursText: f.countdownHoursText, countdownExtraLines: f.countdownExtraLines,
         deliverySlotCapacity: Number(f.deliverySlotCapacity), deliveryDriverCount: Number(f.deliveryDriverCount), ordersPerDriverPerWindow: Number(f.ordersPerDriverPerWindow), defaultEtaMinutes: Number(f.defaultEtaMinutes), googleReviewUrl: f.googleReviewUrl.trim(), hideOutOfStock: Boolean(f.hideOutOfStock), liveShelfEnabled: Boolean(f.liveShelfEnabled), downloadAppEnabled: Boolean(f.downloadAppEnabled),
+        mixSaveEnabled: Boolean(f.mixSaveEnabled), mixSaveAnimationEnabled: Boolean(f.mixSaveAnimationEnabled), mixSaveAnimationStyle: f.mixSaveAnimationStyle,
+        mixSaveDiscountType: f.mixSaveDiscountType, mixSaveDiscountValue: Number(f.mixSaveDiscountValue), mixSaveMinQuantity: Number(f.mixSaveMinQuantity), mixSaveMinSubtotal: Number(f.mixSaveMinSubtotal),
+        mixSaveCategorySlugs: f.mixSaveCategorySlugs, mixSaveProductIds: f.mixSaveProductIds.map(Number), mixSaveButtonText: f.mixSaveButtonText.trim(),
         pickupEnabled: Boolean(f.pickupEnabled), pickupAddress: f.pickupAddress.trim(), pickupHoursText: f.pickupHoursText, pickupReadyMinutes: Number(f.pickupReadyMinutes), pickupHoldDays: Number(f.pickupHoldDays), pickupInstructions: f.pickupInstructions,
         lakeNonaEnabled: Boolean(f.lakeNonaEnabled), countdownStyle: f.countdownStyle, zipTaxRates: Object.fromEntries(f.zipTaxRates.split(/[\s,]+/).filter(Boolean).map((pair) => { const [z, r] = pair.split("="); return [z.trim(), Number(r) / 100]; })) });
       setF(toForm(data));
@@ -243,6 +256,32 @@ const AdminSettings = () => {
         </label>
         <a href="/live-shelf?preview=1" target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1 rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-bold text-sky-800"><Eye className="h-3.5 w-3.5" /> Private preview</a>
         <p className="mt-2 text-[11px] text-neutral-500">Preview works while hidden. Customers only see the header link after you turn this on and save.</p>
+      </div>
+
+      <div className="border border-emerald-200 bg-emerald-50/30 rounded-2xl p-5 mb-6" data-testid="settings-mix-save">
+        <label className="flex items-center justify-between gap-4 cursor-pointer">
+          <span className="flex items-start gap-2"><Sparkles className="mt-0.5 h-4 w-4 text-emerald-600" /><span><span className="block text-sm font-bold text-neutral-900">Mix &amp; Save Bundle Settings</span><span className="block text-xs text-neutral-500 mt-1">Control the storefront button and the secure cart discount without changing code.</span></span></span>
+          <span className="flex items-center gap-2 text-sm font-bold">{f.mixSaveEnabled ? "Enabled" : "Disabled"}<input type="checkbox" className="accent-emerald-600 h-5 w-5" checked={f.mixSaveEnabled} onChange={(e) => setF({ ...f, mixSaveEnabled: e.target.checked })} /></span>
+        </label>
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="md:col-span-2"><label className="block text-xs font-bold text-neutral-700 mb-1">Button label</label><input className={inputCls} maxLength={40} value={f.mixSaveButtonText} onChange={(e) => setF({ ...f, mixSaveButtonText: e.target.value })} /></div>
+          <div><label className="block text-xs font-bold text-neutral-700 mb-1">Discount type</label><select className={inputCls} value={f.mixSaveDiscountType} onChange={(e) => setF({ ...f, mixSaveDiscountType: e.target.value })}><option value="percent">Percentage</option><option value="flat">Flat amount</option></select></div>
+          <div><label className="block text-xs font-bold text-neutral-700 mb-1">Discount {f.mixSaveDiscountType === "percent" ? "%" : "$"}</label><input className={inputCls} type="number" min="0" max={f.mixSaveDiscountType === "percent" ? 100 : 100000} step="0.01" value={f.mixSaveDiscountValue} onChange={(e) => setF({ ...f, mixSaveDiscountValue: e.target.value })} /></div>
+          <div><label className="block text-xs font-bold text-neutral-700 mb-1">Minimum items</label><input className={inputCls} type="number" min="2" max="99" value={f.mixSaveMinQuantity} onChange={(e) => setF({ ...f, mixSaveMinQuantity: e.target.value })} /></div>
+          <div><label className="block text-xs font-bold text-neutral-700 mb-1">Minimum bundle subtotal ($)</label><input className={inputCls} type="number" min="0" step="0.01" value={f.mixSaveMinSubtotal} onChange={(e) => setF({ ...f, mixSaveMinSubtotal: e.target.value })} /></div>
+          <div><label className="flex items-center gap-2 text-xs font-bold text-neutral-700 mb-1"><input type="checkbox" className="accent-emerald-600" checked={f.mixSaveAnimationEnabled} onChange={(e) => setF({ ...f, mixSaveAnimationEnabled: e.target.checked })} /> Enable button animation</label><select disabled={!f.mixSaveAnimationEnabled} className={inputCls} value={f.mixSaveAnimationStyle} onChange={(e) => setF({ ...f, mixSaveAnimationStyle: e.target.value })}><option value="shimmer">Shimmer</option><option value="pulse">Pulse</option><option value="glow">Glow</option><option value="none">None</option></select></div>
+          <div className="flex items-end"><div className="w-full rounded-xl bg-neutral-950 p-3 text-center"><button type="button" className={`mix-save-trigger mx-auto${f.mixSaveAnimationEnabled && f.mixSaveAnimationStyle !== "none" ? ` mix-save-${f.mixSaveAnimationStyle}` : ""}`}><Sparkles className="h-3.5 w-3.5" />{f.mixSaveButtonText || "Mix & Save"}</button></div></div>
+        </div>
+        <div className="mt-5 border-t border-emerald-100 pt-5">
+          <p className="text-xs font-bold text-neutral-800">Eligible categories</p><p className="text-[11px] text-neutral-500 mt-1">Choose any categories. Customers can mix across them. Specific products selected below are eligible even if their category is not selected.</p>
+          <div className="mt-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">{categories.map((item) => <label key={item.slug} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold cursor-pointer ${f.mixSaveCategorySlugs.includes(item.slug) ? "border-emerald-400 bg-emerald-50 text-emerald-800" : "border-neutral-200 bg-white"}`}><input type="checkbox" className="accent-emerald-600" checked={f.mixSaveCategorySlugs.includes(item.slug)} onChange={(e) => setF({ ...f, mixSaveCategorySlugs: e.target.checked ? [...f.mixSaveCategorySlugs, item.slug] : f.mixSaveCategorySlugs.filter((slug) => slug !== item.slug) })} />{item.name}</label>)}</div>
+        </div>
+        <details className="mt-5 border-t border-emerald-100 pt-5">
+          <summary className="cursor-pointer text-xs font-bold text-neutral-800">Choose specific products ({f.mixSaveProductIds.length} selected)</summary>
+          <label className="mt-3 flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3"><Search className="h-4 w-4 text-neutral-400" /><input className="w-full py-2 text-sm outline-none" value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="Search product or SKU" /></label>
+          <div className="mt-2 max-h-64 overflow-auto rounded-lg border bg-white divide-y">{products.filter((product) => `${product.name} ${product.id} ${product.category}`.toLowerCase().includes(productSearch.toLowerCase())).slice(0, 150).map((product) => <label key={product.id} className="flex items-center gap-3 px-3 py-2 text-xs cursor-pointer hover:bg-neutral-50"><input type="checkbox" className="accent-emerald-600" checked={f.mixSaveProductIds.includes(product.id)} onChange={(e) => setF({ ...f, mixSaveProductIds: e.target.checked ? [...f.mixSaveProductIds, product.id] : f.mixSaveProductIds.filter((id) => id !== product.id) })} /><span className="flex-1 truncate">{product.name}</span><span className="text-neutral-400">#{product.id}</span></label>)}</div>
+        </details>
+        <p className="mt-4 text-[11px] text-neutral-500">The minimum subtotal is strict: it must be greater than ${Number(f.mixSaveMinSubtotal || 0).toFixed(2)} after any promo allocation. Removing bundle items automatically removes the discount.</p>
       </div>
 
       <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-google-reviews">

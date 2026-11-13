@@ -145,7 +145,7 @@ def draft_for(product: dict):
     elif cat == "kratom":
         kind = "Kratom drink" if re.search(r"seltzer|drink|shot|rapture|ohho", lower) else "Kratom product"
         parts.append(f"{kind}{by}" + (f" in {flavor}" if flavor else "") + ". Check the package label for contents and serving size.")
-    elif cat == "air-freshner":
+    elif cat == "air-freshener":
         kind = "Odor-eliminating candle" if "candle" in lower else "Incense sticks" if "incense" in lower else "Air freshener"
         scent = re.sub(r"(?i)skunk|odor eliminator|candle|incense stick box|incense sticks?|hand dipped", " ", name)
         scent = _clean(scent)

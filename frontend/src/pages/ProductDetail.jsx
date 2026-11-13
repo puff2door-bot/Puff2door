@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { ChevronRight, Minus, Plus, ShoppingCart, Truck, ShieldCheck, RotateCcw, Star, Check, Heart, Bell, BellRing } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import ReviewsSection from "../components/ReviewsSection";
@@ -17,6 +17,7 @@ import { rememberViewed } from "../lib/customerExperience";
 
 const ProductDetail = () => {
   const { slug } = useParams();
+  const navigate = useNavigate();
   const { getProductBySlug, getProductsByCategory, getPrice, isOnDeal, loading } = useCatalog();
   // Sold-out products are hidden from the shop list but keep their page (restock emails,
   // Google, old links), so load one directly when it isn't in the list.
@@ -32,6 +33,9 @@ const ProductDetail = () => {
     return () => { live = false; };
   }, [slug, listed, loading]); // eslint-disable-line react-hooks/exhaustive-deps
   const product = listed || (direct.slug === slug ? direct.product : null);
+  useEffect(() => {
+    if (product?.slug && product.slug !== slug) navigate(`/shop/${product.slug}`, { replace: true });
+  }, [product?.slug, slug, navigate]);
   const { addItem } = useCart();
   const { has, toggle, items: wishItems, setNotify } = useWishlist();
   const { user } = useApp();
