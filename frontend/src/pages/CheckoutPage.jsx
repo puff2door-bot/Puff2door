@@ -37,10 +37,19 @@ const CheckoutPage = () => {
   useEffect(() => {
     if (isPickup && !pickupConfig?.pickupEnabled) setFulfillment("delivery");
   }, [isPickup, pickupConfig]);
-  const { shipping: deliveryShipping, tax, discount, reward, total: deliveryTotalBeforeTip } = totals;
+  const [form, setForm] = useState({
+    firstName: "", lastName: "", email: "", phone: "",
+    address: "", city: "", state: "", zip: "", dateOfBirth: "",
+  });
+  const { shipping: deliveryShipping, tax: storeTax, discount, reward, total: deliveryTotalBeforeTip } = totals;
   // Store pickup never pays the delivery fee and has no driver tip.
   const shipping = isPickup ? 0 : deliveryShipping;
-  const totalBeforeTip = isPickup ? Math.round((deliveryTotalBeforeTip - deliveryShipping) * 100) / 100 : deliveryTotalBeforeTip;
+  // Florida county surtax follows the delivery address, so some delivery ZIPs (e.g. Lake Nona, Orange County) use a different rate.
+  const taxRate = isPickup ? pricing.taxRate : (pricing.zipTaxRates?.[(form.zip || "").replace(/\D/g, "").slice(0, 5)] ?? pricing.taxRate);
+  const tax = taxRate === pricing.taxRate ? storeTax : Math.round(Math.max(subtotal - discount - reward, 0) * taxRate * 100) / 100;
+  const taxLabel = taxRate === pricing.taxRate ? pricing.taxLabel : `Sales tax (${+(taxRate * 100).toFixed(3)}%)`;
+  const storeTotalBeforeTip = Math.round((deliveryTotalBeforeTip - storeTax + tax) * 100) / 100;
+  const totalBeforeTip = isPickup ? Math.round((storeTotalBeforeTip - deliveryShipping) * 100) / 100 : storeTotalBeforeTip;
   const [tipChoice, setTipChoice] = useState("none");
   const [customTip, setCustomTip] = useState("");
   const tipBase = Math.max(subtotal - discount - reward, 0);
@@ -57,10 +66,6 @@ const CheckoutPage = () => {
   const chosenDeliveryWindow = deliveryWin?.availableWindows?.find((w) => w.id === deliveryWindowId);
   sameDayRef.current = Boolean(chosenDeliveryWindow?.sameDay);
 
-  const [form, setForm] = useState({
-    firstName: "", lastName: "", email: "", phone: "",
-    address: "", city: "", state: "", zip: "", dateOfBirth: "",
-  });
   const [card, setCard] = useState({ number: "", name: "", expiry: "", cvc: "" });
   const [payConfig, setPayConfig] = useState(null);
   const [method, setMethod] = useState("");
@@ -456,7 +461,7 @@ const CheckoutPage = () => {
               {discount > 0 && <div className="flex justify-between text-emerald-600" data-testid="checkout-discount"><span>Discount ({promo.code})</span><span className="font-semibold">-${discount.toFixed(2)}</span></div>}
               {reward > 0 && <div className="flex justify-between text-emerald-600" data-testid="checkout-reward"><span>Rewards ({redeemPoints.toLocaleString()} pts)</span><span className="font-semibold">-${reward.toFixed(2)}</span></div>}
               <div className="flex justify-between"><span className="text-neutral-500">{isPickup ? "Store pickup" : "Delivery"}</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
-              <div className="flex justify-between" data-testid="checkout-tax"><span className="text-neutral-500">{pricing.taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>
+              <div className="flex justify-between" data-testid="checkout-tax"><span className="text-neutral-500">{taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>
               {tip > 0 && <div className="flex justify-between" data-testid="checkout-tip"><span className="text-neutral-500">Driver tip</span><span className="font-semibold">${tip.toFixed(2)}</span></div>}
             </div>
             <div className="flex justify-between items-center border-t mt-4 pt-4">

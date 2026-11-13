@@ -299,7 +299,7 @@ VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
 VAPID_SUBJECT = os.environ.get("VAPID_SUBJECT", "mailto:puff2door@gmail.com").strip()
 WEB_PUSH_ENABLED = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY and VAPID_SUBJECT and webpush)
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "apple_pay", "zelle"}
-DEFAULT_SETTINGS = {"taxRate": 0.065, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32714", "deliveryRadiusMiles": 20.0, "allowedZipCodes": ["32714"],
+DEFAULT_SETTINGS = {"taxRate": 0.065, "zipTaxRates": {"32827": 0.065, "32832": 0.065}, "lakeNonaEnabled": False, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32714", "deliveryRadiusMiles": 20.0, "allowedZipCodes": ["32714"],
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
                     "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryStart": "11:00", "deliveryEnd": "21:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6], "homepageLayout": "classic",
                     "countdownVisible": True, "countdownHeadlineVisible": True, "countdownHoursVisible": True,
@@ -345,6 +345,11 @@ def delivery_zone_check(zip_code: str, settings: dict) -> dict:
     target = zip_lookup(zip_code)
     if not target:
         return {**base, "message": "Please enter a valid 5-digit US ZIP code."}
+    # Lake Nona delivery is one admin switch: when on, its ZIPs are deliverable; when off, they are not.
+    if target["zip"] in LAKE_NONA_ZIPS:
+        ok = bool(settings.get("lakeNonaEnabled"))
+        msg = f"Great news! We deliver to Lake Nona, {target['state']} {target['zip']}." if ok else f"Sorry, delivery is not currently available to ZIP {target['zip']}."
+        return {**base, "city": target["city"], "state": target["state"], "eligible": ok, "message": msg}
     if allowed:
         ok = target["zip"] in allowed
         msg = f"Great news! We deliver to {target['city']}, {target['state']} {target['zip']}." if ok else f"Sorry, delivery is not currently available to ZIP {target['zip']}."
@@ -621,6 +626,8 @@ class StoreSettingsInput(BaseModel):
     pickupReadyMinutes: int = Field(default=15, ge=0, le=480)
     pickupHoldDays: int = Field(default=1, ge=0, le=14)
     pickupInstructions: str = Field(default="Bring a valid, unexpired 21+ photo ID that matches the name on the order.", max_length=400)
+    lakeNonaEnabled: bool = False
+    zipTaxRates: Dict[str, float] = Field(default_factory=lambda: {"32827": 0.065, "32832": 0.065})
 
     @field_validator("homepageLayout")
     @classmethod
@@ -669,6 +676,22 @@ class StoreSettingsInput(BaseModel):
         if not zip_lookup(v):
             raise ValueError("Delivery ZIP must be a valid US ZIP code")
         return re.sub(r"\D", "", v)[:5]
+
+    @field_validator("zipTaxRates")
+    @classmethod
+    def _zip_tax_rates(cls, values):
+        cleaned = {}
+        for zip_value, rate in (values or {}).items():
+            z = re.sub(r"\D", "", str(zip_value or ""))[:5]
+            if not zip_lookup(z):
+                raise ValueError(f"{zip_value} is not a valid US ZIP code")
+            rate = float(rate)
+            if not 0 <= rate <= 0.5:
+                raise ValueError("ZIP tax rates must be between 0% and 50%")
+            cleaned[z] = rate
+        if len(cleaned) > 250:
+            raise ValueError("You can set up to 250 ZIP tax rates")
+        return cleaned
 
     @field_validator("allowedZipCodes")
     @classmethod
@@ -782,15 +805,30 @@ async def get_settings() -> dict:
     return _settings_cache
 
 
+def zip_tax_rates(settings: dict) -> dict:
+    """Delivery ZIPs taxed at a different county rate than the store (FL county surtax follows the delivery address)."""
+    rates = settings.get("zipTaxRates")
+    if rates is None:
+        rates = DEFAULT_SETTINGS["zipTaxRates"]
+    return {re.sub(r"\D", "", str(z))[:5]: float(r) for z, r in (rates or {}).items()}
+
+
+def tax_rate_for(settings: dict, zip_code: str = "", pickup: bool = False) -> float:
+    if pickup:
+        return settings["taxRate"]
+    return zip_tax_rates(settings).get(re.sub(r"\D", "", zip_code or "")[:5], settings["taxRate"])
+
+
 def pricing_rules(settings: dict) -> dict:
     rate = settings["taxRate"]
-    return {"taxRate": rate, "taxLabel": f"Sales tax ({rate * 100:g}%)", "deliveryFee": settings["deliveryFee"], "freeDeliveryMin": settings["freeDeliveryMin"]}
+    return {"taxRate": rate, "taxLabel": f"Sales tax ({rate * 100:g}%)", "zipTaxRates": zip_tax_rates(settings), "deliveryFee": settings["deliveryFee"], "freeDeliveryMin": settings["freeDeliveryMin"]}
 
 
 def delivery_rules(settings: dict) -> dict:
     allowed = settings.get("allowedZipCodes") or []
     return {"zip": settings["deliveryZip"], "radiusMiles": float(settings["deliveryRadiusMiles"]), "allowedZipCodes": allowed,
-            "mode": "selected_zips" if allowed else "radius", "sameDayEnabled": bool(settings.get("sameDayEnabled", True))}
+            "mode": "selected_zips" if allowed else "radius", "sameDayEnabled": bool(settings.get("sameDayEnabled", True)),
+            "lakeNonaEnabled": bool(settings.get("lakeNonaEnabled", False))}
 
 
 def promo_public(p: dict) -> dict:
@@ -831,13 +869,14 @@ async def resolve_promo(code: str, subtotal: float) -> dict:
     return promo
 
 
-def compute_totals(subtotal: float, settings: dict, discount: float = 0.0, pickup: bool = False) -> dict:
+def compute_totals(subtotal: float, settings: dict, discount: float = 0.0, pickup: bool = False, zip_code: str = "") -> dict:
     subtotal = round(subtotal, 2)
     discount = round(min(discount, subtotal), 2)
     # Store pickup never pays a delivery fee.
     shipping_cost = 0.0 if pickup or subtotal >= settings["freeDeliveryMin"] or subtotal == 0 else settings["deliveryFee"]
-    tax = r2((subtotal - discount) * settings["taxRate"])
-    return {"subtotal": subtotal, "discount": discount, "shippingCost": shipping_cost, "tax": tax, "taxRate": settings["taxRate"], "total": r2(subtotal - discount + shipping_cost + tax)}
+    rate = tax_rate_for(settings, zip_code, pickup)
+    tax = r2((subtotal - discount) * rate)
+    return {"subtotal": subtotal, "discount": discount, "shippingCost": shipping_cost, "tax": tax, "taxRate": rate, "total": r2(subtotal - discount + shipping_cost + tax)}
 
 
 # ---- Loyalty rewards: ledger-based (loyalty_transactions), all math server-side ----
@@ -1056,7 +1095,7 @@ def require_pickup(settings: dict) -> dict:
             "holdUntil": hold_until.astimezone(timezone.utc)}
 
 
-async def price_cart(items: List[CartItem], promo_code: str = "", redeem_points: int = 0, user: Optional[dict] = None, tip: float = 0, pickup: bool = False):
+async def price_cart(items: List[CartItem], promo_code: str = "", redeem_points: int = 0, user: Optional[dict] = None, tip: float = 0, pickup: bool = False, zip_code: str = ""):
     problems, priced = [], []
     for it in items:
         prod = await db.products.find_one({"id": it.productId})
@@ -1083,7 +1122,7 @@ async def price_cart(items: List[CartItem], promo_code: str = "", redeem_points:
     promo = await resolve_promo(promo_code, subtotal) if promo_code.strip() else None
     pdisc = round(min(promo_discount(promo, subtotal) if promo else 0.0, subtotal), 2)
     reward = await loyalty_validate_redeem(user, int(redeem_points or 0), round(subtotal - pdisc, 2), settings)
-    totals = compute_totals(subtotal, settings, pdisc + reward, pickup=pickup)
+    totals = compute_totals(subtotal, settings, pdisc + reward, pickup=pickup, zip_code=zip_code)
     totals["discount"] = pdisc
     totals["rewardDiscount"] = reward
     totals["rewardPoints"] = int(redeem_points or 0) if reward else 0
@@ -2083,7 +2122,7 @@ async def paypal_create_order(inp: PayPalCreateInput, user: Optional[dict] = Dep
         require_delivery_window(inp.deliveryWindowId, settings)
         await require_delivery_capacity(inp.deliveryWindowId, settings)
     await validate_product_restrictions(inp.items, PICKUP_STORE_ADDRESS["state"] if pickup else inp.state, inp.ageAttestationAccepted)
-    _, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user, 0 if pickup else inp.tip, pickup=pickup)
+    _, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user, 0 if pickup else inp.tip, pickup=pickup, zip_code=inp.zip)
     total = totals["total"]
     data = await paypal_request("POST", "/v2/checkout/orders", {
         "intent": "CAPTURE",
@@ -2153,7 +2192,7 @@ async def create_order(inp: OrderInput, request: Request, user: Optional[dict] =
             raise HTTPException(status_code=402, detail="This PayPal payment was already used.")
         if pending.get("capturing"):
             raise HTTPException(status_code=409, detail="This PayPal payment is already being processed. Please wait a moment.")
-    priced_items, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user, inp.tip, pickup=pickup)
+    priced_items, totals = await price_cart(inp.items, inp.promoCode, inp.redeemPoints, user, inp.tip, pickup=pickup, zip_code=inp.shipping.zip)
     subtotal, shipping_cost, total = totals["subtotal"], totals["shippingCost"], totals["total"]
     if pending and abs(pending["total"] - total) > 0.01:
         raise HTTPException(status_code=402, detail="PayPal order does not match your cart. Please try again.")
@@ -2866,6 +2905,7 @@ async def notify_restocked_products(product_ids):
             {"$set": {"notified": True, "notifiedAt": now_utc()}},
         )
 
+LAKE_NONA_PATH = "/delivery/lake-nona"
 SITEMAP_STATIC = ["/", "/shop", "/brands", "/delivery-area", "/about", "/contact", "/faq", "/privacy-policy", "/terms", "/delivery-policy", "/refund-policy", "/age-and-id-policy"]
 # Date the static pages last changed meaningfully; bump when their copy changes.
 SITEMAP_BASE_DATE = "2026-11-03"
@@ -2904,6 +2944,8 @@ async def build_sitemap() -> str:
     catalog_day = newest(prods)
     for path in SITEMAP_STATIC:
         add(path, catalog_day if path in ("/", "/shop", "/brands") else SITEMAP_BASE_DATE)
+    if (await get_settings()).get("lakeNonaEnabled"):
+        add(LAKE_NONA_PATH, SITEMAP_BASE_DATE)
     add("/guides", max(g["updated"] for g in GUIDES))
     for g in GUIDES:
         add(f"/guides/{g['slug']}", g["updated"])
@@ -6714,6 +6756,11 @@ CATEGORY_INTROS = {
     "munchies": "Snacks and drinks to grab with your order, in store or for local delivery.",
     "merchandise": "HD Smoke Shop merchandise, available in our Altamonte Springs store."
 }
+LAKE_NONA_ZIPS = ("32832", "32827")
+LAKE_NONA_META = (
+    "Smoke Shop & Vape Delivery in Lake Nona (32832) – HD Smoke Shop",
+    "Same-day smoke shop and vape delivery to Lake Nona, Orlando (32832, 32827). Order online by {cutoff}. Adults 21+ only; ID checked at the door.",
+)
 SEO_PRIVATE_PREFIXES = ("admin", "cart", "checkout", "wishlist", "my-account", "order", "track")
 
 
@@ -6747,6 +6794,17 @@ def _seo_breadcrumb(items: list[tuple[str, str]]) -> dict:
 async def _seo_meta_for_path(path: str) -> dict:
     normalized = path.strip("/")
     canonical = _seo_canonical(normalized)
+    if normalized == LAKE_NONA_PATH.strip("/"):
+        ln_settings = await get_settings()
+        title = LAKE_NONA_META[0]
+        description = LAKE_NONA_META[1].format(cutoff=fmt_clock(parse_cutoff(ln_settings.get("deliveryCutoff", DEFAULT_SETTINGS["deliveryCutoff"]))))
+        if not ln_settings.get("lakeNonaEnabled"):
+            return {"title": title, "description": description, "canonical": canonical, "robots": "noindex, follow", "type": "website", "jsonLd": []}
+        service = {"@context": "https://schema.org", "@type": "Service", "name": "Smoke Shop & Vape Delivery in Lake Nona, Orlando, FL", "serviceType": "Smoke shop delivery",
+                   "provider": {"@id": f"{SITE_URL}/#store"}, "url": canonical,
+                   "areaServed": [{"@type": "Place", "name": f"Lake Nona, Orlando, FL {z}", "address": {"@type": "PostalAddress", "postalCode": z, "addressLocality": "Orlando", "addressRegion": "FL", "addressCountry": "US"}} for z in LAKE_NONA_ZIPS]}
+        return {"title": title, "description": description, "canonical": canonical, "robots": "index, follow, max-image-preview:large", "type": "website",
+                "jsonLd": [service, _seo_breadcrumb([("Home", ""), ("Delivery Area", "delivery-area"), ("Lake Nona", normalized)])]}
     if normalized in SEO_STATIC_META:
         title, description = SEO_STATIC_META[normalized]
         return {"title": title, "description": description, "canonical": canonical, "robots": "index, follow, max-image-preview:large", "type": "website", "jsonLd": []}
@@ -6902,6 +6960,12 @@ SEO_STATIC_SECTIONS: dict[str, list[tuple[str, str]]] = {
         ("At the door", "A person 21 or older must be present with a valid, unexpired government-issued photo ID. Orders cannot be left unattended, in a mailbox, at a door, or with anyone under 21. If no eligible adult is available or the ID check fails, the order returns to the store and support will help with the next step."),
         ("Tracking your order", "After checkout you receive an order number by email. Enter it on the Track Order page to follow your order from placed to out for delivery and delivered."),
     ],
+    "delivery/lake-nona": [
+        ("Lake Nona delivery", "HD Smoke Shop delivers to adults 21+ in Lake Nona, Orlando, ZIP codes 32832 and 32827, including Laureate Park, Lake Nona Town Center, Medical City, Northlake Park, Storey Park and Randal Park. Order disposable vapes, pod kits, hemp-derived delta products, kratom, hookah, glass, rolling papers, cigars and wraps online, and our own driver brings the order to your door in plain packaging."),
+        ("Same-day cutoff", "Order before the same-day cutoff shown at checkout and choose a same-day delivery window. Orders placed after the cutoff go out on the next available delivery day. Orders are packed at our Altamonte Springs store at 481 N State Rd 434, so the earliest Lake Nona windows are usually later in the afternoon or evening."),
+        ("Fees and checkout", "The delivery fee, any free-delivery threshold and sales tax for your Lake Nona address are shown in your cart before you pay. Enter your ZIP before checkout to confirm your address is in the delivery area."),
+        ("At the door", "A person 21 or older must be present with a valid, unexpired government-issued photo ID. Orders cannot be left unattended, in a mailbox or with anyone under 21. Track your order from the Track Order page after checkout."),
+    ],
     "privacy-policy": [
         ("Information we collect", "We collect information you provide when you create an account, place an order, contact support, join an email list, save an address or request an alert, such as your name, email, phone number, delivery address, date of birth and order details. We also receive basic technical information such as browser type, device type and IP address needed for security, troubleshooting and performance."),
         ("Payments and identity checks", "Payments are handled by the payment method shown at checkout, and HD Smoke Shop does not store full card numbers. At delivery we record the result of the required 21+ ID check, the ID type, driver name and time; the standard workflow does not retain a complete ID image."),
@@ -6976,7 +7040,9 @@ async def _seo_body_html(path: str, meta: dict) -> str:
     counts = await category_counts()
     nav = "".join(f'<li><a href="/product-category/{_h(c["slug"])}">{_h(_seo_display_name(c.get("name")))}</a></li>' for c in cats if counts.get(c["slug"]))
     links = ('<nav aria-label="Site"><ul><li><a href="/">Home</a></li><li><a href="/shop">Shop all</a></li><li><a href="/brands">Brands</a></li>'
-             '<li><a href="/delivery-area">Delivery area</a></li><li><a href="/about">About</a></li><li><a href="/contact">Contact &amp; directions</a></li>'
+             '<li><a href="/delivery-area">Delivery area</a></li>'
+             + ('<li><a href="/delivery/lake-nona">Lake Nona delivery</a></li>' if (await get_settings()).get("lakeNonaEnabled") else "")
+             + '<li><a href="/about">About</a></li><li><a href="/contact">Contact &amp; directions</a></li>'
              f'<li><a href="/faq">FAQ</a></li><li><a href="/guides">Guides</a></li></ul><h2>Shop by category</h2><ul>{nav}</ul></nav>')
     headline = re.split(r"\s[|–]\s", meta.get("title", ""), maxsplit=1)[0]
     main = f"<h1>{_h(headline)}</h1><p>{_h(meta.get('description'))}</p>"
@@ -7069,6 +7135,9 @@ async def _seo_body_html(path: str, meta: dict) -> str:
             brands = sorted((b for b in (await get_brand_map()).values() if b.get("active", True)), key=lambda b: str(b.get("displayName") or b.get("name") or "").lower())
             bcounts = await brand_counts()
             main += "<ul>" + "".join(f'<li><a href="/brand/{_h(b["slug"])}">{_h(b.get("displayName") or b.get("name"))}</a></li>' for b in brands if bcounts.get(b["slug"])) + "</ul>"
+    if (await get_settings()).get("lakeNonaEnabled"):
+        main = (main.replace("only to addresses in Altamonte Springs, ZIP 32714", "to addresses in Altamonte Springs (ZIP 32714) and Lake Nona (ZIPs 32832 and 32827)")
+                    .replace("We deliver only within Altamonte Springs, ZIP 32714", "We deliver within Altamonte Springs (ZIP 32714) and Lake Nona (ZIPs 32832 and 32827)"))
     return f'<div data-seo-fallback="1" style="max-width:1100px;margin:0 auto;padding:16px;font-family:system-ui,sans-serif;color:#111">{main}{links}{STORE_NAP_HTML}</div>'
 
 

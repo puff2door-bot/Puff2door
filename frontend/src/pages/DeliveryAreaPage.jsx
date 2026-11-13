@@ -21,7 +21,7 @@ const DeliveryAreaPage = () => {
   const sameDayEnabled = delivery.sameDayEnabled === true;
   const zoneDescription = STORE.deliveryAreaText;
   const faqs = [
-    { q: "Where does HD Smoke Shop deliver?", a: `We deliver to adults 21+ within ${zoneDescription}. Enter your ZIP code above to confirm. Outside 32714? You're welcome to visit our store at ${STORE.fullAddress}.` },
+    { q: "Where does HD Smoke Shop deliver?", a: `We deliver to adults 21+ within ${zoneDescription}${delivery.lakeNonaEnabled ? " and in Lake Nona, ZIPs 32832 and 32827" : ""}. Enter your ZIP code above to confirm. Outside our delivery area? You're welcome to visit our store at ${STORE.fullAddress}.` },
     { q: "Can I shop in store instead?", a: `Yes, walk-ins are welcome. We're open ${STORE.hoursText} at ${STORE.fullAddress}. Shoppers from Longwood, Casselberry, Maitland, Winter Springs and Apopka are welcome in store.` },
     { q: "Is there a delivery fee?", a: pricing.freeDeliveryMin <= 0 ? "Local delivery is currently free. Your final total is shown before you pay." : `Local delivery is free on orders over $${pricing.freeDeliveryMin}.${pricing.deliveryFee > 0 ? ` Orders below that carry a $${pricing.deliveryFee} delivery fee.` : ""} Your final total is shown before you pay.` },
     { q: "Do I need ID for delivery?", a: "Yes. You must be 21 or older, and a valid government-issued photo ID is checked at the door. Orders cannot be left with anyone under 21." },
@@ -78,13 +78,17 @@ const DeliveryAreaPage = () => {
         <section aria-labelledby="areas-heading" className="mb-12">
           <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full" />
           <h2 id="areas-heading" className="font-heading text-3xl sm:text-4xl font-700 text-neutral-900 uppercase tracking-tight mb-2">Areas We Deliver To</h2>
-          <p className="text-sm text-neutral-500 mb-6">We deliver from our SR 434 store to addresses in one ZIP code. Enter your ZIP above for the final check.</p>
+          <p className="text-sm text-neutral-500 mb-6">{delivery.lakeNonaEnabled ? "We deliver from our SR 434 store to Altamonte Springs (32714) and Lake Nona (32832, 32827)." : "We deliver from our SR 434 store to addresses in one ZIP code."} Enter your ZIP above for the final check.</p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6" data-testid="delivery-area-list">
             <div className="border border-neutral-200 rounded-xl p-5" data-testid="area-altamonte-springs">
               <h3 className="font-heading text-lg uppercase flex items-center gap-2 mb-2"><MapPin className="h-4 w-4 text-emerald-600" aria-hidden="true" /> Altamonte Springs, FL</h3>
               <p className="text-sm text-neutral-600 leading-relaxed"><span className="font-medium text-neutral-800">{STORE.deliveryZip}</span> – Altamonte Springs</p>
             </div>
-            <div className="border border-neutral-200 rounded-xl p-5 md:col-span-1 lg:col-span-2">
+            {delivery.lakeNonaEnabled && <div className="border border-neutral-200 rounded-xl p-5" data-testid="area-lake-nona">
+              <h3 className="font-heading text-lg uppercase flex items-center gap-2 mb-2"><MapPin className="h-4 w-4 text-emerald-600" aria-hidden="true" /> Lake Nona, Orlando</h3>
+              <p className="text-sm text-neutral-600 leading-relaxed"><span className="font-medium text-neutral-800">32832, 32827</span> – <Link to="/delivery/lake-nona" className="text-emerald-700 font-semibold hover:underline">Lake Nona delivery details</Link></p>
+            </div>}
+            <div className={`border border-neutral-200 rounded-xl p-5 md:col-span-1 ${delivery.lakeNonaEnabled ? "" : "lg:col-span-2"}`}>
               <h3 className="font-heading text-lg uppercase mb-2">Outside 32714?</h3>
               <p className="text-sm text-neutral-600 leading-relaxed">Shoppers from Longwood, Casselberry, Maitland, Winter Springs and Apopka are welcome to visit the store in person — no delivery needed.</p>
             </div>
