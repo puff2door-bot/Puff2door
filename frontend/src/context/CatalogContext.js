@@ -5,7 +5,12 @@ const CatalogContext = createContext(null);
 
 export const CatalogProvider = ({ children }) => {
   const [products, setProducts] = useState([]);
-  const [home, setHome] = useState({ heroSlides: [], promoBlocks: [] });
+  // The server puts the homepage banner slides into the page itself (window.__P2D_HOME__), so the
+  // banner doesn't have to wait for the product list to download.
+  const [home, setHome] = useState(() => {
+    const pre = typeof window !== "undefined" ? window.__P2D_HOME__ : null;
+    return pre && Array.isArray(pre.heroSlides) ? { heroSlides: pre.heroSlides, promoBlocks: pre.promoBlocks || [] } : { heroSlides: [], promoBlocks: [] };
+  });
   const [loading, setLoading] = useState(true);
   const [brandRecords, setBrandRecords] = useState([]);
   const [categoryRecords, setCategoryRecords] = useState([]);

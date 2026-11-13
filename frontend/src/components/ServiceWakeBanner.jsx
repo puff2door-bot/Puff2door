@@ -43,12 +43,14 @@ const ServiceWakeBanner = () => {
 
   const unavailable = status === "offline";
   return (
+    // Floats over the page instead of sitting above it: when it popped in at the top it pushed the
+    // whole page down, which Google counts as layout shift.
     <aside
-      className="border-b border-amber-300 bg-amber-50 text-amber-950"
+      className="fixed inset-x-3 bottom-[76px] lg:bottom-4 lg:left-auto lg:right-4 lg:w-[460px] z-[60] rounded-xl border border-amber-300 bg-amber-50 text-amber-950 shadow-lg"
       aria-live="polite"
       data-testid="service-wake-banner"
     >
-      <div className="mx-auto flex max-w-[1264px] items-center gap-3 px-4 py-3 sm:px-6">
+      <div className="flex items-center gap-3 px-4 py-3">
         {unavailable
           ? <WifiOff className="h-5 w-5 shrink-0" aria-hidden="true" />
           : <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden="true" />}
