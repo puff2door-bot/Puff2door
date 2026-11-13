@@ -114,7 +114,7 @@ const Header = () => {
                   <span className="block font-semibold">{user ? user.firstName || "Member" : "Login"}</span>
                 </span>
               </Link>
-              <Link to="/wishlist" data-testid="header-wishlist-link" className="relative flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
+              <Link to="/wishlist" aria-label="Wishlist" data-testid="header-wishlist-link" className="relative flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
                 <div className="relative">
                   <Heart className="h-6 w-6" />
                   {wishCount > 0 && (
@@ -125,7 +125,7 @@ const Header = () => {
                 </div>
                 <span className="hidden lg:block text-xs font-semibold">Wishlist</span>
               </Link>
-              <Link to="/cart" data-testid="header-cart-link" className="relative flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
+              <Link to="/cart" aria-label={count > 0 ? `Cart, ${count} item${count === 1 ? "" : "s"}` : "Cart"} data-testid="header-cart-link" className="relative flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
                 <div className="relative">
                   <ShoppingCart className="h-6 w-6" />
                   {count > 0 && (
