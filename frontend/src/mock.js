@@ -12,6 +12,7 @@ export const BRAND = {
 export const announcements = [
   "FREE LOCAL DELIVERY ON ORDERS OVER $99",
   "YOU MUST BE 21+ TO PURCHASE",
+  "100% FLORIDA-COMPLIANT",
   "SAME-DAY LOCAL DELIVERY AVAILABLE",
 ];
 
