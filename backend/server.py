@@ -2739,7 +2739,8 @@ async def public_settings():
     settings = await get_settings()
     return {"pricing": pricing_rules(settings), "delivery": delivery_rules(settings), "loyalty": loyalty_public_rules(settings),
             "presentation": {"homepageLayout": settings.get("homepageLayout", "classic"),
-                             "liveShelfEnabled": bool(settings.get("liveShelfEnabled", False))},
+                             "liveShelfEnabled": bool(settings.get("liveShelfEnabled", False)),
+                             "downloadAppEnabled": bool(settings.get("downloadAppEnabled", False))},
             "trust": {"googleReviewUrl": settings.get("googleReviewUrl", "")},
             "pickup": pickup_rules(settings)}
 
