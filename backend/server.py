@@ -7520,6 +7520,13 @@ if FRONTEND_BUILD_DIR.exists():
         if candidate.is_file():
             if full_path == ".well-known/apple-developer-merchantid-domain-association":
                 return FileResponse(candidate, media_type="application/octet-stream", headers={"Cache-Control": "public, max-age=3600"})
+            if full_path.startswith("uploads/") and candidate.suffix.lower() in (".png", ".jpg", ".jpeg"):
+                # Serve the optimized WebP copy when the browser supports it; the original stays as the fallback.
+                webp = candidate.with_suffix(".webp")
+                headers = {"Cache-Control": "public, max-age=2592000", "Vary": "Accept"}
+                if "image/webp" in request.headers.get("accept", "") and webp.is_file():
+                    return FileResponse(webp, media_type="image/webp", headers=headers)
+                return FileResponse(candidate, headers=headers)
             immutable = bool(re.search(r"\.[0-9a-f]{8,}\.", candidate.name))
             headers = {"Cache-Control": "public, max-age=31536000, immutable" if immutable else "public, max-age=3600"}
             return FileResponse(candidate, headers=headers)
