@@ -1,8 +1,17 @@
 export const EASTERN_TIME_ZONE = "America/New_York";
 
+// The server stores times in UTC. A time written without a zone ("2026-11-13T19:07:00") is UTC,
+// not local time — read it that way so it shows the right Eastern time.
+export const parseServerTime = (value) => {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(value)) {
+    return new Date(`${value}Z`);
+  }
+  return new Date(value);
+};
+
 export const formatEasternDateTime = (value, fallback = "Not run yet") => {
   if (!value) return fallback;
-  const date = new Date(value);
+  const date = parseServerTime(value);
   if (Number.isNaN(date.getTime())) return fallback;
   return new Intl.DateTimeFormat("en-US", {
     timeZone: EASTERN_TIME_ZONE,
