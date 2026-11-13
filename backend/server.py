@@ -2953,12 +2953,17 @@ def _requested_width(request: Request) -> Optional[int]:
 
 
 def _resize_to_webp(data: bytes, width: int) -> bytes:
+    """Shrink with as little memory as possible: JPEGs decode straight at a smaller size, and
+    thumbnail() reduces in steps instead of holding a full-size copy plus a resized copy."""
     from PIL import Image
     with Image.open(io.BytesIO(data)) as im:
-        im.load()
-        im = im.convert("RGBA") if im.mode in ("P", "LA", "RGBA") else im.convert("RGB")
         if im.width > width:
-            im = im.resize((width, max(1, round(im.height * width / im.width))), Image.LANCZOS)
+            im.draft("RGB", (width, max(1, round(im.height * width / im.width))))
+        im.load()
+        if im.mode not in ("RGB", "RGBA"):
+            im = im.convert("RGBA" if im.mode in ("P", "LA") else "RGB")
+        if im.width > width:
+            im.thumbnail((width, 10 * width), Image.LANCZOS, reducing_gap=2.0)
         out = io.BytesIO()
         im.save(out, "WEBP", quality=80, method=4)
         return out.getvalue()
