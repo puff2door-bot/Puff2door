@@ -202,6 +202,18 @@ const ShopPage = () => {
               })()}
             </nav>
           )}
+          {!loading && !searchQuery && (isBrand ? currentBrand : currentCat || !slug) && (
+            <section className="mt-10 grid gap-6 md:grid-cols-2 text-sm leading-relaxed text-neutral-600" data-testid="shop-buying-info">
+              <div>
+                <h2 className="font-heading text-xl uppercase text-neutral-900 mb-2">Buying {isBrand ? currentBrand.name : currentCat ? titleCase(currentCat.name) : "smoke shop products"} at HD Smoke Shop</h2>
+                <p>We currently list {baseList.length} {baseList.length === 1 ? "product" : "products"} online, and the same shelf is in our Altamonte Springs store at 481 N State Rd 434, Suite 1050, open 10 AM to 10 PM every day. Stock on this page updates from our in-store register, so what you see here is what we have. Ask our staff if you're looking for a flavor, strength or size you don't see listed.</p>
+              </div>
+              <div>
+                <h2 className="font-heading text-xl uppercase text-neutral-900 mb-2">Delivery and ID</h2>
+                <p>Order online for local same-day delivery within our delivery area, or walk in and shop in person. Every order is for adults 21 and older only. Our driver checks a valid, unexpired government photo ID at the door, and we never leave orders unattended. See the <Link to="/delivery-area" className="text-emerald-700 underline">Delivery Area</Link> page for the ZIP codes we serve and today's delivery times.</p>
+              </div>
+            </section>
+          )}
           {!loading && <div className="mt-10 rounded-xl border border-dashed p-5 flex flex-col sm:flex-row items-center justify-between gap-3"><div><p className="font-bold">Looking for something we don’t carry?</p><p className="text-sm text-neutral-500">Send a product request and we’ll track it in the store system.</p></div><Link to="/request-product" className="shrink-0 rounded-full bg-neutral-900 text-white px-5 py-2.5 text-sm font-bold">Request a Product</Link></div>}
         </div>
       </div>

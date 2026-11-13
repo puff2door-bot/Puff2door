@@ -7408,7 +7408,7 @@ async def _seo_visible_products(query: dict, limit: int = 120) -> list:
     query = {**query, "active": True}
     if (await get_settings()).get("hideOutOfStock", True):
         query["stock"] = {"$gt": 0}
-    return await db.products.find(query, {"name": 1, "slug": 1, "price": 1, "salePrice": 1, "brandName": 1}).sort("name", 1).to_list(limit)
+    return await db.products.find(query, {"name": 1, "slug": 1, "price": 1, "salePrice": 1, "brandName": 1, "brand": 1, "categorySlug": 1}).sort("name", 1).to_list(limit)
 
 
 def _seo_product_list(products: list) -> str:
@@ -7419,6 +7419,24 @@ def _seo_product_list(products: list) -> str:
         for p in products
     )
     return f"<ul>{items}</ul>"
+
+
+def _seo_shopping_block(name: str, count: int, related_label: str, related: list) -> str:
+    """Short, factual 'how to buy' section for brand, category and shop pages (keeps them above ~250 words)."""
+    items = f"{count} {name} product{'s' if count != 1 else ''}" if count else f"{name} products"
+    html = (f"<h2>Buying {_h(name)} at HD Smoke Shop</h2>"
+            f"<p>We currently list {_h(items)} online, and the same shelf is in our Altamonte Springs store at "
+            "481 N State Rd 434, Suite 1050, open 10 AM to 10 PM every day. Stock on this page updates from our "
+            "in-store register, so what you see here is what we have. Ask our staff if you're looking for a flavor, "
+            "strength or size you don't see listed.</p>"
+            "<h2>Delivery and ID</h2>"
+            "<p>Order online for local same-day delivery within our delivery area, or walk in and shop in person. "
+            "Every order is for adults 21 and older only. Our driver checks a valid, unexpired government photo ID "
+            "at the door, and we never leave orders unattended. See the Delivery Area page for the ZIP codes we "
+            "serve and today's delivery times.</p>")
+    if related:
+        html += f"<h2>{_h(related_label)}</h2><ul>" + "".join(f'<li><a href="{_h(href)}">{_h(label)}</a></li>' for href, label in related[:12]) + "</ul>"
+    return html
 
 
 async def _seo_body_html(path: str, meta: dict) -> str:
@@ -7456,10 +7474,28 @@ async def _seo_body_html(path: str, meta: dict) -> str:
         slug = canonical_category_slug(normalized.split("/", 1)[1])
         if CATEGORY_INTROS.get(slug):
             main += f"<p>{_h(CATEGORY_INTROS[slug])}</p>"
-        main += "<h2>In stock now</h2>" + _seo_product_list(await _seo_visible_products({"categorySlug": slug}))
+        cat_products = await _seo_visible_products({"categorySlug": slug})
+        main += "<h2>In stock now</h2>" + _seo_product_list(cat_products)
+        cat_name = next((_seo_display_name(c.get("name")) for c in cats if c.get("slug") == slug), _seo_display_name(slug.replace("-", " ")))
+        bmap = await get_brand_map()
+        brand_slugs = []
+        for prod in cat_products:
+            if prod.get("brand") and prod["brand"] not in brand_slugs:
+                brand_slugs.append(prod["brand"])
+        related = [(f"/brand/{b}", (bmap.get(b) or {}).get("displayName") or b.upper()) for b in brand_slugs]
+        main += _seo_shopping_block(cat_name, len(cat_products), f"{cat_name} brands we carry", related)
     elif normalized.startswith("brand/"):
         slug = normalized.split("/", 1)[1]
-        main += "<h2>In stock now</h2>" + _seo_product_list(await _seo_visible_products({"brand": slug}))
+        brand_products = await _seo_visible_products({"brand": slug})
+        main += "<h2>In stock now</h2>" + _seo_product_list(brand_products)
+        brand_name = (await get_brand_map()).get(slug, {}).get("displayName") or slug.replace("-", " ").upper()
+        cat_names = {c.get("slug"): _seo_display_name(c.get("name")) for c in cats}
+        cat_slugs = []
+        for prod in brand_products:
+            if prod.get("categorySlug") and prod["categorySlug"] not in cat_slugs:
+                cat_slugs.append(prod["categorySlug"])
+        related = [(f"/product-category/{c}", cat_names.get(c) or c) for c in cat_slugs]
+        main += _seo_shopping_block(brand_name, len(brand_products), f"Shop {brand_name} by category", related)
     elif normalized.startswith("shop/"):
         requested_slug = normalized.split("/", 1)[1]
         product = await db.products.find_one({"$or": [{"slug": requested_slug}, {"legacySlugs": requested_slug}], "active": True})
@@ -7504,6 +7540,13 @@ async def _seo_body_html(path: str, meta: dict) -> str:
     elif normalized == "guides":
         main = ("<h1>Smoke Shop Guides</h1><p>Plain-English buying and how-to guides from the HD Smoke Shop team.</p><ul>"
                 + "".join(f'<li><a href="/guides/{_h(g["slug"])}">{_h(g["title"])}</a> – {_h(g["description"])}</li>' for g in GUIDES) + "</ul>")
+        main += ("<h2>Why we wrote these guides</h2><p>Our staff answer the same questions at the counter every day: "
+                 "how to choose a disposable vape, how to set up a hookah, the difference between papers and cones, "
+                 "how to clean glass, and what to bring for ID. These guides put those answers in one place, "
+                 "written by the team at our Altamonte Springs store on SR 434. They are general information only, not "
+                 "medical or legal advice, and every product we sell is for adults 21 and older.</p>"
+                 "<p>Have a question we haven't covered? Call us at (407) 625-6826 or stop by any day from 10 AM to "
+                 "10 PM, and we'll help you find the right product.</p>")
     elif normalized.startswith("guides/") and GUIDES_BY_SLUG.get(normalized.split("/", 1)[1]):
         g = GUIDES_BY_SLUG[normalized.split("/", 1)[1]]
         parts = [f"<article><h1>{_h(g['title'])}</h1><p>Updated {_h(g['updated'])} · {g['readMinutes']} min read</p><p>{_h(g['intro'])}</p>"]
@@ -7525,6 +7568,9 @@ async def _seo_body_html(path: str, meta: dict) -> str:
             brands = sorted((b for b in (await get_brand_map()).values() if b.get("active", True)), key=lambda b: str(b.get("displayName") or b.get("name") or "").lower())
             bcounts = await brand_counts()
             main += "<ul>" + "".join(f'<li><a href="/brand/{_h(b["slug"])}">{_h(b.get("displayName") or b.get("name"))}</a></li>' for b in brands if bcounts.get(b["slug"])) + "</ul>"
+        else:
+            main += _seo_shopping_block("smoke shop", sum(counts.values()), "Shop by category",
+                                        [(f"/product-category/{c['slug']}", _seo_display_name(c.get("name"))) for c in cats if counts.get(c["slug"])])
     if (await get_settings()).get("lakeNonaEnabled"):
         main = (main.replace("only to addresses in Altamonte Springs, ZIP 32714", "to addresses in Altamonte Springs (ZIP 32714) and Lake Nona (ZIPs 32832 and 32827)")
                     .replace("We deliver only within Altamonte Springs, ZIP 32714", "We deliver within Altamonte Springs (ZIP 32714) and Lake Nona (ZIPs 32832 and 32827)"))

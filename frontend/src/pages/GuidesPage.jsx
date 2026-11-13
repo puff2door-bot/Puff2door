@@ -39,6 +39,11 @@ export const GuidesIndex = () => {
           ))}
         </div>
       )}
+      <section className="mt-10 text-sm leading-relaxed text-neutral-600 max-w-3xl" data-testid="guides-about">
+        <h2 className="font-heading text-xl uppercase text-neutral-900 mb-2">Why we wrote these guides</h2>
+        <p>Our staff answer the same questions at the counter every day: how to choose a disposable vape, how to set up a hookah, the difference between papers and cones, how to clean glass, and what to bring for ID. These guides put those answers in one place, written by the team at our Altamonte Springs store on SR 434. They are general information only, not medical or legal advice, and every product we sell is for adults 21 and older.</p>
+        <p className="mt-3">Have a question we haven't covered? Call us at <a href="tel:+14076256826" className="text-emerald-700 underline">(407) 625-6826</a> or stop by any day from 10 AM to 10 PM, and we'll help you find the right product.</p>
+      </section>
     </div>
   );
 };
