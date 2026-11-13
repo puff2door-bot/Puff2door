@@ -32,6 +32,7 @@ import AdminPromos from "./pages/admin/AdminPromos";
 import AdminSettings from "./pages/admin/AdminSettings";
 import NotFound from "./pages/NotFound";
 import DeliveryAreaPage from "./pages/DeliveryAreaPage";
+import LakeNonaDeliveryPage from "./pages/LakeNonaDeliveryPage";
 import AdminBrands from "./pages/admin/AdminBrands";
 import AdminCategories from "./pages/admin/AdminCategories";
 import AdminLoyalty from "./pages/admin/AdminLoyalty";
@@ -134,6 +135,7 @@ const AppRoutes = () => {
       <Route path="/brand/:slug" element={<ShopPage />} />
       <Route path="/brands" element={<BrandsPage />} />
       <Route path="/delivery-area" element={<DeliveryAreaPage />} />
+      <Route path="/delivery/lake-nona" element={<LakeNonaDeliveryPage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/faq" element={<FaqPage />} />

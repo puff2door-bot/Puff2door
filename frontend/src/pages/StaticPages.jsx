@@ -5,6 +5,7 @@ import { useCatalog } from "../context/CatalogContext";
 import BrandLogo from "../components/BrandLogo";
 import Seo from "../seo/Seo";
 import { breadcrumbJsonLd, faqJsonLd } from "../seo/config";
+import { useCart } from "../context/CartContext";
 import LocalFaq from "../components/LocalFaq";
 import VisitStore from "../components/VisitStore";
 
@@ -128,8 +129,14 @@ const FAQ_SECTIONS = [
   },
 ];
 
+const LAKE_NONA_WHERE = "We deliver within Altamonte Springs (ZIP 32714) and Lake Nona (ZIPs 32832 and 32827). Enter your ZIP at checkout to confirm. Outside those areas, you're welcome to shop in store.";
+
 export const FaqPage = () => {
-  const all = FAQ_SECTIONS.flatMap((section) => section.faqs);
+  const { delivery } = useCart();
+  const sections = delivery?.lakeNonaEnabled
+    ? FAQ_SECTIONS.map((section) => ({ ...section, faqs: section.faqs.map((f) => (f.q === "Where do you deliver?" ? { ...f, a: LAKE_NONA_WHERE } : f)) }))
+    : FAQ_SECTIONS;
+  const all = sections.flatMap((section) => section.faqs);
   return (
     <div className="max-w-[960px] mx-auto px-4 py-10">
       <Seo
@@ -143,7 +150,7 @@ export const FaqPage = () => {
         <p className="text-neutral-400 text-sm mt-2">Delivery, ID, payment, store visits and returns. Still have a question? <Link to="/contact" className="text-emerald-400 font-semibold hover:underline">Contact us</Link>.</p>
       </div>
       <div className="space-y-10" data-testid="faq-page">
-        {FAQ_SECTIONS.map((section, i) => (
+        {sections.map((section, i) => (
           <LocalFaq key={section.title} faqs={section.faqs} heading={section.title} testId={`faq-${i}`} />
         ))}
       </div>

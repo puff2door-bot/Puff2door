@@ -10,10 +10,12 @@ const SOCIALS = [
 import { BRAND } from "../mock";
 import { STORE } from "../seo/config";
 import { useCatalog } from "../context/CatalogContext";
+import { useCart } from "../context/CartContext";
 import AnimatedLogo from "./AnimatedLogo";
 import { useApp } from "../context/AppContext";
 
 const Footer = () => {
+  const { delivery } = useCart();
   const { activeCategories: categories } = useCatalog();
   const { user } = useApp();
   return (
@@ -75,6 +77,7 @@ const Footer = () => {
             <li><Link to="/guides" className="hover:text-emerald-400 transition-colors">Guides</Link></li>
             <li><Link to="/track" className="hover:text-emerald-400 transition-colors">Track Order</Link></li>
             <li><Link to="/delivery-area" className="hover:text-emerald-400 transition-colors">Delivery Area (32714)</Link></li>
+            {delivery?.lakeNonaEnabled && <li><Link to="/delivery/lake-nona" className="hover:text-emerald-400 transition-colors">Lake Nona Delivery (32832)</Link></li>}
             <li><Link to="/brands" className="hover:text-emerald-400 transition-colors">Brands</Link></li>
             <li><Link to="/my-account" className="hover:text-emerald-400 transition-colors">My Account</Link></li>
             <li><Link to="/cart" className="hover:text-emerald-400 transition-colors">Cart</Link></li>

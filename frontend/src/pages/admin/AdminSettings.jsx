@@ -29,7 +29,8 @@ const AdminSettings = () => {
     deliverySlotCapacity: data.deliverySlotCapacity ?? 8, deliveryDriverCount: data.deliveryDriverCount ?? 1, ordersPerDriverPerWindow: data.ordersPerDriverPerWindow ?? 8, defaultEtaMinutes: data.defaultEtaMinutes ?? 45,
     googleReviewUrl: data.googleReviewUrl || "", hideOutOfStock: data.hideOutOfStock ?? true, liveShelfEnabled: data.liveShelfEnabled ?? false,
     pickupEnabled: data.pickupEnabled ?? false, pickupAddress: data.pickupAddress || "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714", pickupHoursText: data.pickupHoursText ?? "Pick up during store hours.",
-    pickupReadyMinutes: data.pickupReadyMinutes ?? 15, pickupHoldDays: data.pickupHoldDays ?? 1, pickupInstructions: data.pickupInstructions ?? "Bring a valid, unexpired 21+ photo ID that matches the name on the order." });
+    pickupReadyMinutes: data.pickupReadyMinutes ?? 15, pickupHoldDays: data.pickupHoldDays ?? 1, pickupInstructions: data.pickupInstructions ?? "Bring a valid, unexpired 21+ photo ID that matches the name on the order.",
+    lakeNonaEnabled: data.lakeNonaEnabled ?? false, zipTaxRates: Object.entries(data.zipTaxRates || {}).map(([z, r]) => `${z}=${+(r * 100).toFixed(3)}`).join(", ") });
 
   useEffect(() => {
     api.get("/admin/settings").then(({ data }) => setF(toForm(data)));
@@ -43,7 +44,8 @@ const AdminSettings = () => {
         sameDayEnabled: Boolean(f.sameDayEnabled), deliveryCutoff: f.deliveryCutoff, deliveryStart: f.deliveryStart, deliveryEnd: f.deliveryEnd, deliveryDays: f.deliveryDays, homepageLayout: f.homepageLayout,
         countdownVisible: Boolean(f.countdownVisible), countdownHeadlineVisible: Boolean(f.countdownHeadlineVisible), countdownHoursVisible: Boolean(f.countdownHoursVisible), countdownOpenText: f.countdownOpenText, countdownClosedText: f.countdownClosedText, countdownClosedDayText: f.countdownClosedDayText, countdownPausedText: f.countdownPausedText, countdownHoursText: f.countdownHoursText, countdownExtraLines: f.countdownExtraLines,
         deliverySlotCapacity: Number(f.deliverySlotCapacity), deliveryDriverCount: Number(f.deliveryDriverCount), ordersPerDriverPerWindow: Number(f.ordersPerDriverPerWindow), defaultEtaMinutes: Number(f.defaultEtaMinutes), googleReviewUrl: f.googleReviewUrl.trim(), hideOutOfStock: Boolean(f.hideOutOfStock), liveShelfEnabled: Boolean(f.liveShelfEnabled),
-        pickupEnabled: Boolean(f.pickupEnabled), pickupAddress: f.pickupAddress.trim(), pickupHoursText: f.pickupHoursText, pickupReadyMinutes: Number(f.pickupReadyMinutes), pickupHoldDays: Number(f.pickupHoldDays), pickupInstructions: f.pickupInstructions });
+        pickupEnabled: Boolean(f.pickupEnabled), pickupAddress: f.pickupAddress.trim(), pickupHoursText: f.pickupHoursText, pickupReadyMinutes: Number(f.pickupReadyMinutes), pickupHoldDays: Number(f.pickupHoldDays), pickupInstructions: f.pickupInstructions,
+        lakeNonaEnabled: Boolean(f.lakeNonaEnabled), zipTaxRates: Object.fromEntries(f.zipTaxRates.split(/[\s,]+/).filter(Boolean).map((pair) => { const [z, r] = pair.split("="); return [z.trim(), Number(r) / 100]; })) });
       setF(toForm(data));
       toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
     } catch (err) {
@@ -118,6 +120,20 @@ const AdminSettings = () => {
         <div className="flex items-center gap-2 mb-1"><MapPin className="h-4 w-4 text-emerald-600" /><label className="text-sm font-bold text-neutral-900">Allowed ZIP codes</label></div>
         <p className="text-xs text-neutral-600 mb-3">Enter ZIP codes separated by commas or spaces. When this list has ZIP codes, only these ZIP codes can place delivery orders. Leave it empty to use the mileage radius above.</p>
         <textarea rows={3} data-testid="settings-allowed-zips" className={inputCls} placeholder="32701, 32714, 32779" value={f.allowedZipCodes} onChange={(e) => setF({ ...f, allowedZipCodes: e.target.value.replace(/[^\d,\s]/g, "") })} />
+      </div>
+
+      <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-lake-nona">
+        <label className="flex items-center justify-between gap-4 cursor-pointer mb-1">
+          <span className="flex items-center gap-2"><MapPin className="h-4 w-4 text-emerald-600" /><span className="text-sm font-bold text-neutral-900">Lake Nona delivery (32832, 32827)</span></span>
+          <span className="flex items-center gap-2 text-sm font-bold">{f.lakeNonaEnabled ? "On" : "Off"}<input type="checkbox" data-testid="settings-lake-nona-enabled" className="accent-emerald-600 h-5 w-5" checked={f.lakeNonaEnabled} onChange={(e) => setF({ ...f, lakeNonaEnabled: e.target.checked })} /></span>
+        </label>
+        <p className="text-xs text-neutral-500">When on, customers in 32832 and 32827 can place delivery orders, and the Lake Nona delivery page is shown in the footer, on the Delivery Area page and in the Google sitemap. Turn it off to stop Lake Nona orders and hide the page.</p>
+      </div>
+
+      <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-zip-tax">
+        <div className="flex items-center gap-2 mb-1"><MapPin className="h-4 w-4 text-emerald-600" /><label className="text-sm font-bold text-neutral-900">Sales tax by delivery ZIP</label></div>
+        <p className="text-xs text-neutral-500 mb-3">Delivery ZIPs in another county that use a different tax rate, as ZIP=percent, separated by commas (Orange County is 6.5%). Every other order, and all store pickups, use the sales tax rate above. Leave empty to use one rate for everything.</p>
+        <textarea rows={2} data-testid="settings-zip-tax-rates" className={inputCls} placeholder="32832=6.5, 32827=6.5" value={f.zipTaxRates} onChange={(e) => setF({ ...f, zipTaxRates: e.target.value.replace(/[^\d,.=\s]/g, "") })} />
       </div>
 
       <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-sameday">
