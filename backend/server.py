@@ -7025,6 +7025,52 @@ async def agent12_social_schedule():
 
 
 @app.on_event("startup")
+async def warm_image_copies():
+    """Each deploy starts with an empty image cache, so the first shoppers were sent full-size
+    product photos (often 1+ MB each). Make the small copies ahead of time, one photo at a time."""
+    async def warm():
+        await asyncio.sleep(30)
+        jobs: list = []
+        try:
+            slides = (await get_home_content()).get("heroSlides") or []
+            jobs += [(s.get("image") or "", HERO_SRCSET_WIDTHS) for s in slides]
+            async for p in db.products.find({"active": True}, {"image": 1, "image2": 1}).sort("id", 1):
+                jobs += [(p.get("image") or "", CARD_SRCSET_WIDTHS), (p.get("image2") or "", CARD_SRCSET_WIDTHS)]
+        except Exception as exc:
+            logger.warning("Image warm-up skipped: %s", exc)
+            return
+        made = 0
+        seen: set = set()
+        for url, widths in jobs:
+            if not url.startswith("/api/files/") or "?" in url or url in seen:
+                continue
+            seen.add(url)
+            path = url[len("/api/files/"):]
+            key = f"files:{path}"
+            missing = [w for w in widths if not (IMAGE_CACHE_DIR / f"{hashlib.sha256(key.encode()).hexdigest()}-{w}.webp").is_file()]
+            if not missing:
+                continue
+            try:
+                async with _RESIZE_SLOTS:
+                    data = (await get_object(path))[0]
+                    IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                    for w in missing:
+                        cache_file = IMAGE_CACHE_DIR / f"{hashlib.sha256(key.encode()).hexdigest()}-{w}.webp"
+                        webp = await asyncio.to_thread(_resize_to_webp, data, w)
+                        tmp = cache_file.with_suffix(f".{os.getpid()}.tmp")
+                        tmp.write_bytes(webp)
+                        tmp.replace(cache_file)
+                        made += 1
+                    del data
+            except Exception as exc:
+                logger.warning("Image warm-up failed for %s: %s", url, exc)
+            await asyncio.sleep(0.2)
+        logger.info("Image warm-up done: %d small copies made", made)
+
+    asyncio.create_task(warm())
+
+
+@app.on_event("startup")
 async def configure_emails():
     emails.configure(db, os.environ.get("PUBLIC_URL", ""))
     logger.info("Email %s (from %s)", "enabled" if emails.EMAIL_ENABLED else "disabled", emails.EMAIL_FROM or "-")
@@ -7601,6 +7647,30 @@ async def _inject_hero_preload(document: str) -> str:
     return document.replace("</head>", tag + "</head>", 1)
 
 
+async def _hero_fallback_img() -> str:
+    """The first homepage banner as plain HTML, shown before the app's JavaScript has loaded.
+
+    The photo is already downloaded early (see _inject_hero_preload), but it only appeared once
+    the app had started, about 3 seconds later on a phone."""
+    try:
+        slides = (await get_home_content()).get("heroSlides") or []
+    except Exception:
+        return ""
+    slide = slides[0] if slides else {}
+    image = slide.get("image") or ""
+    if not image.startswith(("/uploads/", "/api/files/")) or "?" in image:
+        return ""
+    src = html_escape(image, quote=True)
+    srcset = ", ".join(f"{src}?w={w} {w}w" for w in HERO_SRCSET_WIDTHS)
+    alt = html_escape(slide.get("title") or "HD Smoke Shop", quote=True)
+    return (f'<img src="{src}?w=800" srcset="{srcset}" sizes="100vw" alt="{alt}" fetchpriority="high" decoding="async" '
+            'width="1264" height="848" class="p2d-hero-fb"/>'
+            # Same size as the app's banner (h-[380px] sm:h-[460px] lg:h-[560px]), so swapping it in looks seamless.
+            '<style>.p2d-hero-fb{display:block;width:calc(100% + 32px);max-width:none;margin:-16px -16px 16px;height:380px;'
+            'object-fit:cover;object-position:right;background:#171717}'
+            '@media(min-width:640px){.p2d-hero-fb{height:460px}}@media(min-width:1024px){.p2d-hero-fb{height:560px}}</style>')
+
+
 CARD_SRCSET_WIDTHS = (320, 480, 640)
 
 
@@ -7733,6 +7803,10 @@ if FRONTEND_BUILD_DIR.exists():
             body_html = ""
         if normalized_path == "":
             document = await _inject_hero_preload(document)
+            if body_html.startswith('<div data-seo-fallback="1"'):
+                hero = await _hero_fallback_img()
+                if hero:
+                    body_html = body_html.replace(">", ">" + hero, 1)
         elif normalized_path == "shop" and not request.query_params.get("search"):
             document = await _inject_first_product_preload(document)
         elif normalized_path.startswith("product-category/") and normalized_path.count("/") == 1:
