@@ -5,7 +5,7 @@ import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
 import { useToast } from "../hooks/use-toast";
 import { useCatalog } from "../context/CatalogContext";
-import { imgUrl } from "../api";
+import { imgUrl, imgSrcSet } from "../api";
 import { toggleCompare } from "../lib/customerExperience";
 
 const ProductCard = ({ product }) => {
@@ -39,6 +39,7 @@ const ProductCard = ({ product }) => {
       <Link to={`/shop/${product.slug}`} className="block relative aspect-square bg-neutral-50 overflow-hidden">
         <img
           src={imgUrl(product.image)}
+          srcSet={imgSrcSet(product.image)}
           alt={`${product.name} – ${product.category} from HD Smoke Shop`}
           loading="lazy"
           decoding="async"
@@ -49,6 +50,7 @@ const ProductCard = ({ product }) => {
         />
         <img
           src={imgUrl(product.image2)}
+          srcSet={imgSrcSet(product.image2)}
           alt=""
           aria-hidden="true"
           loading="lazy"

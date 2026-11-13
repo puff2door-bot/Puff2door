@@ -2938,17 +2938,68 @@ async def get_product(slug: str):
     return product_out(p)
 
 
+# ---- Responsive image sizes (?w=) ----
+IMAGE_WIDTHS = (320, 480, 640, 800, 1200, 1600)
+IMAGE_CACHE_DIR = Path(os.environ.get("IMAGE_CACHE_DIR", "/tmp/p2d-image-cache"))
+IMAGE_CACHE_HEADERS = {"Cache-Control": "public, max-age=2592000", "Vary": "Accept"}
+
+
+def _requested_width(request: Request) -> Optional[int]:
+    try:
+        w = int(request.query_params.get("w", ""))
+    except ValueError:
+        return None
+    return w if w in IMAGE_WIDTHS and "image/webp" in request.headers.get("accept", "") else None
+
+
+def _resize_to_webp(data: bytes, width: int) -> bytes:
+    from PIL import Image
+    with Image.open(io.BytesIO(data)) as im:
+        im.load()
+        im = im.convert("RGBA") if im.mode in ("P", "LA", "RGBA") else im.convert("RGB")
+        if im.width > width:
+            im = im.resize((width, max(1, round(im.height * width / im.width))), Image.LANCZOS)
+        out = io.BytesIO()
+        im.save(out, "WEBP", quality=80, method=4)
+        return out.getvalue()
+
+
+async def resized_image_response(key: str, width: int, load_bytes) -> Optional[Response]:
+    """Return a cached WebP copy of an image at the requested width, or None if it can't be made."""
+    cache_file = IMAGE_CACHE_DIR / f"{hashlib.sha256(key.encode()).hexdigest()}-{width}.webp"
+    try:
+        if not cache_file.is_file():
+            data = await load_bytes()
+            webp = await asyncio.to_thread(_resize_to_webp, data, width)
+            IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            tmp = cache_file.with_suffix(".tmp")
+            tmp.write_bytes(webp)
+            tmp.replace(cache_file)
+        return FileResponse(cache_file, media_type="image/webp", headers=IMAGE_CACHE_HEADERS)
+    except Exception as exc:
+        logger.warning("Image resize failed for %s at %s: %s", key, width, exc)
+        return None
+
+
 @api_router.get("/files/{path:path}")
-async def serve_file(path: str):
+async def serve_file(path: str, request: Request):
     record = await db.files.find_one({"storage_path": path, "is_deleted": False})
     if not record:
         raise HTTPException(status_code=404, detail="File not found")
+    width = _requested_width(request)
+    if width and (record.get("content_type") or "").startswith("image/"):
+        async def load():
+            return (await get_object(path))[0]
+        resized = await resized_image_response(f"files:{path}", width, load)
+        if resized:
+            return resized
     try:
         data, content_type = await get_object(path)
     except Exception as e:
         logger.warning("Object store unavailable for %s: %s", path, e)
         raise HTTPException(status_code=502, detail="Image storage is temporarily unavailable")
-    return Response(content=data, media_type=record.get("content_type", content_type), headers={"Cache-Control": "public, max-age=86400"})
+    # Uploaded files get a new unique name, so browsers can keep them for 30 days.
+    return Response(content=data, media_type=record.get("content_type", content_type), headers={"Cache-Control": "public, max-age=2592000"})
 
 
 # ---- Settings & promo codes ----
@@ -7459,6 +7510,25 @@ async def _seo_body_html(path: str, meta: dict) -> str:
     return f'<div data-seo-fallback="1" style="max-width:1100px;margin:0 auto;padding:16px;font-family:system-ui,sans-serif;color:#111">{main}{links}{STORE_NAP_HTML}</div>'
 
 
+HERO_SRCSET_WIDTHS = (640, 800, 1200, 1600)
+
+
+async def _inject_hero_preload(document: str) -> str:
+    """Let the browser start downloading the first homepage banner before the app's JavaScript runs."""
+    try:
+        slides = (await get_home_content()).get("heroSlides") or []
+        image = (slides[0].get("image") or "") if slides else ""
+    except Exception as exc:
+        logger.warning("Hero preload skipped: %s", exc)
+        return document
+    if not image.startswith(("/uploads/", "/api/files/")):
+        return document
+    src = html_escape(image, quote=True)
+    srcset = ", ".join(f"{src}?w={w} {w}w" for w in HERO_SRCSET_WIDTHS)
+    tag = f'<link rel="preload" as="image" fetchpriority="high" href="{src}?w=800" imagesrcset="{srcset}" imagesizes="100vw"/>'
+    return document.replace("</head>", tag + "</head>", 1)
+
+
 def _seo_inject_html(document: str, meta: dict, body_html: str = "") -> str:
     title = html_escape(meta["title"], quote=True)
     description = html_escape(meta["description"], quote=True)
@@ -7523,6 +7593,12 @@ if FRONTEND_BUILD_DIR.exists():
             if full_path.startswith("uploads/") and candidate.suffix.lower() in (".png", ".jpg", ".jpeg"):
                 # Serve the optimized WebP copy when the browser supports it; the original stays as the fallback.
                 webp = candidate.with_suffix(".webp")
+                width = _requested_width(request)
+                if width:
+                    source = webp if webp.is_file() else candidate
+                    resized = await resized_image_response(f"uploads:{full_path}", width, lambda: asyncio.to_thread(source.read_bytes))
+                    if resized:
+                        return resized
                 headers = {"Cache-Control": "public, max-age=2592000", "Vary": "Accept"}
                 if "image/webp" in request.headers.get("accept", "") and webp.is_file():
                     return FileResponse(webp, media_type="image/webp", headers=headers)
@@ -7555,4 +7631,6 @@ if FRONTEND_BUILD_DIR.exists():
         except Exception as exc:
             logger.warning("SEO page content failed for %s: %s", full_path, exc)
             body_html = ""
+        if normalized_path == "":
+            document = await _inject_hero_preload(document)
         return HTMLResponse(_seo_inject_html(document, meta, body_html), headers=headers)

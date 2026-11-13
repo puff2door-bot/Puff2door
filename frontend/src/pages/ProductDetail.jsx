@@ -9,7 +9,7 @@ import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
 import { useApp } from "../context/AppContext";
 import { useToast } from "../hooks/use-toast";
-import api, { imgUrl } from "../api";
+import api, { imgUrl, imgSrcSet } from "../api";
 import Seo from "../seo/Seo";
 import { ecommerce } from "../seo/Analytics";
 import { absUrl, breadcrumbJsonLd, productJsonLd, productSeoDescription, productSpecs, titleCase } from "../seo/config";
@@ -115,7 +115,7 @@ const ProductDetail = () => {
         {/* Gallery */}
         <div>
           <div className="aspect-square bg-neutral-50 border border-neutral-200 rounded-xl overflow-hidden grid place-items-center p-6">
-            <img src={imgUrl(gallery[activeImg])} alt={`${titleCase(product.name)} – ${titleCase(product.category)} from HD Smoke Shop`} width="600" height="600" fetchPriority="high" className="max-h-full max-w-full object-contain" />
+            <img src={imgUrl(gallery[activeImg])} srcSet={imgSrcSet(gallery[activeImg], [480, 640, 800, 1200])} sizes="(max-width: 1024px) 100vw, 600px" alt={`${titleCase(product.name)} – ${titleCase(product.category)} from HD Smoke Shop`} width="600" height="600" fetchPriority="high" className="max-h-full max-w-full object-contain" />
           </div>
           {gallery.length > 1 && (
             <div className="flex gap-3 mt-4">
