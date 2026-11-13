@@ -710,7 +710,10 @@ class InstagramIntegration:
         }
         await self.db.integrations.update_one(
             {"key": "instagram"},
-            {"$set": doc, "$unset": {"connectionState": "", "connectionError": "", "connectionErrorAt": ""}},
+            # A fresh connection starts clean: an old publishing error must not keep the admin
+            # page saying "reconnect" right after the owner has reconnected.
+            {"$set": doc, "$unset": {"connectionState": "", "connectionError": "", "connectionErrorAt": "",
+                                     "lastPublishError": "", "lastPublishErrorAt": "", "publishFailureCount": ""}},
             upsert=True,
         )
         await self.log("connect", "success", username=doc["username"], instagramUserId=doc["instagramUserId"])
@@ -1007,7 +1010,16 @@ class InstagramIntegration:
     async def status(self) -> dict:
         config = await self.config()
         latest = await self.db.social_drafts.find_one({}, {"_id": 0, "caption": 0}, sort=[("createdAt", -1)])
-        requires_reconnect = config.get("connectionState") == "needs_reconnect" or instagram_reconnect_required(config.get("lastPublishError", ""))
+        # Only a publishing error from after the latest connection means the connection is broken.
+        def _when(value):
+            try:
+                return _as_aware(value) if value else None
+            except (TypeError, ValueError):
+                return None
+        error_at, connected_at = _when(config.get("lastPublishErrorAt")), _when(config.get("connectedAt"))
+        error_is_current = bool(error_at and (not connected_at or error_at > connected_at))
+        requires_reconnect = config.get("connectionState") == "needs_reconnect" or (
+            error_is_current and instagram_reconnect_required(config.get("lastPublishError", "")))
         return {
             "configured": self.configured,
             "connected": bool(config.get("verified") and config.get("encryptedPageToken") and not requires_reconnect),
