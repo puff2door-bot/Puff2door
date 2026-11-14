@@ -1,5 +1,5 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Phone, Mail, MapPin, Clock, Facebook, Instagram, Twitter } from "lucide-react";
 
 const SOCIALS = [
@@ -12,10 +12,14 @@ import { STORE } from "../seo/config";
 import { useCatalog } from "../context/CatalogContext";
 import { useCart } from "../context/CartContext";
 import AnimatedLogo from "./AnimatedLogo";
+import { SalSays } from "./SalMascot";
+
+const SAL_FOOTER_PAGES = ["/about", "/contact", "/faq", "/guides", "/delivery-policy"];
 import { useApp } from "../context/AppContext";
 
 const Footer = () => {
   const { delivery } = useCart();
+  const { pathname } = useLocation();
   const { activeCategories: categories } = useCatalog();
   const { user } = useApp();
   return (
@@ -93,6 +97,11 @@ const Footer = () => {
             <li className="flex items-start gap-3"><MapPin className="h-4 w-4 text-emerald-500 mt-0.5" /> <a href={STORE.directionsUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">{STORE.fullAddress}</a></li>
             <li className="flex items-start gap-3"><Clock className="h-4 w-4 text-emerald-500 mt-0.5" /> Open {STORE.hoursText}</li>
           </ul>
+          {/* One Sal per page and never near products: the footer Sal only shows on info pages,
+              which have no other Sal (home, delivery, checkout and tracking already have one). */}
+          {SAL_FOOTER_PAGES.some((p) => pathname === p || pathname.startsWith(`${p}/`)) && (
+            <SalSays spot="banner" size={36} className="mt-5" textClassName="text-xs text-neutral-300" />
+          )}
         </div>
 
         <div>

@@ -15,6 +15,7 @@ import ApplePayCheckout from "../components/checkout/ApplePayCheckout";
 import ZelleInstructions from "../components/checkout/ZelleInstructions";
 import RewardsPanel from "../components/checkout/RewardsPanel";
 import DeliveryCountdown, { useDeliveryWindow } from "../components/DeliveryCountdown";
+import { SalSays } from "../components/SalMascot";
 
 // A pickup order is collected at the store, so the store is its address.
 const STORE_ADDRESS = { address: "481 N State Rd 434, Suite 1050", city: "Altamonte Springs", state: "FL", zip: "32714" };
@@ -312,6 +313,7 @@ const CheckoutPage = () => {
                     ))}
                   </div>
                 ) : <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">No delivery windows are currently available. Please contact us.</p>}
+                <SalSays spot="checkout" pose="avatar" size={40} className="mt-3" textClassName="text-xs font-semibold text-emerald-900" />
               </div>
             )}
             </>}

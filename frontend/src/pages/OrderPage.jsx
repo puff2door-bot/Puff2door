@@ -5,6 +5,7 @@ import api, { imgUrl } from "../api";
 import { ecommerce } from "../seo/Analytics";
 import ZelleInstructions from "../components/checkout/ZelleInstructions";
 import OrderTracking from "../components/OrderTracking";
+import { SalOrderStatus } from "../components/SalMascot";
 
 const PAY_LABEL = { square: "Card", cash_app: "Cash App Pay", paypal: "PayPal", apple_pay: "Apple Pay", zelle: "Zelle", test_card: "Test card" };
 
@@ -89,6 +90,7 @@ const OrderPage = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8">
         <div className="space-y-8">
+          <SalOrderStatus order={order} />
           <OrderTracking order={order} />
           <div className="border border-neutral-200 rounded-xl p-6" data-testid="order-help-center">
             <h2 className="font-heading text-xl uppercase tracking-wide mb-2 flex items-center gap-2"><LifeBuoy className="h-5 w-5 text-emerald-600" /> Order Help</h2>

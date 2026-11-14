@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { MapPin, Truck, ShieldCheck, Clock, SearchCheck, ShoppingBag, Camera } from "lucide-react";
 import { DeliveryChecker } from "../components/DeliveryZone";
+import { SalSays } from "../components/SalMascot";
 import { useDeliveryWindow } from "../components/DeliveryCountdown";
 import { useCart } from "../context/CartContext";
 import { useCatalog } from "../context/CatalogContext";
@@ -75,6 +76,7 @@ const LakeNonaDeliveryPage = () => {
           kratom, hookah, glass, rolling papers, cigars and wraps online, and our own driver brings them to your door in plain packaging.
           {sameDayEnabled ? ` Order by ${cutoff} for same-day delivery.` : " Pick the next available delivery window at checkout."} Every order is 21+ and ID-checked at the door.
         </p>
+        <SalSays spot="deliveryPage" pose="wave" size={88} className="mb-8 max-w-xl rounded-2xl bg-emerald-50 border border-emerald-100 p-3 pr-5" textClassName="text-sm font-semibold text-emerald-900 leading-snug" />
         <p className="text-sm text-neutral-500 max-w-3xl mb-10">Orders are packed at our Altamonte Springs store and driven to Lake Nona, so the earliest same-day window is usually later in the afternoon or evening.</p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">

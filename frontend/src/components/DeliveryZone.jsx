@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { MapPin, CheckCircle2, XCircle, Search } from "lucide-react";
 import api from "../api";
 import { deliveryBannerText } from "./deliveryAreaText";
+import { SalMascot, useSal } from "./SalMascot";
 
 export const DeliveryBanner = () => {
   const [area, setArea] = useState(null);
@@ -14,11 +15,14 @@ export const DeliveryBanner = () => {
     return () => { active = false; };
   }, []);
   const message = useMemo(() => deliveryBannerText(area), [area]);
+  const sal = useSal();
   return (
     <div data-testid="delivery-banner" className="bg-emerald-700 text-white">
-      {/* Fixed height (2 lines on phones, 1 on larger screens) so the page doesn't jump when the delivery area loads. */}
-      <p className="max-w-[1280px] mx-auto px-4 py-1.5 h-[44px] sm:h-[32px] flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold tracking-wide text-center overflow-hidden">
-        <MapPin className="h-3.5 w-3.5 shrink-0" />
+      {/* Fixed height (2 lines on phones, 1 on larger screens, room for Sal's face) so the page doesn't jump when the delivery area loads. */}
+      <p className="max-w-[1280px] mx-auto px-4 py-[3px] h-[48px] sm:h-[40px] flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold tracking-wide text-center overflow-hidden">
+        {sal.enabled
+          ? <SalMascot pose="face" size={34} label="Sal from Puff2door" />
+          : <MapPin className="h-3.5 w-3.5 shrink-0" />}
         <span className="line-clamp-2 sm:line-clamp-1">{message}</span>
         <Link to="/delivery-area" data-testid="delivery-banner-link" className="underline underline-offset-2 hover:text-emerald-100 font-medium">See delivery area</Link>
       </p>
