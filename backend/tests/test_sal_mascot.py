@@ -18,7 +18,7 @@ def test_admin_switch_turns_sal_off():
 
 
 def test_sal_lines_are_cleaned_and_empty_spots_fall_back_to_defaults():
-    cleaned = server.StoreSettingsInput._sal_lines({"checkout": ["  Have your ID ready  ", "", "x" * 300], "banner": []})
+    cleaned = server.clean_sal_lines({"checkout": ["  Have your ID ready  ", "", "x" * 300], "banner": []})
     assert cleaned["checkout"][0] == "Have your ID ready"
     assert len(cleaned["checkout"][1]) == 140
     assert cleaned["banner"] == server.SAL_DEFAULT_LINES["banner"]

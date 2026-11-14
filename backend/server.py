@@ -331,6 +331,15 @@ SAL_DEFAULT_LINES = {
     "notFound": ["Sal took a wrong turn. This page doesn't exist.", "Even Sal can't find this page."],
 }
 
+def clean_sal_lines(values) -> dict:
+    """Up to 6 lines of 140 characters per spot; an empty spot falls back to Sal's default lines."""
+    cleaned = {}
+    for spot in SAL_SPOTS:
+        lines = [str(x).strip()[:140] for x in (values or {}).get(spot, []) if str(x).strip()][:6]
+        cleaned[spot] = lines or list(SAL_DEFAULT_LINES[spot])
+    return cleaned
+
+
 DEFAULT_SETTINGS = {"taxRate": 0.065, "zipTaxRates": {"32827": 0.065, "32832": 0.065}, "lakeNonaEnabled": False, "countdownStyle": "chip", "salEnabled": True, "salLines": SAL_DEFAULT_LINES, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32714", "deliveryRadiusMiles": 20.0, "allowedZipCodes": ["32714"],
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
                     "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryStart": "11:00", "deliveryEnd": "21:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6], "homepageLayout": "classic",
@@ -780,11 +789,7 @@ class StoreSettingsInput(BaseModel):
     @field_validator("salLines")
     @classmethod
     def _sal_lines(cls, values):
-        cleaned = {}
-        for spot in SAL_SPOTS:
-            lines = [str(x).strip()[:140] for x in (values or {}).get(spot, []) if str(x).strip()][:6]
-            cleaned[spot] = lines or list(SAL_DEFAULT_LINES[spot])
-        return cleaned
+        return clean_sal_lines(values)
 
     @field_validator("countdownStyle")
     @classmethod
