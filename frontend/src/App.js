@@ -66,6 +66,7 @@ const AdminCompliance = lazyPage(() => import("./pages/admin/AdminCompliance"));
 const AdminAnalytics = lazyPage(() => import("./pages/admin/AdminAnalytics"));
 const AdminVisitors = lazyPage(() => import("./pages/admin/AdminVisitors"));
 const AdminCounterDeal = lazyPage(() => import("./pages/admin/AdminCounterDeal"));
+const AdminMessages = lazyPage(() => import("./pages/admin/AdminMessages"));
 const AdminAgents = lazyPage(() => import("./pages/admin/AdminAgents"));
 const MissingBarcodes = lazyPage(() => import("./pages/admin/MissingBarcodes"));
 const ProductDetails = lazyPage(() => import("./pages/admin/ProductDetails"));
@@ -195,6 +196,7 @@ const AppRoutes = () => {
         <Route path="analytics" element={<AdminAnalytics />} />
         <Route path="visitors" element={<AdminVisitors />} />
         <Route path="counter-deal" element={<AdminCounterDeal />} />
+        <Route path="messages" element={<AdminMessages />} />
         <Route path="agents" element={<AdminAgents />} />
         <Route path="inventory-capture" element={<InventoryCapture />} />
         <Route path="missing-photos" element={<MissingPhotos />} />
