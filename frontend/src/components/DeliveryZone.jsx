@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { MapPin, CheckCircle2, XCircle, Search } from "lucide-react";
 import api from "../api";
-import { deliveryBannerText } from "./deliveryAreaText";
+import { deliveryBannerText, deliveryBannerShort } from "./deliveryAreaText";
 import { SalMascot, useSal } from "./SalMascot";
 
 export const DeliveryBanner = () => {
@@ -15,6 +15,7 @@ export const DeliveryBanner = () => {
     return () => { active = false; };
   }, []);
   const message = useMemo(() => deliveryBannerText(area), [area]);
+  const shortMessage = useMemo(() => deliveryBannerShort(area), [area]);
   const sal = useSal();
   return (
     <div data-testid="delivery-banner" className="bg-emerald-700 text-white">
@@ -23,7 +24,7 @@ export const DeliveryBanner = () => {
         {sal.enabled
           ? <SalMascot pose="face" size={34} label="Sal from Puff2door" interactive />
           : <MapPin className="h-3.5 w-3.5 shrink-0" />}
-        <span className="line-clamp-2 sm:line-clamp-1">{message}</span>
+        <span className="line-clamp-2 sm:hidden">{shortMessage}</span><span className="hidden sm:line-clamp-1">{message}</span>
         <Link to="/delivery-area" data-testid="delivery-banner-link" className="shrink-0 whitespace-nowrap underline underline-offset-2 hover:text-emerald-100 font-medium"><span className="sm:hidden">See area</span><span className="hidden sm:inline">See delivery area</span></Link>
       </p>
     </div>

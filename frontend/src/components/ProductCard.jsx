@@ -97,7 +97,7 @@ const ProductCard = ({ product, priority = false }) => {
         <div className="mt-auto pt-3 flex items-center justify-between">
           <span className="font-heading text-xl text-neutral-900 flex items-baseline gap-2">
             ${price.toFixed(2)}
-            {price !== product.price && <span className="text-sm text-neutral-400 line-through">${product.price.toFixed(2)}</span>}
+            {price !== product.price && <span className="text-sm text-neutral-500 line-through">${product.price.toFixed(2)}</span>}
           </span>
           {product.inStock ? (
             <button
