@@ -8,6 +8,7 @@ import { CatalogProvider } from "./context/CatalogContext";
 import { Toaster } from "./components/ui/toaster";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
+import { SalCartPop } from "./components/SalMascot";
 import AgeGate from "./components/AgeGate";
 import Home from "./pages/Home";
 import ShopPage from "./pages/ShopPage";
@@ -230,6 +231,7 @@ const AppFrame = () => {
     {!dedicatedDriver && <Footer />}
     {!dedicatedDriver && <ChatWidget />}
     {!dedicatedDriver && <CompareTray />}
+    {!dedicatedDriver && <SalCartPop />}
     {!dedicatedDriver && <MobileBottomNav />}
     {!dedicatedDriver && <PwaExperience />}
     <Toaster />

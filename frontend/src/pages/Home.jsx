@@ -93,7 +93,7 @@ const Home = () => {
   const conceptLayout = layout === "neon" || layout === "blue";
   const intro = (
     <section className="home-intro bg-white border-b" data-testid="home-intro">
-      <div className="max-w-[1280px] mx-auto px-4 py-8">
+      <div className="max-w-[1280px] mx-auto px-4 py-6 sm:py-8">
         <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full" />
         <h1 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-700 text-neutral-900 uppercase tracking-tight mb-3">Altamonte Springs Smoke Shop &amp; Local Delivery</h1>
         <p className="text-neutral-600 leading-relaxed max-w-3xl">HD Smoke Shop is a smoke shop at 481 N State Rd 434, Suite 1050 in Altamonte Springs, FL, open 10 AM–10 PM daily. Walk-ins are welcome, or order disposable vapes, hemp-derived delta products, glass pipes, kratom and other smoke shop essentials online for local delivery within ZIP 32714. Adults 21+ only, ID required.</p>
@@ -104,7 +104,7 @@ const Home = () => {
     <section className="home-feature-bar bg-neutral-50 border-b" aria-labelledby="why-shop-heading">
       <div className="max-w-[1280px] mx-auto px-4 pt-6"><h2 id="why-shop-heading" className="font-heading text-xl sm:text-2xl font-700 text-neutral-900 uppercase tracking-tight">Why Shop With HD Smoke Shop?</h2></div>
       <div className="home-feature-grid max-w-[1280px] mx-auto px-4 grid grid-cols-2 lg:grid-cols-4 divide-x divide-neutral-200">
-        {features.map((f, i) => <div key={i} className="home-feature flex items-center gap-3 py-5 px-4"><span className="grid place-items-center h-11 w-11 rounded-full bg-emerald-100 text-emerald-700 shrink-0"><f.icon className="h-5 w-5" aria-hidden="true" /></span><div><h3 className="font-semibold text-sm text-neutral-900">{f.title}</h3><p className="text-xs text-neutral-500">{f.desc}</p></div></div>)}
+        {features.map((f, i) => <div key={i} className="home-feature flex items-center gap-2.5 py-3 px-3 sm:gap-3 sm:py-5 sm:px-4"><span className="grid place-items-center h-9 w-9 sm:h-11 sm:w-11 rounded-full bg-emerald-100 text-emerald-700 shrink-0"><f.icon className="h-5 w-5" aria-hidden="true" /></span><div><h3 className="font-semibold text-sm text-neutral-900">{f.title}</h3><p className="text-xs text-neutral-500">{f.desc}</p></div></div>)}
       </div>
     </section>
   );
@@ -164,7 +164,7 @@ const Home = () => {
       </section>
 
       {/* New Products */}
-      <section className="max-w-[1280px] mx-auto px-4 pt-14">
+      <section className="max-w-[1280px] mx-auto px-4 pt-10 sm:pt-14">
         <SectionHeader title="New Vape Products" link="/shop" />
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           {newProducts.slice(0, 15).map((p) => (
@@ -174,7 +174,7 @@ const Home = () => {
       </section>
 
       {/* Top Categories tabbed */}
-      <section className="max-w-[1280px] mx-auto px-4 pt-14">
+      <section className="max-w-[1280px] mx-auto px-4 pt-10 sm:pt-14">
         <SectionHeader title="Top Categories" />
         <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6 border-b" role="tablist" aria-label="Top categories">
           {tabs.map((t) => (
@@ -206,7 +206,7 @@ const Home = () => {
       </section>
 
       {/* Brands */}
-      <section className="max-w-[1280px] mx-auto px-4 pt-14">
+      <section className="max-w-[1280px] mx-auto px-4 pt-10 sm:pt-14">
         <SectionHeader title="Shop By Brand" link="/brands" linkLabel="All Brands" />
         <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-4">
           {[...activeBrands].sort((a, b) => b.count - a.count).slice(0, 16).map((b) => (
@@ -218,7 +218,7 @@ const Home = () => {
       </section>
 
       {/* Delivery */}
-      <section className="max-w-[1280px] mx-auto px-4 pt-14" data-testid="home-delivery-section">
+      <section className="max-w-[1280px] mx-auto px-4 pt-10 sm:pt-14" data-testid="home-delivery-section">
         <SectionHeader title="Convenient Delivery & Shipping" />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="border border-neutral-200 rounded-xl p-6 flex gap-4">
@@ -245,17 +245,17 @@ const Home = () => {
       </section>
 
       {/* Real customer reviews (hidden until the owner turns them on in Admin → Reviews) */}
-      <section className="max-w-[1280px] mx-auto px-4 pt-14" data-testid="home-reviews">
+      <section className="max-w-[1280px] mx-auto px-4 pt-10 sm:pt-14" data-testid="home-reviews">
         <GoogleReviews title="What Our Customers Say" reviewUrl={STORE.googleReviewUrl} />
       </section>
 
       {/* Local store proof */}
-      <div className="max-w-[1280px] mx-auto px-4 pt-14">
+      <div className="max-w-[1280px] mx-auto px-4 pt-10 sm:pt-14">
         <VisitStore heading="Visit HD Smoke Shop in Altamonte Springs" />
       </div>
 
       {/* FAQ */}
-      <section className="max-w-[1280px] mx-auto px-4 pt-14" data-testid="home-faq">
+      <section className="max-w-[1280px] mx-auto px-4 pt-10 sm:pt-14" data-testid="home-faq">
         <SectionHeader title="Frequently Asked Questions" />
         <Accordion type="single" collapsible className="border border-neutral-200 rounded-xl px-6">
           {homeFaqs.map((f, i) => (
@@ -270,7 +270,7 @@ const Home = () => {
       </section>
 
       {/* CTA banner */}
-      <section className="max-w-[1280px] mx-auto px-4 pt-14">
+      <section className="max-w-[1280px] mx-auto px-4 pt-10 sm:pt-14">
         <div className="relative overflow-hidden rounded-2xl bg-neutral-900 px-8 py-12 sm:px-14 sm:py-16">
           <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-emerald-600/20 blur-2xl" />
           <div className="relative max-w-lg">

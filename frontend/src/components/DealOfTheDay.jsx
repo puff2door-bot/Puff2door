@@ -20,8 +20,8 @@ const useCountdown = (endsAt) => {
 
 const TimeBox = ({ v, label }) => (
   <div className="text-center">
-    <div className="h-14 w-14 sm:h-16 sm:w-16 grid place-items-center rounded-xl bg-white/10 backdrop-blur border border-white/15 font-heading text-2xl sm:text-3xl text-white tabular-nums">{v}</div>
-    <span className="block mt-1 text-[10px] uppercase tracking-[0.2em] text-neutral-400">{label}</span>
+    <div className="h-11 w-11 sm:h-16 sm:w-16 grid place-items-center rounded-lg sm:rounded-xl bg-white/10 backdrop-blur border border-white/15 font-heading text-xl sm:text-3xl text-white tabular-nums">{v}</div>
+    <span className="block mt-1 text-[9px] sm:text-[10px] uppercase tracking-[0.2em] text-neutral-400">{label}</span>
   </div>
 );
 
@@ -42,38 +42,42 @@ const DealBanner = ({ deal }) => {
   };
 
   return (
-    <section className="max-w-[1280px] mx-auto px-4 pt-10" data-testid="deal-of-the-day">
-      <div className="relative overflow-hidden rounded-2xl bg-neutral-900 grid grid-cols-1 lg:grid-cols-[1fr_320px] items-center gap-6 px-6 py-8 sm:px-10">
+    <section className="max-w-[1280px] mx-auto px-4 pt-8 sm:pt-10" data-testid="deal-of-the-day">
+      <div className="relative overflow-hidden rounded-2xl bg-neutral-900 grid grid-cols-1 lg:grid-cols-[1fr_320px] items-center gap-4 sm:gap-6 px-4 py-5 sm:px-10 sm:py-8">
         <div className="absolute -left-20 -bottom-24 h-72 w-72 rounded-full bg-emerald-600/25 blur-3xl" />
         <div className="absolute right-1/3 -top-24 h-64 w-64 rounded-full bg-red-600/20 blur-3xl" />
-        <div className="relative flex flex-col sm:flex-row items-start sm:items-center gap-6">
-          <Link to={`/shop/${product.slug}`} className="shrink-0 h-40 w-40 sm:h-48 sm:w-48 rounded-xl bg-white grid place-items-center p-3">
+        {/* Phones: small image beside the title, price + button on one row underneath. Larger screens: image left, details right. */}
+        <div className="relative grid grid-cols-[96px_1fr] gap-x-4 gap-y-3 sm:flex sm:items-center sm:gap-6">
+          <Link to={`/shop/${product.slug}`} className="shrink-0 h-24 w-24 sm:h-48 sm:w-48 rounded-xl bg-white grid place-items-center p-2 sm:p-3">
             <img src={imgUrl(product.image)} alt={product.name} className="max-h-full max-w-full object-contain" />
           </Link>
-          <div>
-            <span className="inline-flex items-center gap-1.5 bg-red-600 text-white text-[11px] font-bold tracking-[0.2em] uppercase px-3 py-1.5 rounded-full mb-3">
-              <Flame className="h-3.5 w-3.5" /> Deal of the Day · {pct}% off
-            </span>
-            <Link to={`/shop/${product.slug}`}>
-              <h2 data-testid="deal-product-name" className="font-heading text-2xl sm:text-3xl text-white leading-tight mb-2 hover:text-emerald-300 transition-colors">{product.name}</h2>
-            </Link>
-            <p className="text-neutral-400 text-sm mb-4">Today only. Price resets at midnight, so grab it before the clock hits zero.</p>
-            <div className="flex items-center gap-4 flex-wrap">
-              <span className="font-heading text-4xl text-emerald-400" data-testid="deal-price">${dealPrice.toFixed(2)}</span>
-              <span className="text-neutral-400 line-through text-lg">${product.price.toFixed(2)}</span>
-              <button onClick={add} data-testid="deal-add-to-cart" className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors text-sm">
+          <div className="contents sm:block sm:min-w-0">
+            <div className="min-w-0 self-center">
+              <span className="inline-flex items-center gap-1.5 bg-red-600 text-white text-[10px] sm:text-[11px] font-bold tracking-[0.12em] sm:tracking-[0.2em] uppercase px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full mb-2 sm:mb-3">
+                <Flame className="h-3.5 w-3.5" /> Deal of the Day · {pct}% off
+              </span>
+              <Link to={`/shop/${product.slug}`}>
+                <h2 data-testid="deal-product-name" className="font-heading text-lg sm:text-3xl text-white leading-tight sm:mb-2 hover:text-emerald-300 transition-colors">{product.name}</h2>
+              </Link>
+              <p className="hidden sm:block text-neutral-400 text-sm mb-4">Today only. Price resets at midnight, so grab it before the clock hits zero.</p>
+            </div>
+            <div className="col-span-2 flex items-center gap-x-3 gap-y-2 flex-wrap sm:gap-4">
+              <span className="font-heading text-3xl sm:text-4xl text-emerald-400" data-testid="deal-price">${dealPrice.toFixed(2)}</span>
+              <span className="text-neutral-400 line-through text-sm sm:text-lg">${product.price.toFixed(2)}</span>
+              <button onClick={add} data-testid="deal-add-to-cart" className="ml-auto sm:ml-0 inline-flex items-center gap-2 px-4 py-2.5 sm:px-6 sm:py-3 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-700 transition-colors text-sm">
                 <ShoppingCart className="h-4 w-4" /> Grab the Deal
               </button>
-              <Link to={`/shop/${product.slug}`} className="inline-flex items-center gap-1 text-sm font-bold text-neutral-300 hover:text-white">Details <ArrowRight className="h-4 w-4" /></Link>
+              <Link to={`/shop/${product.slug}`} className="hidden sm:inline-flex items-center gap-1 text-sm font-bold text-neutral-300 hover:text-white">Details <ArrowRight className="h-4 w-4" /></Link>
             </div>
           </div>
         </div>
-        <div className="relative flex items-center justify-start lg:justify-end gap-3" data-testid="deal-countdown">
+        <div className="relative flex items-center justify-start lg:justify-end gap-2 sm:gap-3" data-testid="deal-countdown">
+          <span className="sm:hidden text-[11px] font-bold uppercase tracking-[0.15em] text-neutral-400 mr-1 -mt-4">Ends in</span>
           <TimeBox v={h} label="Hours" />
-          <span className="font-heading text-2xl text-neutral-500 -mt-5">:</span>
-          <TimeBox v={m} label="Minutes" />
-          <span className="font-heading text-2xl text-neutral-500 -mt-5">:</span>
-          <TimeBox v={s} label="Seconds" />
+          <span className="font-heading text-xl sm:text-2xl text-neutral-500 -mt-5">:</span>
+          <TimeBox v={m} label="Min" />
+          <span className="font-heading text-xl sm:text-2xl text-neutral-500 -mt-5">:</span>
+          <TimeBox v={s} label="Sec" />
         </div>
       </div>
     </section>

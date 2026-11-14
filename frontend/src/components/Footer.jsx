@@ -25,7 +25,7 @@ const Footer = () => {
   const { activeCategories: categories } = useCatalog();
   const { user } = useApp();
   return (
-    <footer className="p2d-footer bg-neutral-900 text-neutral-300 mt-16">
+    <footer className="p2d-footer bg-neutral-900 text-neutral-300 mt-10 sm:mt-16">
       {/* Age banner */}
       <div className="bg-emerald-600 text-white">
         <div className="max-w-[1280px] mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -37,8 +37,9 @@ const Footer = () => {
       </div>
 
       {/* Six columns with their headings on one line: brand, Shop, Company, Get in touch, Delivery, Policies. */}
-      <div className="max-w-[1280px] mx-auto px-4 py-14 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-[1.35fr_1fr_1fr_1.2fr_1.1fr_1fr] gap-x-8 gap-y-10">
-        <div>
+      <div className="max-w-[1280px] mx-auto px-4 py-10 sm:py-14 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-[1.35fr_1fr_1fr_1.2fr_1.1fr_1fr] gap-x-6 sm:gap-x-8 gap-y-8 sm:gap-y-10">
+        {/* Phones: two link columns side by side; the brand block and contact details use the full width. */}
+        <div className="col-span-2 sm:col-span-1">
           <p className="font-heading text-white text-base tracking-wide uppercase h-7 flex items-center gap-2 mb-4">
             <AnimatedLogo testId="footer-logo" className="h-7 w-7" />
             <span>H<span className="p2d-logo-accent text-emerald-500">D</span> Smoke Shop</span>
@@ -87,7 +88,7 @@ const Footer = () => {
           </ul>
         </div>
 
-        <div>
+        <div className="col-span-2 sm:col-span-1">
           <p className="font-heading text-white text-base tracking-wide uppercase h-7 flex items-center gap-2 mb-4">Get In Touch</p>
           <ul className="space-y-3 text-sm">
             <li className="flex items-start gap-3"><Phone className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" /> <a href={STORE.phoneHref} className="hover:text-emerald-400 transition-colors">{STORE.phone}</a></li>
@@ -105,7 +106,7 @@ const Footer = () => {
             <li><Link to="/track" className="hover:text-emerald-400 transition-colors">Track Order</Link></li>
           </ul>
           {!NO_FOOTER_SAL.some((p) => pathname === p || pathname.startsWith(`${p}/`)) && (
-            <SalSays spot="banner" size={44} className="mt-5" textClassName="text-xs text-neutral-300 leading-snug" />
+            <SalSays spot="banner" size={44} peek className="mt-5" textClassName="text-xs text-neutral-300 leading-snug" />
           )}
         </div>
 
