@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Link, Outlet, useLocation } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle, Truck, ShieldCheck, BarChart3, Store, Camera, Bot, Barcode, Receipt, Wallet, FileText, UserRound, Sparkles, ClipboardList, Star, PackageSearch, ScanLine, Smartphone, Menu, Search, X, Home, MapPinned } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle, Truck, ShieldCheck, BarChart3, Store, Camera, Bot, Barcode, Receipt, Wallet, FileText, UserRound, Sparkles, ClipboardList, Star, PackageSearch, ScanLine, Smartphone, Menu, Search, X, Home, MapPinned, Inbox } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import api from "../../api";
 
@@ -28,6 +28,7 @@ const nav = [
   { to: "/admin/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/admin/visitors", label: "Visitors", icon: MapPinned },
   { to: "/admin/chat", label: "Live Chat", icon: MessageCircle, badge: "chat" },
+  { to: "/admin/messages", label: "Messages", icon: Inbox, badge: "messages" },
   { to: "/admin/loyalty", label: "Loyalty Rewards", icon: Gift },
   { to: "/admin/alerts", label: "Restock Alerts", icon: Bell },
   { to: "/admin/banners", label: "Home Banners", icon: Images },
@@ -44,7 +45,7 @@ const GROUPS = [
   ["Orders & delivery", ["/admin/orders", "/admin/picking", "/admin/operations", "/driver-app", "/admin/alerts", "/admin/product-requests"]],
   ["Products", ["/admin/products", "/admin/clover", "/admin/inventory-capture", "/admin/missing-photos", "/admin/missing-barcodes", "/admin/missing-details", "/admin/product-details", "/admin/categories", "/admin/brands"]],
   ["Marketing", ["/admin/counter-deal", "/admin/banners", "/admin/promos", "/admin/loyalty", "/admin/reviews", "/admin/agents", "/admin/emails"]],
-  ["Customers & numbers", ["/admin/customers", "/admin/visitors", "/admin/analytics", "/admin/chat"]],
+  ["Customers & numbers", ["/admin/messages", "/admin/chat", "/admin/customers", "/admin/visitors", "/admin/analytics"]],
   ["Money & paperwork", ["/admin/receipts", "/admin/expenses", "/admin/documents", "/admin/compliance"]],
   ["Settings", ["/admin/settings", "/admin"]],
 ];
@@ -54,7 +55,7 @@ const KEYWORDS = {
   "/admin/picking": "pick scan barcode packing", "/admin/missing-barcodes": "barcode upc scan", "/admin/promos": "coupon discount code", "/admin/counter-deal": "redeem in store code counter first visit",
   "/admin/banners": "hero slider homepage", "/admin/settings": "tax delivery fee sal mascot hours zip", "/admin/operations": "driver delivery windows cutoff",
   "/admin/clover": "pos inventory stock sync", "/admin/expenses": "money bills spending", "/admin/receipts": "sales clover daily", "/admin/documents": "license permit tobacco",
-  "/admin/agents": "instagram automation google review emails", "/admin/loyalty": "points rewards", "/admin/inventory-capture": "photos camera", "/admin/customers": "regulars people", "/admin/visitors": "traffic city area location where clicks people zip",
+  "/admin/agents": "instagram automation google review emails", "/admin/loyalty": "points rewards", "/admin/inventory-capture": "photos camera", "/admin/customers": "regulars people", "/admin/messages": "contact form email inbox website message", "/admin/visitors": "traffic city area location where clicks people zip",
 };
 const TABS = [
   { to: "/admin", label: "Home", icon: Home, end: true },
@@ -79,6 +80,7 @@ const MoreSheet = ({ open, onClose, counts }) => {
     <Link to={n.to} onClick={onClose} className="relative flex flex-col items-center justify-center gap-1.5 rounded-xl border border-neutral-100 bg-neutral-50 px-1.5 py-3 text-center text-[11.5px] font-semibold leading-tight text-neutral-800 active:bg-neutral-100">
       <n.icon className="h-5 w-5 text-emerald-700" aria-hidden="true" />{n.label}
       {n.badge === "chat" && <Count n={counts.chat} className="absolute top-1.5 right-1.5" />}
+      {n.badge === "messages" && <Count n={counts.messages} className="absolute top-1.5 right-1.5" />}
       {n.to === "/admin/orders" && <Count n={counts.pick} className="absolute top-1.5 right-1.5" />}
     </Link>
   );
@@ -115,6 +117,7 @@ const AdminLayout = () => {
   const isAdmin = Boolean(user && user.role === "admin");
   const [chatUnread, setChatUnread] = useState(0);
   const [toPick, setToPick] = useState(0);
+  const [newMessages, setNewMessages] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const { pathname } = useLocation();
   useEffect(() => { setMoreOpen(false); }, [pathname]);
@@ -129,7 +132,12 @@ const AdminLayout = () => {
     const pick = () => api.get("/admin/picking").then(({ data }) => setToPick((data.orders || []).length)).catch(() => {});
     pick();
     const t2 = setInterval(pick, 60000);
-    return () => { clearInterval(t); clearInterval(t2); };
+    // New Contact-page messages (red count on "Messages").
+    const msgs = () => api.get("/admin/messages", { params: { status: "new" } }).then(({ data }) => setNewMessages(data.unread || 0)).catch(() => {});
+    msgs();
+    const t3 = setInterval(msgs, 60000);
+    window.addEventListener("p2d-messages-changed", msgs);
+    return () => { clearInterval(t); clearInterval(t2); clearInterval(t3); window.removeEventListener("p2d-messages-changed", msgs); };
   }, [isAdmin]);
 
   if (authLoading) return <div className="max-w-[1280px] mx-auto px-4 py-24 text-center text-neutral-500">Loading...</div>;
@@ -167,6 +175,7 @@ const AdminLayout = () => {
                 >
                   <n.icon className="h-4 w-4" /> {n.label}
                   {n.badge === "chat" && chatUnread > 0 && <span data-testid="admin-nav-chat-badge" className="ml-auto text-[11px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5">{chatUnread}</span>}
+                  {n.badge === "messages" && newMessages > 0 && <span data-testid="admin-nav-messages-badge" className="ml-auto text-[11px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5">{newMessages}</span>}
                 </NavLink>
               ))}
             </nav>
@@ -185,10 +194,10 @@ const AdminLayout = () => {
           </NavLink>
         ))}
         <button type="button" onClick={() => setMoreOpen(true)} className={`flex flex-col items-center gap-0.5 pt-2 pb-2.5 text-[11px] font-bold ${moreOpen ? "text-emerald-700" : "text-neutral-500"}`} data-testid="admin-tab-more">
-          <Menu className="h-5 w-5" aria-hidden="true" />More
+          <span className="relative"><Menu className="h-5 w-5" aria-hidden="true" />{newMessages > 0 && <span className="absolute -top-0.5 -right-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white" aria-label={`${newMessages} new messages`} />}</span>More
         </button>
       </nav>
-      <MoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} counts={{ chat: chatUnread, pick: toPick }} />
+      <MoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} counts={{ chat: chatUnread, pick: toPick, messages: newMessages }} />
     </div>
   );
 };
