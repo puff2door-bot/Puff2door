@@ -36,12 +36,13 @@ const Footer = () => {
         </div>
       </div>
 
-      <div className="max-w-[1280px] mx-auto px-4 py-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-10">
+      {/* Six columns with their headings on one line: brand, Shop, Company, Get in touch, Delivery, Policies. */}
+      <div className="max-w-[1280px] mx-auto px-4 py-14 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-[1.35fr_1fr_1fr_1.2fr_1.1fr_1fr] gap-x-8 gap-y-10">
         <div>
-          <div className="flex items-center gap-2 mb-4">
-            <AnimatedLogo testId="footer-logo" className="h-10 w-10" />
-            <span className="font-heading font-700 text-xl text-white">H<span className="p2d-logo-accent text-emerald-500">D</span> Smoke Shop</span>
-          </div>
+          <p className="font-heading text-white text-base tracking-wide uppercase h-7 flex items-center gap-2 mb-4">
+            <AnimatedLogo testId="footer-logo" className="h-7 w-7" />
+            <span>H<span className="p2d-logo-accent text-emerald-500">D</span> Smoke Shop</span>
+          </p>
           <p className="text-sm leading-relaxed text-neutral-400">
             Your Altamonte Springs smoke shop for disposable vapes, delta, kratom, glass, papers and
             accessories. Walk-ins welcome, or order online for local delivery in ZIP 32714.
@@ -64,7 +65,7 @@ const Footer = () => {
         </div>
 
         <div>
-          <p className="font-heading text-white text-base tracking-wide mb-4 uppercase">Shop</p>
+          <p className="font-heading text-white text-base tracking-wide uppercase h-7 flex items-center gap-2 mb-4">Shop</p>
           <ul className="space-y-2.5 text-sm">
             {categories.slice(0, 7).map((c) => (
               <li key={c.slug}>
@@ -75,7 +76,7 @@ const Footer = () => {
         </div>
 
         <div>
-          <p className="font-heading text-white text-base tracking-wide mb-4 uppercase">Company</p>
+          <p className="font-heading text-white text-base tracking-wide uppercase h-7 flex items-center gap-2 mb-4">Company</p>
           <ul className="space-y-2.5 text-sm">
             <li><Link to="/about" className="hover:text-emerald-400 transition-colors">About Us</Link></li>
             <li><Link to="/contact" className="hover:text-emerald-400 transition-colors">Contact</Link></li>
@@ -87,26 +88,29 @@ const Footer = () => {
         </div>
 
         <div>
-          <p className="font-heading text-white text-base tracking-wide mb-4 uppercase">Get In Touch</p>
+          <p className="font-heading text-white text-base tracking-wide uppercase h-7 flex items-center gap-2 mb-4">Get In Touch</p>
           <ul className="space-y-3 text-sm">
-            <li className="flex items-start gap-3"><Phone className="h-4 w-4 text-emerald-500 mt-0.5" /> <a href={STORE.phoneHref} className="hover:text-emerald-400 transition-colors">{STORE.phone}</a></li>
-            <li className="flex items-start gap-3"><Mail className="h-4 w-4 text-emerald-500 mt-0.5" /> {BRAND.email}</li>
-            <li className="flex items-start gap-3"><MapPin className="h-4 w-4 text-emerald-500 mt-0.5" /> <a href={STORE.directionsUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">{STORE.fullAddress}</a></li>
-            <li className="flex items-start gap-3"><Clock className="h-4 w-4 text-emerald-500 mt-0.5" /> Open {STORE.hoursText}</li>
+            <li className="flex items-start gap-3"><Phone className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" /> <a href={STORE.phoneHref} className="hover:text-emerald-400 transition-colors">{STORE.phone}</a></li>
+            <li className="flex items-start gap-3"><Mail className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" /> <span className="break-all">{BRAND.email}</span></li>
+            <li className="flex items-start gap-3"><MapPin className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" /> <a href={STORE.directionsUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">{STORE.fullAddress}</a></li>
+            <li className="flex items-start gap-3"><Clock className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" /> Open {STORE.hoursText}</li>
           </ul>
-          <p className="font-heading text-white text-base tracking-wide mt-7 mb-3 uppercase">Delivery</p>
-          {!NO_FOOTER_SAL.some((p) => pathname === p || pathname.startsWith(`${p}/`)) && (
-            <SalSays spot="banner" size={48} className="mb-3" textClassName="text-xs text-neutral-300 leading-snug" />
-          )}
+        </div>
+
+        <div>
+          <p className="font-heading text-white text-base tracking-wide uppercase h-7 flex items-center gap-2 mb-4">Delivery</p>
           <ul className="space-y-2.5 text-sm">
             <li><Link to="/delivery-area" className="hover:text-emerald-400 transition-colors">Delivery Area (32714)</Link></li>
             {delivery?.lakeNonaEnabled && <li><Link to="/delivery/lake-nona" className="hover:text-emerald-400 transition-colors">Lake Nona Delivery (32832)</Link></li>}
             <li><Link to="/track" className="hover:text-emerald-400 transition-colors">Track Order</Link></li>
           </ul>
+          {!NO_FOOTER_SAL.some((p) => pathname === p || pathname.startsWith(`${p}/`)) && (
+            <SalSays spot="banner" size={44} className="mt-5" textClassName="text-xs text-neutral-300 leading-snug" />
+          )}
         </div>
 
         <div>
-          <p className="font-heading text-white text-base tracking-wide mb-4 uppercase">Policies</p>
+          <p className="font-heading text-white text-base tracking-wide uppercase h-7 flex items-center gap-2 mb-4">Policies</p>
           <ul className="space-y-2.5 text-sm">
             <li><Link to="/privacy-policy" className="hover:text-emerald-400 transition-colors">Privacy Policy</Link></li>
             <li><Link to="/terms" className="hover:text-emerald-400 transition-colors">Terms &amp; Conditions</Link></li>
