@@ -152,13 +152,13 @@ const ProductDetail = () => {
             <p className="font-heading text-4xl text-neutral-900" data-testid="product-price">${price.toFixed(2)}</p>
             {isOnDeal(product) && (
               <>
-                <span className="text-xl text-neutral-400 line-through">${product.price.toFixed(2)}</span>
+                <span className="text-xl text-neutral-500 line-through">${product.price.toFixed(2)}</span>
                 <span className="bg-red-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-full uppercase">Deal of the Day</span>
               </>
             )}
             {!isOnDeal(product) && price < product.price && (
               <>
-                <span className="text-xl text-neutral-400 line-through">${product.price.toFixed(2)}</span>
+                <span className="text-xl text-neutral-500 line-through">${product.price.toFixed(2)}</span>
                 <span className="bg-red-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-full uppercase">Sale</span>
               </>
             )}
