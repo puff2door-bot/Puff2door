@@ -2799,29 +2799,58 @@ PRODUCT_LIST_FIELDS = {f: 1 for f in (
     "cloverSyncError", "cloverCategory", "rating", "stock", "active", "description", "complianceCategory",
     "minimumAge", "requiresIdAtDelivery", "localDeliveryOnly", "allowedStates", "blockedStates")}
 PRODUCT_LIST_TTL = 60  # seconds; stock and price changes show within a minute
-_product_list_cache: dict = {"at": 0.0, "key": None, "data": None}
+_product_list_cache: dict = {"at": 0.0, "key": None, "data": None, "stale": False}
+_product_list_lock = asyncio.Lock()
 
 
-@api_router.get("/products")
-async def list_products():
-    hide = bool((await get_settings()).get("hideOutOfStock", True))
-    cached = _product_list_cache
-    if cached["data"] is not None and cached["key"] == hide and _time.monotonic() - cached["at"] < PRODUCT_LIST_TTL:
-        return Response(content=cached["data"].body, media_type="application/json")
+async def _build_product_list(hide: bool) -> bytes:
     query: dict = {"active": True}
     if hide:
         # Out-of-stock products drop off the shop and come back automatically when restocked.
         # Their product pages stay reachable so links and restock alerts keep working.
         query["stock"] = {"$gt": 0}
     t0 = _time.monotonic()
-    prods = await db.products.find(query, PRODUCT_LIST_FIELDS).sort("id", 1).to_list(2000)
+    # No database sort: sorting 600 rows here is instant, while the database sort was the slow part.
+    prods = await db.products.find(query, PRODUCT_LIST_FIELDS).to_list(2000)
+    prods.sort(key=lambda p: p.get("id") or 0)
     t1 = _time.monotonic()
     # Serialized once with the standard json module: FastAPI's generic encoder took seconds on the small server.
     body = json.dumps({"products": [product_out(p) for p in prods]}, default=str, separators=(",", ":")).encode()
     logger.info("product list rebuilt: %d products, db %.2fs, encode %.2fs", len(prods), t1 - t0, _time.monotonic() - t1)
-    data = Response(content=body, media_type="application/json")
-    _product_list_cache.update({"at": _time.monotonic(), "key": hide, "data": data})
-    return data
+    return body
+
+
+async def refresh_product_list() -> None:
+    """Rebuild the cached list (one rebuild at a time). Visitors keep getting the previous copy meanwhile."""
+    if _product_list_lock.locked():
+        return
+    async with _product_list_lock:
+        hide = bool((await get_settings()).get("hideOutOfStock", True))
+        body = await _build_product_list(hide)
+        _product_list_cache.update({"at": _time.monotonic(), "key": hide, "data": body, "stale": False})
+
+
+async def product_list_refresher() -> None:
+    """Keeps the product list fresh in the background so no visitor waits for the database."""
+    while True:
+        try:
+            if _product_list_cache["stale"] or _time.monotonic() - _product_list_cache["at"] >= PRODUCT_LIST_TTL:
+                await refresh_product_list()
+        except Exception as exc:
+            logger.warning("product list refresh failed: %s", exc)
+        await asyncio.sleep(5)
+
+
+@api_router.get("/products")
+async def list_products():
+    hide = bool((await get_settings()).get("hideOutOfStock", True))
+    cached = _product_list_cache
+    if cached["data"] is None or cached["key"] != hide:
+        await refresh_product_list()  # first request after a restart, or the setting just changed
+        if _product_list_cache["data"] is None:
+            body = await _build_product_list(hide)
+            return Response(content=body, media_type="application/json")
+    return Response(content=_product_list_cache["data"], media_type="application/json")
 
 
 # ---- Brands: centralized source of truth (id, name, displayName, slug, logo, active) ----
@@ -6006,7 +6035,7 @@ async def clear_product_list_cache(request: Request, call_next):
     """Any admin change, order, or Clover sync can change prices or stock: rebuild the cached product list."""
     response = await call_next(request)
     if request.method != "GET" and request.url.path.startswith(("/api/admin", "/api/orders", "/api/clover", "/api/payments", "/api/internal")):
-        _product_list_cache["data"] = None
+        _product_list_cache["stale"] = True  # the background refresher rebuilds it within ~5 seconds
     return response
 
 
@@ -6284,6 +6313,7 @@ async def create_indexes():
     await db.visits.create_index("at", expireAfterSeconds=hd_visitors.RETENTION_SECONDS)
     await db.visits.create_index("sid")
     asyncio.create_task(hd_visitors.ensure_geo_db())
+    asyncio.create_task(product_list_refresher())
     await db.users.create_index("id")
     await db.user_sessions.create_index("session_token")
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
