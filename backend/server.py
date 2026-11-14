@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 import uuid
 import random
 import re
+import time as _time
 import json
 import math
 import mimetypes
@@ -2790,15 +2791,32 @@ async def create_order_issue(order_id: str, inp: OrderIssueInput, request: Reque
 
 
 # ---- Products (public) ----
+# Only the fields product_out() reads: full product records carry large extra data (sync and photo
+# history), and reading all of it for 600+ products took ~9 s on the free server.
+PRODUCT_LIST_FIELDS = {f: 1 for f in (
+    "id", "slug", "name", "category", "categorySlug", "price", "salePrice", "image", "image2", "brand", "brandName",
+    "flavors", "puffs", "size", "sku", "barcode", "cloverItemId", "cloverLastSyncedAt", "cloverLastPushedAt",
+    "cloverSyncError", "cloverCategory", "rating", "stock", "active", "description", "complianceCategory",
+    "minimumAge", "requiresIdAtDelivery", "localDeliveryOnly", "allowedStates", "blockedStates")}
+PRODUCT_LIST_TTL = 60  # seconds; stock and price changes show within a minute
+_product_list_cache: dict = {"at": 0.0, "key": None, "data": None}
+
+
 @api_router.get("/products")
 async def list_products():
+    hide = bool((await get_settings()).get("hideOutOfStock", True))
+    cached = _product_list_cache
+    if cached["data"] is not None and cached["key"] == hide and _time.monotonic() - cached["at"] < PRODUCT_LIST_TTL:
+        return cached["data"]
     query: dict = {"active": True}
-    if (await get_settings()).get("hideOutOfStock", True):
+    if hide:
         # Out-of-stock products drop off the shop and come back automatically when restocked.
         # Their product pages stay reachable so links and restock alerts keep working.
         query["stock"] = {"$gt": 0}
-    prods = await db.products.find(query).sort("id", 1).to_list(2000)
-    return {"products": [product_out(p) for p in prods]}
+    prods = await db.products.find(query, PRODUCT_LIST_FIELDS).sort("id", 1).to_list(2000)
+    data = {"products": [product_out(p) for p in prods]}
+    _product_list_cache.update({"at": _time.monotonic(), "key": hide, "data": data})
+    return data
 
 
 # ---- Brands: centralized source of truth (id, name, displayName, slug, logo, active) ----
@@ -5976,6 +5994,15 @@ async def admin_visitors(range: str = "today", admin: dict = Depends(get_admin_u
 
 
 app.include_router(api_router)
+
+
+@app.middleware("http")
+async def clear_product_list_cache(request: Request, call_next):
+    """Any admin change, order, or Clover sync can change prices or stock: rebuild the cached product list."""
+    response = await call_next(request)
+    if request.method != "GET" and request.url.path.startswith(("/api/admin", "/api/orders", "/api/clover", "/api/payments", "/api/internal")):
+        _product_list_cache["data"] = None
+    return response
 
 
 @app.middleware("http")
