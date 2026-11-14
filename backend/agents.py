@@ -764,7 +764,9 @@ async def scheduler_tick(ctx: Ctx) -> None:
                   if a in latest and latest[a].get("status") != "ok"]
         if local.weekday() == 0:
             detail += [latest[a] for a in ("marketing", "reputation") if a in latest]
-        await send_email(f"HD Smoke Shop morning briefing · {local:%a %b %d}", [r] + detail, "agent_briefing")
+        # One morning email only: when the 9 AM owner summary is on, it carries these agent warnings instead.
+        if not (await ctx.get_settings()).get("morningSummaryEnabled", True):
+            await send_email(f"HD Smoke Shop morning briefing · {local:%a %b %d}", [r] + detail, "agent_briefing")
         await _set_state(db, "briefing", date=today)
     weekly = await _state(db, "weekly")
     if local.weekday() == 4 and (local.hour, local.minute) >= (17, 0) and weekly.get("date") != today:
