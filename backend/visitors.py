@@ -38,8 +38,19 @@ _reader_lock = asyncio.Lock()
 
 # ---------- location ----------
 async def ensure_geo_db() -> None:
-    """Download DB-IP City Lite (this month, else last month) once; quietly skip if it can't be fetched."""
+    """Download DB-IP City Lite (this month, else last month) once; quietly skip if it can't be fetched.
+
+    Off unless DBIP_ENABLED=1: the ~130 MB database pushed the 512 MB free server over its memory limit
+    (Render restarted it). Without it, areas come from Cloudflare's headers only.
+    """
     global _reader
+    if os.environ.get("DBIP_ENABLED", "") != "1":
+        for leftover in (DBIP_PATH, DBIP_PATH + ".part", DBIP_PATH + ".part.gz"):
+            try:
+                os.remove(leftover)
+            except OSError:
+                pass
+        return
     async with _reader_lock:
         if _reader is not None:
             return
