@@ -7130,11 +7130,20 @@ async def google_callback(code: str = "", state: str = "", error: str = ""):
 @api_router.get("/google-reviews")
 async def public_google_reviews(preview: bool = False):
     """5-star Google reviews for the website. Hidden until the owner turns them on (or ?preview=1)."""
-    cfg = await db.integrations.find_one({"key": "google_reviews"}, {"_id": 0, "averageRating": 1, "totalReviewCount": 1, "onSite": 1}) or {}
+    cfg = await db.integrations.find_one(
+        {"key": "google_reviews"},
+        {"_id": 0, "averageRating": 1, "totalReviewCount": 1, "homepageReviewCount": 1, "onSite": 1},
+    ) or {}
     if not (cfg.get("onSite") or preview):
         return {"show": False, "reviews": []}
-    rows = await db.google_reviews.find({}, {"_id": 0, "reviewId": 0, "source": 0}).sort("createTime", -1).to_list(6)
-    return {"show": bool(rows), "averageRating": cfg.get("averageRating"), "total": cfg.get("totalReviewCount"), "reviews": rows}
+    rows = await db.google_reviews.find({}, {"_id": 0, "reviewId": 0, "source": 0}).sort("createTime", -1).to_list(12)
+    return {
+        "show": bool(rows),
+        "averageRating": cfg.get("averageRating"),
+        "total": cfg.get("totalReviewCount"),
+        "homepageReviewCount": max(1, min(12, int(cfg.get("homepageReviewCount") or 3))),
+        "reviews": rows,
+    }
 
 
 class ManualReviewInput(BaseModel):
@@ -7146,14 +7155,16 @@ class ManualReviewInput(BaseModel):
 class ReviewSummaryInput(BaseModel):
     averageRating: Optional[float] = Field(default=None, ge=1, le=5)
     totalReviewCount: Optional[int] = Field(default=None, ge=0, le=100000)
+    homepageReviewCount: int = Field(default=3, ge=1, le=12)
 
 
 @api_router.get("/admin/reviews")
 async def admin_reviews(admin: dict = Depends(get_admin_user)):
     cfg = await db.integrations.find_one({"key": "google_reviews"}, {"_id": 0, "onSite": 1, "averageRating": 1, "totalReviewCount": 1,
-                                                                     "locationName": 1}) or {}
+                                                                     "homepageReviewCount": 1, "locationName": 1}) or {}
     rows = await db.google_reviews.find({}, {"_id": 0}).sort("createTime", -1).to_list(500)
     return {"onSite": bool(cfg.get("onSite")), "averageRating": cfg.get("averageRating"), "totalReviewCount": cfg.get("totalReviewCount"),
+            "homepageReviewCount": max(1, min(12, int(cfg.get("homepageReviewCount") or 3))),
             "googleConnected": bool(cfg.get("locationName")), "reviews": rows}
 
 
@@ -7179,7 +7190,8 @@ async def admin_review_delete(review_id: str, admin: dict = Depends(get_admin_us
 @api_router.put("/admin/reviews/summary")
 async def admin_review_summary(inp: ReviewSummaryInput, admin: dict = Depends(get_admin_user)):
     await db.integrations.update_one({"key": "google_reviews"}, {"$set": {"averageRating": inp.averageRating,
-                                                                           "totalReviewCount": inp.totalReviewCount}}, upsert=True)
+                                                                           "totalReviewCount": inp.totalReviewCount,
+                                                                           "homepageReviewCount": inp.homepageReviewCount}}, upsert=True)
     return {"ok": True}
 
 

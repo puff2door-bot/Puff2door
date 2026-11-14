@@ -251,7 +251,7 @@ const Home = () => {
 
       {/* Real customer reviews (hidden until the owner turns them on in Admin → Reviews) */}
       <section className="max-w-[1280px] mx-auto px-4 pt-10 sm:pt-14" data-testid="home-reviews">
-        <GoogleReviews title="What Our Customers Say" reviewUrl={STORE.googleReviewUrl} />
+        <GoogleReviews placement="homepage" title="What Our Customers Say" reviewUrl={STORE.googleReviewUrl} />
       </section>
 
       {/* Local store proof */}

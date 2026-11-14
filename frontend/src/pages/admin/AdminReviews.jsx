@@ -9,12 +9,12 @@ const thisMonth = () => new Date().toLocaleDateString("en-CA").slice(0, 7);
 const AdminReviews = () => {
   const [data, setData] = useState(null);
   const [form, setForm] = useState({ name: "", comment: "", month: thisMonth() });
-  const [sum, setSum] = useState({ averageRating: "", totalReviewCount: "" });
+  const [sum, setSum] = useState({ averageRating: "", totalReviewCount: "", homepageReviewCount: 3 });
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const load = () => api.get("/admin/reviews").then(({ data: d }) => {
     setData(d);
-    setSum({ averageRating: d.averageRating ?? "", totalReviewCount: d.totalReviewCount ?? "" });
+    setSum({ averageRating: d.averageRating ?? "", totalReviewCount: d.totalReviewCount ?? "", homepageReviewCount: d.homepageReviewCount ?? 3 });
   }).catch(() => setMsg("Could not load reviews."));
   useEffect(() => { load(); }, []);
 
@@ -30,9 +30,10 @@ const AdminReviews = () => {
     setBusy(true);
     try {
       await api.put("/admin/reviews/summary", { averageRating: sum.averageRating === "" ? null : Number(sum.averageRating),
-        totalReviewCount: sum.totalReviewCount === "" ? null : Number(sum.totalReviewCount) });
-      setMsg("Rating saved."); await load();
-    } catch { setMsg("Rating must be between 1 and 5."); }
+        totalReviewCount: sum.totalReviewCount === "" ? null : Number(sum.totalReviewCount),
+        homepageReviewCount: Number(sum.homepageReviewCount) });
+      setMsg("Review settings saved."); await load();
+    } catch { setMsg("Check the rating and homepage review count."); }
     setBusy(false);
   };
   const toggle = async (on) => { await api.post("/admin/google/reviews-on-site", { on }); load(); };
@@ -54,10 +55,11 @@ const AdminReviews = () => {
         <a href="/delivery-area?reviewPreview=1" target="_blank" rel="noreferrer" className="text-sm underline flex items-center gap-1">Preview Delivery page <ExternalLink className="h-3.5 w-3.5" /></a>
       </div>
 
-      <div className="rounded-2xl border p-4 grid sm:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+      <div className="rounded-2xl border p-4 grid sm:grid-cols-[1fr_1fr_1fr_auto] gap-3 items-end">
         <label className="text-xs text-neutral-500">Your Google rating (as shown on Google)<input className={input} type="number" min="1" max="5" step="0.1" value={sum.averageRating} onChange={(e) => setSum({ ...sum, averageRating: e.target.value })} placeholder="e.g. 4.8" /></label>
         <label className="text-xs text-neutral-500">Number of Google reviews<input className={input} type="number" min="0" value={sum.totalReviewCount} onChange={(e) => setSum({ ...sum, totalReviewCount: e.target.value })} placeholder="e.g. 120" /></label>
-        <button type="button" onClick={saveSum} disabled={busy} className="rounded-xl border px-4 py-2 text-sm font-semibold disabled:opacity-50">Save rating</button>
+        <label className="text-xs text-neutral-500">Reviews shown on homepage<input className={input} type="number" min="1" max="12" value={sum.homepageReviewCount} onChange={(e) => setSum({ ...sum, homepageReviewCount: e.target.value })} /></label>
+        <button type="button" onClick={saveSum} disabled={busy} className="rounded-xl border px-4 py-2 text-sm font-semibold disabled:opacity-50">Save settings</button>
       </div>
 
       <form onSubmit={add} className="rounded-2xl border p-4 space-y-3">
@@ -74,7 +76,7 @@ const AdminReviews = () => {
       </form>
 
       <div className="space-y-2">
-        <p className="text-sm font-semibold">{data.reviews.length} review(s) on file · the newest 6 show on the website</p>
+        <p className="text-sm font-semibold">{data.reviews.length} review(s) on file · the newest {data.homepageReviewCount ?? 3} show on the homepage</p>
         {data.reviews.map((r) => (
           <div key={r.reviewId} className="rounded-xl border p-3 flex gap-3">
             <div className="flex-1 text-sm"><p className="text-amber-500">★★★★★</p><p className="text-neutral-700">“{r.comment}”</p>
