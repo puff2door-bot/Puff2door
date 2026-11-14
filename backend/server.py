@@ -2261,42 +2261,6 @@ async def contact(inp: ContactInput, request: Request):
     return {"ok": True, "message": "Thanks — your message was received. We'll get back to you shortly."}
 
 
-# ---------- Admin: website messages (Contact form) ----------
-MESSAGE_STATUSES = ("new", "replied", "archived")
-
-
-def _message_out(m: dict) -> dict:
-    created = m.get("createdAt")
-    return {
-        "id": m.get("id"), "name": m.get("name", ""), "email": m.get("email", ""),
-        "subject": m.get("subject", ""), "message": m.get("message", ""),
-        "status": m.get("status") if m.get("status") in MESSAGE_STATUSES else "new",
-        "createdAt": created.isoformat() if isinstance(created, datetime) else created,
-    }
-
-
-@api_router.get("/admin/messages")
-async def admin_messages(status: str = "inbox", admin: dict = Depends(get_admin_user)):
-    query = {"status": "archived"} if status == "archived" else {"status": {"$ne": "archived"}}
-    if status in ("new", "replied"):
-        query = {"status": status}
-    docs = await db.contact_messages.find(query, {"_id": 0}).sort("createdAt", -1).limit(300).to_list(300)
-    unread = await db.contact_messages.count_documents({"status": "new"})
-    return {"messages": [_message_out(m) for m in docs], "unread": unread}
-
-
-class MessageStatusInput(BaseModel):
-    status: str = Field(pattern="^(new|replied|archived)$")
-
-
-@api_router.patch("/admin/messages/{message_id}")
-async def admin_message_status(message_id: str, inp: MessageStatusInput, admin: dict = Depends(get_admin_user)):
-    res = await db.contact_messages.update_one({"id": message_id}, {"$set": {"status": inp.status, "updatedAt": now_utc()}})
-    if not res.matched_count:
-        raise HTTPException(status_code=404, detail="Message not found")
-    return {"ok": True, "status": inp.status}
-
-
 @api_router.post("/newsletter")
 async def newsletter(inp: NewsletterInput, request: Request):
     await enforce_rate_limit(request, "newsletter", 10, 3600)
@@ -6058,6 +6022,42 @@ async def record_visit(inp: VisitInput, request: Request):
     except Exception as exc:  # visitor stats must never break the storefront
         logger.warning("visit not recorded: %s", exc)
     return Response(status_code=204)
+
+
+# ---------- Admin: website messages (Contact form) ----------
+MESSAGE_STATUSES = ("new", "replied", "archived")
+
+
+def _message_out(m: dict) -> dict:
+    created = m.get("createdAt")
+    return {
+        "id": m.get("id"), "name": m.get("name", ""), "email": m.get("email", ""),
+        "subject": m.get("subject", ""), "message": m.get("message", ""),
+        "status": m.get("status") if m.get("status") in MESSAGE_STATUSES else "new",
+        "createdAt": created.isoformat() if isinstance(created, datetime) else created,
+    }
+
+
+@api_router.get("/admin/messages")
+async def admin_messages(status: str = "inbox", admin: dict = Depends(get_admin_user)):
+    query = {"status": "archived"} if status == "archived" else {"status": {"$ne": "archived"}}
+    if status in ("new", "replied"):
+        query = {"status": status}
+    docs = await db.contact_messages.find(query, {"_id": 0}).sort("createdAt", -1).limit(300).to_list(300)
+    unread = await db.contact_messages.count_documents({"status": "new"})
+    return {"messages": [_message_out(m) for m in docs], "unread": unread}
+
+
+class MessageStatusInput(BaseModel):
+    status: str = Field(pattern="^(new|replied|archived)$")
+
+
+@api_router.patch("/admin/messages/{message_id}")
+async def admin_message_status(message_id: str, inp: MessageStatusInput, admin: dict = Depends(get_admin_user)):
+    res = await db.contact_messages.update_one({"id": message_id}, {"$set": {"status": inp.status, "updatedAt": now_utc()}})
+    if not res.matched_count:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return {"ok": True, "status": inp.status}
 
 
 @api_router.get("/admin/visitors")
