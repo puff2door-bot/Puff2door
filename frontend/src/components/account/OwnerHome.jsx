@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ShoppingBag, MessageCircle, Package, MapPinned, Settings, BarChart3, LogOut, Eye, Plus, AlertTriangle, Info, CircleAlert, ExternalLink } from "lucide-react";
+import { ShoppingBag, MessageCircle, Package, MapPinned, Settings, LogOut, Eye, Plus, Ticket, AlertTriangle, Info, CircleAlert, ExternalLink } from "lucide-react";
 import api from "../../api";
 import AnimatedLogo from "../AnimatedLogo";
+import NotificationOptIn from "../NotificationOptIn";
 import { useApp } from "../../context/AppContext";
 
 // "My Account" for the owner and admins: today's numbers, shortcuts and what needs attention.
@@ -97,7 +98,7 @@ const OwnerHome = ({ onViewAsCustomer }) => {
         <Tile to="/admin/chat" icon={MessageCircle} label="Live chat" count={chats} />
         <Tile to="/admin/products" icon={Package} label="Products" />
         <Tile to="/admin/visitors" icon={MapPinned} label="Visitors" />
-        <Tile to="/admin/analytics" icon={BarChart3} label="Analytics" />
+        <Tile to="/admin/counter-deal" icon={Ticket} label="Counter deal codes" />
         <Tile to="/admin/settings" icon={Settings} label="Store settings" />
       </div>
 
@@ -128,6 +129,10 @@ const OwnerHome = ({ onViewAsCustomer }) => {
             <a href="https://business.google.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300 px-4 py-2 text-sm font-bold hover:bg-neutral-50">Google Business<ExternalLink className="h-3.5 w-3.5" /></a>
             <button type="button" onClick={onViewAsCustomer} className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300 px-4 py-2 text-sm font-bold hover:bg-neutral-50"><Eye className="h-4 w-4" />View as a customer</button>
             <button type="button" onClick={logout} data-testid="owner-logout" className="inline-flex items-center gap-1.5 rounded-full bg-neutral-900 px-4 py-2 text-sm font-bold text-white hover:bg-neutral-700"><LogOut className="h-4 w-4" />Log out</button>
+          </div>
+          <div className="mt-4 border-t border-neutral-100 pt-3">
+            <p className="text-xs font-bold text-neutral-700 mb-1">Phone alerts (9 AM summary and low stock)</p>
+            <NotificationOptIn />
           </div>
           <p className="mt-4 text-xs text-neutral-500">Only admins see this page. Customers see their rewards and orders here.</p>
         </section>

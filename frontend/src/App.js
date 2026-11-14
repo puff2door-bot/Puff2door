@@ -10,6 +10,7 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 import { SalCartPop } from "./components/SalMascot";
 import VisitTracker from "./components/VisitTracker";
+import { CounterDealPage } from "./components/StoreExtras";
 import AgeGate from "./components/AgeGate";
 import Home from "./pages/Home";
 import ShopPage from "./pages/ShopPage";
@@ -64,6 +65,7 @@ const AdminOperations = lazyPage(() => import("./pages/admin/AdminOperations"));
 const AdminCompliance = lazyPage(() => import("./pages/admin/AdminCompliance"));
 const AdminAnalytics = lazyPage(() => import("./pages/admin/AdminAnalytics"));
 const AdminVisitors = lazyPage(() => import("./pages/admin/AdminVisitors"));
+const AdminCounterDeal = lazyPage(() => import("./pages/admin/AdminCounterDeal"));
 const AdminAgents = lazyPage(() => import("./pages/admin/AdminAgents"));
 const MissingBarcodes = lazyPage(() => import("./pages/admin/MissingBarcodes"));
 const ProductDetails = lazyPage(() => import("./pages/admin/ProductDetails"));
@@ -178,6 +180,7 @@ const AppRoutes = () => {
       <Route path="/checkout" element={<Private title="Checkout"><CheckoutPage /></Private>} />
       <Route path="/order/:id" element={<Private title="Order Details"><OrderPage /></Private>} />
       <Route path="/track" element={<Private title="Track Your Order"><TrackPage /></Private>} />
+      <Route path="/in-store" element={<CounterDealPage />} />
       <Route path="/my-account" element={<Private title="My Account"><AuthPage /></Private>} />
       <Route path="/driver-app" element={<Private title="Driver App"><AdminDriver standalone /></Private>} />
       <Route path="/admin" element={<Private title="Admin"><AdminLayout /></Private>}>
@@ -191,6 +194,7 @@ const AppRoutes = () => {
         <Route path="compliance" element={<AdminCompliance />} />
         <Route path="analytics" element={<AdminAnalytics />} />
         <Route path="visitors" element={<AdminVisitors />} />
+        <Route path="counter-deal" element={<AdminCounterDeal />} />
         <Route path="agents" element={<AdminAgents />} />
         <Route path="inventory-capture" element={<InventoryCapture />} />
         <Route path="missing-photos" element={<MissingPhotos />} />

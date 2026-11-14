@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useFeature } from "../components/StoreExtras";
 import { useNavigate, Link } from "react-router-dom";
 import { CreditCard, Lock, ChevronRight, ShieldCheck, MapPin, CheckCircle2, XCircle, Heart, Clock3, RefreshCw, Truck, Store } from "lucide-react";
 import { useCart } from "../context/CartContext";
@@ -61,6 +62,7 @@ const CheckoutPage = () => {
   const redeemRef = useRef(redeemPoints);
   redeemRef.current = redeemPoints;
   const { window: deliveryWin } = useDeliveryWindow();
+  const spotsLeftOn = useFeature("spotsLeftEnabled");
   const [deliveryWindowId, setDeliveryWindowId] = useState("");
   const [ageAttestationAccepted, setAgeAttestationAccepted] = useState(false);
   const sameDayRef = useRef(false);
@@ -308,7 +310,7 @@ const CheckoutPage = () => {
                     {deliveryWin.availableWindows.map((w) => (
                       <button key={w.id} type="button" disabled={w.full} data-testid={`delivery-window-${w.id}`} aria-pressed={deliveryWindowId === w.id} onClick={() => setDeliveryWindowId(w.id)} className={`rounded-lg border px-4 py-3 text-left text-sm font-semibold transition-colors ${w.full ? "border-neutral-200 bg-neutral-100 text-neutral-400 cursor-not-allowed" : deliveryWindowId === w.id ? "border-emerald-600 bg-emerald-50 text-emerald-900" : "border-neutral-300 hover:border-emerald-500"}`}>
                         <span className="block">{w.label}</span>
-                        <span className="block text-[11px] font-medium mt-1">{w.full ? "Full — choose another time" : `${w.remaining} of ${w.capacity} delivery spots left`}</span>
+                        <span className={`block text-[11px] font-medium mt-1 ${!w.full && spotsLeftOn && w.remaining <= 3 ? "text-amber-700 font-bold" : ""}`}>{w.full ? "Full — choose another time" : !spotsLeftOn ? `${w.remaining} of ${w.capacity} delivery spots left` : w.remaining <= 3 ? `Only ${w.remaining} spot${w.remaining === 1 ? "" : "s"} left` : "Open"}</span>
                       </button>
                     ))}
                   </div>

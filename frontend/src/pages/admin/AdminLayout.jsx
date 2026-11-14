@@ -34,6 +34,7 @@ const nav = [
   { to: "/admin/brands", label: "Brands", icon: Tag },
   { to: "/admin/categories", label: "Categories", icon: FolderTree },
   { to: "/admin/promos", label: "Promo Codes", icon: Ticket },
+  { to: "/admin/counter-deal", label: "Counter Deal", icon: Ticket },
   { to: "/admin/emails", label: "Email Log", icon: Mail },
   { to: "/admin/settings", label: "Store Settings", icon: Settings },
 ];
@@ -42,7 +43,7 @@ const nav = [
 const GROUPS = [
   ["Orders & delivery", ["/admin/orders", "/admin/picking", "/admin/operations", "/driver-app", "/admin/alerts", "/admin/product-requests"]],
   ["Products", ["/admin/products", "/admin/clover", "/admin/inventory-capture", "/admin/missing-photos", "/admin/missing-barcodes", "/admin/missing-details", "/admin/product-details", "/admin/categories", "/admin/brands"]],
-  ["Marketing", ["/admin/banners", "/admin/promos", "/admin/loyalty", "/admin/reviews", "/admin/agents", "/admin/emails"]],
+  ["Marketing", ["/admin/counter-deal", "/admin/banners", "/admin/promos", "/admin/loyalty", "/admin/reviews", "/admin/agents", "/admin/emails"]],
   ["Customers & numbers", ["/admin/customers", "/admin/visitors", "/admin/analytics", "/admin/chat"]],
   ["Money & paperwork", ["/admin/receipts", "/admin/expenses", "/admin/documents", "/admin/compliance"]],
   ["Settings", ["/admin/settings", "/admin"]],
@@ -50,7 +51,7 @@ const GROUPS = [
 const navByPath = Object.fromEntries(nav.map((n) => [n.to, n]));
 // Extra words so "Jump to" finds a page by what you're looking for, not just its name.
 const KEYWORDS = {
-  "/admin/picking": "pick scan barcode packing", "/admin/missing-barcodes": "barcode upc scan", "/admin/promos": "coupon discount code",
+  "/admin/picking": "pick scan barcode packing", "/admin/missing-barcodes": "barcode upc scan", "/admin/promos": "coupon discount code", "/admin/counter-deal": "redeem in store code counter first visit",
   "/admin/banners": "hero slider homepage", "/admin/settings": "tax delivery fee sal mascot hours zip", "/admin/operations": "driver delivery windows cutoff",
   "/admin/clover": "pos inventory stock sync", "/admin/expenses": "money bills spending", "/admin/receipts": "sales clover daily", "/admin/documents": "license permit tobacco",
   "/admin/agents": "instagram automation google review emails", "/admin/loyalty": "points rewards", "/admin/inventory-capture": "photos camera", "/admin/customers": "regulars people", "/admin/visitors": "traffic city area location where clicks people zip",

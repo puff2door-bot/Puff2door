@@ -24,6 +24,7 @@ const LakeNonaDeliveryPage = () => {
   const faqs = [
     { q: "Do you deliver to Lake Nona?", a: `Yes. HD Smoke Shop delivers to adults 21+ in Lake Nona, ZIP codes ${LAKE_NONA_ZIPS.join(" and ")}, including ${NEIGHBORHOODS.slice(0, 4).join(", ")} and nearby streets. Enter your ZIP above to confirm your address.` },
     { q: "Can I get same-day delivery in Lake Nona?", a: sameDayEnabled ? `Yes. Order by ${cutoff} and pick a same-day delivery window at checkout. Orders placed after ${cutoff} go out on the next available day.` : "Choose the next available delivery window at checkout." },
+    { q: "How long does Lake Nona delivery take?", a: "About 2 hours from our Altamonte Springs store. Your order arrives within the delivery window you pick at checkout, and you can follow it on the tracking page." },
     { q: "Where do Lake Nona orders come from?", a: `Every order is packed at our store at ${STORE.fullAddress} and driven to you by our own driver, in plain packaging.` },
     { q: "Is there a delivery fee?", a: fee },
     { q: "Do I need ID?", a: "Yes. Someone 21 or older must be at the door with a valid, unexpired government-issued photo ID. Orders cannot be left unattended or handed to anyone under 21." },
@@ -57,7 +58,7 @@ const LakeNonaDeliveryPage = () => {
   return (
     <div data-testid="lake-nona-page">
       <Seo
-        title="Smoke Shop & Vape Delivery in Lake Nona (32832) – HD Smoke Shop"
+        title="Lake Nona Smoke Shop & Vape Delivery (32832, 32827) – HD Smoke Shop"
         description={`Same-day smoke shop and vape delivery to Lake Nona, Orlando (32832, 32827).${win?.cutoffLabel ? ` Order online by ${win.cutoffLabel}.` : ""} Adults 21+ only; ID checked at the door.`}
         path="/delivery/lake-nona"
         jsonLd={jsonLd}
