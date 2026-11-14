@@ -5,7 +5,7 @@ import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
 
 const SAL_SPOTS = [
-  ["banner", "Footer (next to the store address)"], ["deliveryPage", "Delivery Area & Lake Nona pages"], ["checkout", "Checkout (delivery)"],
+  ["banner", "Footer on info pages (About, Contact, FAQ, Guides)"], ["deliveryPage", "Delivery Area & Lake Nona pages"], ["checkout", "Checkout (delivery)"],
   ["preparing", "Order tracking: preparing"], ["outForDelivery", "Order tracking: out for delivery"], ["delivered", "Order tracking: delivered"],
   ["notFound", "Page not found (404)"],
 ];
@@ -158,7 +158,7 @@ const AdminSettings = () => {
           <span className="flex items-center gap-2"><SalMascot pose="avatar" size={28} /><span className="text-sm font-bold text-neutral-900">Sal, the Puff2door delivery mascot</span></span>
           <span className="flex items-center gap-2 text-sm font-bold">{f.salEnabled ? "On" : "Off"}<input type="checkbox" data-testid="settings-sal-enabled" className="accent-emerald-600 h-5 w-5" checked={f.salEnabled} onChange={(e) => setF({ ...f, salEnabled: e.target.checked })} /></span>
         </label>
-        <p className="text-xs text-neutral-500 mb-3">Sal appears only on delivery spots: a small Sal in the homepage delivery banner, the delivery pages, checkout, order tracking, the footer and the page-not-found screen. Never on products or the 21+ screen. Each spot shows one of its lines, changing on each visit. One line per row; leave a box empty to use the default lines.</p>
+        <p className="text-xs text-neutral-500 mb-3">Sal appears only on delivery spots: a small Sal in the homepage delivery banner, the delivery pages, checkout, order tracking, the page-not-found screen, and the footer of info pages. One Sal per page. Never on products or the 21+ screen. Each spot shows one of its lines, changing on each visit. One line per row; leave a box empty to use the default lines.</p>
         {f.salEnabled && (
           <div className="grid sm:grid-cols-2 gap-3">
             {SAL_SPOTS.map(([key, label]) => (

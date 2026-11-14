@@ -193,6 +193,7 @@ html.p2d-dark .bg-emerald-50,
 html.p2d-dark .bg-emerald-50\/40,
 html.p2d-dark .bg-emerald-50\/50,
 html.p2d-dark .bg-emerald-50\/60 { background-color: #052e16 !important; }
+html.p2d-dark .border-emerald-100 { border-color: #14532d !important; }
 html.p2d-dark .bg-red-50 { background-color: #450a0a !important; }
 html.p2d-dark .bg-amber-50,
 html.p2d-dark .bg-amber-50\/50 { background-color: #451a03 !important; }
