@@ -7,6 +7,7 @@ import { useToast } from "../hooks/use-toast";
 import { usStates } from "../mock";
 import api from "../api";
 import MyRewards from "../components/account/MyRewards";
+import OwnerHome from "../components/account/OwnerHome";
 import { useCart } from "../context/CartContext";
 import NotificationOptIn from "../components/NotificationOptIn";
 
@@ -129,6 +130,7 @@ const Divider = () => (
 
 const AuthPage = () => {
   const { user, login, register, resetPassword, loginWithGoogle, prepareGoogleSignIn, googleSignInEnabled, authLoading } = useApp();
+  const [viewAsCustomer, setViewAsCustomer] = useState(false);
   // Load Google's sign-in script only on this page, so the popup opens instantly when the button is tapped.
   useEffect(() => { if (googleSignInEnabled) prepareGoogleSignIn(); }, [googleSignInEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
   const { toast } = useToast();
@@ -218,7 +220,17 @@ const AuthPage = () => {
   const inputCls = "w-full border border-neutral-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-emerald-600 transition-colors";
 
   if (authLoading) return <div className="max-w-[1280px] mx-auto px-4 py-24 text-center text-neutral-500">Loading...</div>;
-  if (user) return <AccountView />;
+  if (user && user.role === "admin" && !viewAsCustomer) return <OwnerHome onViewAsCustomer={() => setViewAsCustomer(true)} />;
+  if (user) return (
+    <>
+      {user.role === "admin" && (
+        <div className="max-w-[1280px] mx-auto px-4 pt-6">
+          <button type="button" onClick={() => setViewAsCustomer(false)} className="rounded-full bg-amber-50 border border-amber-200 px-4 py-2 text-sm font-bold text-amber-800">Viewing as a customer · Back to owner home</button>
+        </div>
+      )}
+      <AccountView />
+    </>
+  );
 
   if (mode === "reset") {
     return (
