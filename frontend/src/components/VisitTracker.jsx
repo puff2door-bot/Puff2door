@@ -36,7 +36,7 @@ const VisitTracker = () => {
   const { pathname } = useLocation();
   const { user, authLoading } = useApp();
   const first = useRef(true);
-  const utm = useRef(new URLSearchParams(window.location.search).get("utm_source") || "");
+  const utm = useRef((() => { const q = new URLSearchParams(window.location.search); return [q.get("utm_source"), q.get("utm_campaign")].filter(Boolean).join("|").slice(0, 60); })());
 
   useEffect(() => {
     if (authLoading || (user && user.role === "admin")) return;

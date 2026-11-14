@@ -130,13 +130,14 @@ def is_bot(ua: str) -> bool:
 def source_of(ref: str, utm: str, own_host: str = "puff2door.com") -> str:
     utm = (utm or "").lower()
     if utm:
+        # Google Business Profile links carry utm_campaign=gbp (sent as "source|campaign")
         if "gbp" in utm or "maps" in utm or "google_business" in utm:
             return "Google Maps"
         if "insta" in utm or utm == "ig":
             return "Instagram"
         if "google" in utm:
             return "Google search"
-        return utm[:30].capitalize()
+        return utm.split("|")[0][:30].capitalize()
     host = (urlparse(ref).hostname or "").lower() if ref else ""
     if not host or host.endswith(own_host):
         return "Typed / bookmark"
