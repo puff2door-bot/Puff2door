@@ -7582,11 +7582,14 @@ async def _seo_body_html(path: str, meta: dict) -> str:
     headline = re.split(r"\s[|–]\s", meta.get("title", ""), maxsplit=1)[0]
     main = f"<h1>{_h(headline)}</h1><p>{_h(meta.get('description'))}</p>"
     if normalized == "":
-        pickup = "order online for store pickup, or get local delivery" if (await get_settings()).get("pickupEnabled") else "or order online for local delivery"
+        home_settings = await get_settings()
+        pickup = "order online for store pickup, or get local delivery" if home_settings.get("pickupEnabled") else "or order online for local delivery"
+        home_area = ("in Altamonte Springs (ZIP 32714) and Lake Nona (ZIPs 32832 and 32827)" if home_settings.get("lakeNonaEnabled")
+                     else "within ZIP 32714")
         main = ("<h1>HD Smoke Shop – Smoke &amp; Vape Shop in Altamonte Springs, FL</h1>"
                 "<p>Locally owned smoke shop on SR 434 in Altamonte Springs, open 10 AM–10 PM every day. Disposable vapes, pods, "
                 f"hookah, glass pipes, rolling papers and cones, cigars and wraps, lighters, kratom and hemp products. Walk in, {pickup} "
-                "within ZIP 32714. Adults 21+ only.</p>"
+                f"{home_area}. Adults 21+ only.</p>"
                 "<p>Close to Longwood, Casselberry, Maitland, Winter Springs, Forest City and Apopka.</p>")
         bcounts = await brand_counts()
         top_brands = sorted(((slug, n) for slug, n in bcounts.items() if slug and n), key=lambda x: -x[1])[:16]

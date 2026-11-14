@@ -70,8 +70,11 @@ const Home = () => {
   };
   const { newProducts, getProductsByCategory, promoTiles, activeCategories, activeBrands } = useCatalog();
   const { delivery, pricing, presentation } = useCart();
+  const lakeNona = delivery.lakeNonaEnabled === true;
+  const areaText = lakeNona ? "in Altamonte Springs (ZIP 32714) and Lake Nona (ZIPs 32832 and 32827)" : "within ZIP 32714";
   const features = [
-    ...baseFeatures.slice(0, 2),
+    lakeNona ? { ...baseFeatures[0], desc: "Altamonte Springs & Lake Nona, or shop our SR 434 store" } : baseFeatures[0],
+    baseFeatures[1],
     delivery.sameDayEnabled === true
       ? { icon: Clock, title: "Same-Day Local", desc: "Order before cutoff for today's delivery" }
       : { icon: Clock, title: "Scheduled Delivery", desc: "Choose an available delivery window" },
@@ -92,16 +95,18 @@ const Home = () => {
   const layout = resolveSiteTheme(savedLayout);
   const conceptLayout = layout === "neon" || layout === "blue";
   const intro = (
-    <section className="home-intro bg-white border-b" data-testid="home-intro">
-      <div className="max-w-[1280px] mx-auto px-4 py-6 sm:py-8">
-        <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full" />
-        <h1 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-700 text-neutral-900 uppercase tracking-tight mb-3">Altamonte Springs Smoke Shop &amp; Local Delivery</h1>
-        <p className="text-neutral-600 leading-relaxed max-w-3xl">HD Smoke Shop is a smoke shop at 481 N State Rd 434, Suite 1050 in Altamonte Springs, FL, open 10 AM–10 PM daily. Walk-ins are welcome, or order disposable vapes, hemp-derived delta products, glass pipes, kratom and other smoke shop essentials online for local delivery within ZIP 32714. Adults 21+ only, ID required.</p>
+    // Phones: the section and its box "dissolve" (display: contents) so the heading stays on top while the
+    // paragraph moves to just above the footer (order-1). Larger screens: one block, unchanged.
+    <section className="home-intro contents sm:block bg-white border-b" data-testid="home-intro">
+      <div className="contents sm:block max-w-[1280px] mx-auto px-4 py-6 sm:py-8">
+        <span className="block h-1 w-12 bg-emerald-600 mb-3 rounded-full mx-4 mt-6 sm:mx-0 sm:mt-0" />
+        <h1 className="font-heading text-[26px] leading-tight sm:leading-normal sm:text-4xl lg:text-5xl font-700 text-neutral-900 uppercase tracking-tight mb-1 px-4 sm:px-0 sm:mb-3">Altamonte Springs Smoke Shop &amp; Local Delivery</h1>
+        <p className="order-1 sm:order-none text-neutral-600 leading-relaxed max-w-3xl px-4 pt-10 pb-6 sm:p-0 text-sm sm:text-base">HD Smoke Shop is a smoke shop at 481 N State Rd 434, Suite 1050 in Altamonte Springs, FL, open 10 AM–10 PM daily. Walk-ins are welcome, or order disposable vapes, hemp-derived delta products, glass pipes, kratom and other smoke shop essentials online for local delivery {areaText}. Adults 21+ only, ID required.</p>
       </div>
     </section>
   );
   const featureBar = (
-    <section className="home-feature-bar bg-neutral-50 border-b" aria-labelledby="why-shop-heading">
+    <section className="home-feature-bar order-1 sm:order-none bg-neutral-50 border-b" aria-labelledby="why-shop-heading">
       <div className="max-w-[1280px] mx-auto px-4 pt-6"><h2 id="why-shop-heading" className="font-heading text-xl sm:text-2xl font-700 text-neutral-900 uppercase tracking-tight">Why Shop With HD Smoke Shop?</h2></div>
       <div className="home-feature-grid max-w-[1280px] mx-auto px-4 grid grid-cols-2 lg:grid-cols-4 divide-x divide-neutral-200">
         {features.map((f, i) => <div key={i} className="home-feature flex items-center gap-2.5 py-3 px-3 sm:gap-3 sm:py-5 sm:px-4"><span className="grid place-items-center h-9 w-9 sm:h-11 sm:w-11 rounded-full bg-emerald-100 text-emerald-700 shrink-0"><f.icon className="h-5 w-5" aria-hidden="true" /></span><div><h3 className="font-semibold text-sm text-neutral-900">{f.title}</h3><p className="text-xs text-neutral-500">{f.desc}</p></div></div>)}
@@ -110,7 +115,7 @@ const Home = () => {
   );
 
   return (
-    <div className={`home-shell home-layout-${layout}`} data-home-layout={layout}>
+    <div className={`home-shell flex flex-col sm:block home-layout-${layout}`} data-home-layout={layout}>
       <Seo title={DEFAULT_TITLE} description={DEFAULT_DESCRIPTION} path="/" jsonLd={faqJsonLd(homeFaqs)} />
       <DeliveryBanner />
       <DeliveryCountdown />
@@ -226,7 +231,7 @@ const Home = () => {
             <div>
               <h3 className="font-heading text-lg uppercase mb-2">Altamonte Springs Delivery &amp; Walk-Ins</h3>
               <p className="text-sm text-neutral-600 leading-relaxed">
-                Visit our Altamonte Springs store on SR 434 or order for delivery. We deliver to adults 21+ within Altamonte Springs, ZIP 32714 — check your ZIP at the top of this page or see{" "}
+                Visit our Altamonte Springs store on SR 434 or order for delivery. We deliver to adults 21+ {lakeNona ? "in Altamonte Springs (ZIP 32714) and Lake Nona (ZIPs 32832 and 32827)" : "within Altamonte Springs, ZIP 32714"} — check your ZIP at the top of this page or see{" "}
                 <Link to="/delivery-area" className="text-emerald-600 font-semibold hover:underline">our delivery area</Link>. Shopping from Longwood, Casselberry, Maitland, Winter Springs or Apopka? Walk-ins are welcome at the store.
               </p>
             </div>
