@@ -173,7 +173,7 @@ const AdminSettings = () => {
             <div className="rounded-xl border border-neutral-200 px-3 py-2">
               <label htmlFor="sal-outfit" className="block text-sm font-bold text-neutral-900">Sal's outfit</label>
               <select id="sal-outfit" data-testid="settings-sal-outfit" className={inputCls} value={f.salOutfit} onChange={(e) => setF({ ...f, salOutfit: e.target.value })}>
-                <option value="auto">Auto by date (Christmas, Halloween, July 4th, New Year)</option>
+                <option value="auto">Auto (holidays by date, sleep cap after 10 PM)</option>
                 <option value="none">Regular cap, always</option>
                 <option value="santa">Santa hat</option>
                 <option value="witch">Halloween hat</option>
