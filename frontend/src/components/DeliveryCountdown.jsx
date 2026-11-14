@@ -98,7 +98,7 @@ const DeliveryCountdown = ({ variant = "home" }) => {
     const chip = sameDayOpen ? `Same-day open · ${values.countdown} left` : win.todayOpen ? "Closed for today" : "No delivery today";
     const detail = sameDayOpen ? `Order by ${values.cutoff} for delivery today` : nextDay ? `Next delivery: ${nextDay.toLowerCase() === "tomorrow" ? "tomorrow" : nextDay}${nextTime ? `, ${nextTime}` : ""}` : "";
     return (
-      <div data-testid="delivery-countdown" className="bg-neutral-950 text-white">
+      <div data-testid="delivery-countdown" className="p2d-countdown bg-neutral-950 text-white">
         <div className="max-w-[1280px] mx-auto px-4 py-2 min-h-[82px] sm:min-h-[44px] flex items-center content-center justify-between gap-3 flex-wrap sm:justify-center sm:gap-5">
           <div className="flex items-center gap-2.5 flex-wrap text-xs sm:text-sm">
             <span data-testid="delivery-countdown-chip" className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold tabular-nums" style={sameDayOpen ? { background: "#d1fae5", color: "#065f46" } : { background: "#fef3c7", color: "#78350f" }}>
@@ -113,7 +113,7 @@ const DeliveryCountdown = ({ variant = "home" }) => {
   }
 
   return (
-    <div data-testid="delivery-countdown" className="bg-neutral-950 text-white">
+    <div data-testid="delivery-countdown" className="p2d-countdown bg-neutral-950 text-white">
       <div className="max-w-[1280px] mx-auto px-4 py-2 text-center">
         {showHeadline && <p className="flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold tracking-wide">
           {sameDayOpen ? <Truck className="h-4 w-4 shrink-0 text-emerald-400" /> : <Clock className="h-4 w-4 shrink-0 text-neutral-400" />}
