@@ -1182,3 +1182,14 @@ html.p2d-dark .home-feature > span { background: #064e3b !important; color: #a7f
   .sal-svg *, .sal-hop, .sal-dance, .sal-shrug, .sal-honk { animation: none !important; transition: none !important; }
   .sal-peek > span:first-child { transform: none; opacity: 1; }
 }
+
+/* ---- Phones: product rows always filled (no lone card next to an empty gap). Laptop rows stay as they were. ---- */
+@media (min-width: 640px) {
+  .p2d-cap5 > :nth-child(n+6) { display: none !important; }    /* 6th card is for phones only */
+  .p2d-cap15 > :nth-child(n+16) { display: none !important; }  /* 16th card is for phones only */
+}
+@media (max-width: 639px) {
+  .p2d-phone-even > :last-child:nth-child(odd) { display: none !important; }  /* 2 per row: drop a lone last card */
+  .p2d-phone-3 > :last-child:nth-child(3n+1) { display: none !important; }    /* 3 per row: drop a lone last tile */
+  .p2d-phone-span > :last-child:nth-child(odd) { grid-column: span 2; aspect-ratio: 8 / 3; }  /* promo tiles: a lone last tile goes full width */
+}

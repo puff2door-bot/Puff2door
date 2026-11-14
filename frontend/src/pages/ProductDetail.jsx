@@ -63,7 +63,7 @@ const ProductDetail = () => {
   }
 
   const gallery = [product.image, product.image2].filter((v, i, a) => a.indexOf(v) === i);
-  const related = getProductsByCategory(product.categorySlug).filter((p) => p.id !== product.id).slice(0, 5);
+  const related = getProductsByCategory(product.categorySlug).filter((p) => p.id !== product.id).slice(0, 6);
   const price = getPrice(product);
   const wished = has(product.id);
   const alertSet = Boolean(wishItems.find((i) => i.productId === product.id)?.notify);
@@ -222,7 +222,7 @@ const ProductDetail = () => {
       {related.length > 0 && (
         <section className="pt-16">
           <h2 className="font-heading text-2xl sm:text-3xl font-700 uppercase tracking-tight mb-6">More {titleCase(product.category)}</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 p2d-cap5 p2d-phone-even">
             {related.map((p) => (<ProductCard key={p.id} product={p} />))}
           </div>
           <div className="mt-6">

@@ -149,7 +149,7 @@ const Home = () => {
 
       {/* Promo blocks */}
       <section className="max-w-[1280px] mx-auto px-4 pt-8">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 p2d-phone-span">
           {promoTiles.map((b) => (
             <Link key={b.id} to={b.link} data-testid={`promo-tile-${b.id}`} className="group relative rounded-xl overflow-hidden aspect-[4/3] bg-neutral-100 border border-neutral-200 hover:border-emerald-300 hover:shadow-lg transition-all">
               {b.tag && <span className="absolute top-3 left-3 z-10 bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">{b.tag}</span>}
@@ -166,8 +166,8 @@ const Home = () => {
       {/* New Products */}
       <section className="max-w-[1280px] mx-auto px-4 pt-10 sm:pt-14">
         <SectionHeader title="New Vape Products" link="/shop" />
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          {newProducts.slice(0, 15).map((p) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 p2d-cap15 p2d-phone-even">
+          {newProducts.slice(0, 16).map((p) => (
             <ProductCard key={p.id} product={p} />
           ))}
         </div>
@@ -193,7 +193,7 @@ const Home = () => {
             </button>
           ))}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 p2d-phone-even">
           {tabProducts.map((p) => (
             <ProductCard key={p.id} product={p} />
           ))}
@@ -208,7 +208,7 @@ const Home = () => {
       {/* Brands */}
       <section className="max-w-[1280px] mx-auto px-4 pt-10 sm:pt-14">
         <SectionHeader title="Shop By Brand" link="/brands" linkLabel="All Brands" />
-        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-4">
+        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-4 p2d-phone-3">
           {[...activeBrands].sort((a, b) => b.count - a.count).slice(0, 16).map((b) => (
             <Link key={b.slug} to={`/brand/${b.slug}`} title={`Shop ${b.name} products`} data-testid={`home-brand-tile-${b.slug}`} className="group aspect-square bg-white border border-neutral-200 rounded-lg grid place-items-center p-3 hover:shadow-lg hover:border-emerald-200 transition-all text-center">
               <BrandLogo brand={b} textClass="text-sm sm:text-base" />

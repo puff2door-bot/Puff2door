@@ -40,7 +40,8 @@ const ShopPage = () => {
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [mobileFilters, setMobileFilters] = useState(false);
-  const perPage = 15;
+  // Phones show 16 per page (8 full rows of two); tablets and laptops keep 15.
+  const [perPage] = useState(() => (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 639px)").matches ? 16 : 15));
 
   useEffect(() => { setFilters(EMPTY_FILTERS); setPage(1); }, [slug, searchQuery, isBrand]);
 
