@@ -228,6 +228,26 @@ html.p2d-dark .mobile-bottom-nav { background: rgb(23 23 23 / .96) !important; b
 html.p2d-dark .mobile-bottom-nav a { color: #b5b5b5; }
 html.p2d-dark .mobile-bottom-nav a.active { color: #34d399; }
 
+/* Classic theme, light mode: green top bar, white menu bar, light footer (dark mode keeps the dark
+   menu and footer; the green top bar shows in both). Other homepage themes keep their own colors. */
+html:not([data-site-theme]) .p2d-topbar { background-color: #047857 !important; }
+html:not([data-site-theme]) .p2d-topbar .bg-emerald-500 { background-color: #a7f3d0 !important; }
+html:not([data-site-theme]):not(.p2d-dark) .p2d-navbar { background-color: #ffffff !important; border-bottom: 1px solid #e5e5e5; }
+html:not([data-site-theme]):not(.p2d-dark) .p2d-navbar .text-white { color: #262626 !important; }
+html:not([data-site-theme]):not(.p2d-dark) .p2d-navbar .text-emerald-400,
+html:not([data-site-theme]):not(.p2d-dark) .p2d-navbar a:hover { color: #047857 !important; }
+html:not([data-site-theme]):not(.p2d-dark) .p2d-footer { background-color: #f6f7f5 !important; color: #404040 !important; border-top: 1px solid #e5e5e5; }
+html:not([data-site-theme]):not(.p2d-dark) .p2d-footer > div:not(:first-child) .text-white { color: #111111 !important; }
+html:not([data-site-theme]):not(.p2d-dark) .p2d-footer .text-neutral-300,
+html:not([data-site-theme]):not(.p2d-dark) .p2d-footer .text-neutral-400 { color: #525252 !important; }
+html:not([data-site-theme]):not(.p2d-dark) .p2d-footer .bg-neutral-800 { background-color: #ffffff !important; border: 1px solid #e5e5e5; }
+html:not([data-site-theme]):not(.p2d-dark) .p2d-footer .border-neutral-800 { border-color: #e5e5e5 !important; }
+html:not([data-site-theme]):not(.p2d-dark) .p2d-footer .text-emerald-500 { color: #047857 !important; }
+html:not([data-site-theme]):not(.p2d-dark) .p2d-footer > div:not(:first-child) a:hover { color: #047857 !important; }
+html:not([data-site-theme]):not(.p2d-dark) .p2d-footer a.bg-neutral-800:hover { background-color: #047857 !important; border-color: #047857; }
+html:not([data-site-theme]):not(.p2d-dark) .p2d-footer a.bg-neutral-800:hover .text-white { color: #ffffff !important; }
+html:not([data-site-theme]):not(.p2d-dark) .p2d-footer .text-amber-300 { color: #b45309 !important; }
+
 /* Admin-selectable homepage presets. Content and commerce behavior remain shared. */
 .home-layout-showcase {
   background: linear-gradient(180deg, #ecfdf5 0, #f8faf9 34rem, #fff 70rem);

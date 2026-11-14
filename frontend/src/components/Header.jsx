@@ -67,7 +67,7 @@ const Header = () => {
   return (
     <header className="sticky top-0 z-50 w-full">
       {/* Announcement marquee */}
-      <div className="bg-neutral-900 text-white overflow-hidden">
+      <div className="p2d-topbar bg-neutral-900 text-white overflow-hidden">
         <div className="flex whitespace-nowrap animate-marquee">
           {[...visibleAnnouncements, ...visibleAnnouncements, ...visibleAnnouncements, ...visibleAnnouncements].map((a, i) => (
             <span key={i} className="mx-8 py-2 text-[11px] tracking-[0.2em] font-medium flex items-center">
@@ -144,7 +144,7 @@ const Header = () => {
         </div>
 
         {/* Desktop nav */}
-        <nav className="hidden lg:block bg-neutral-900">
+        <nav className="p2d-navbar hidden lg:block bg-neutral-900">
           <div className="max-w-[1280px] mx-auto px-4">
             <ul className="flex items-center gap-1 text-white">
               <li

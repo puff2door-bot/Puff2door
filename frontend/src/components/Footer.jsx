@@ -25,7 +25,7 @@ const Footer = () => {
   const { activeCategories: categories } = useCatalog();
   const { user } = useApp();
   return (
-    <footer className="bg-neutral-900 text-neutral-300 mt-16">
+    <footer className="p2d-footer bg-neutral-900 text-neutral-300 mt-16">
       {/* Age banner */}
       <div className="bg-emerald-600 text-white">
         <div className="max-w-[1280px] mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
