@@ -11,7 +11,7 @@ describe("deliveryBannerText", () => {
     });
 
     expect(text).toContain("Altamonte Springs and Lake Nona");
-    expect(text).toContain("ZIPs 32714, 32827, 32832");
+    expect(text).toBe("Walk-ins welcome · Delivery to Altamonte Springs and Lake Nona.");
   });
 
   test("does not claim Altamonte Springs while delivery data is loading", () => {
