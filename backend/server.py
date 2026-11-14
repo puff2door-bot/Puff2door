@@ -2807,14 +2807,19 @@ async def list_products():
     hide = bool((await get_settings()).get("hideOutOfStock", True))
     cached = _product_list_cache
     if cached["data"] is not None and cached["key"] == hide and _time.monotonic() - cached["at"] < PRODUCT_LIST_TTL:
-        return cached["data"]
+        return Response(content=cached["data"].body, media_type="application/json")
     query: dict = {"active": True}
     if hide:
         # Out-of-stock products drop off the shop and come back automatically when restocked.
         # Their product pages stay reachable so links and restock alerts keep working.
         query["stock"] = {"$gt": 0}
+    t0 = _time.monotonic()
     prods = await db.products.find(query, PRODUCT_LIST_FIELDS).sort("id", 1).to_list(2000)
-    data = {"products": [product_out(p) for p in prods]}
+    t1 = _time.monotonic()
+    # Serialized once with the standard json module: FastAPI's generic encoder took seconds on the small server.
+    body = json.dumps({"products": [product_out(p) for p in prods]}, default=str, separators=(",", ":")).encode()
+    logger.info("product list rebuilt: %d products, db %.2fs, encode %.2fs", len(prods), t1 - t0, _time.monotonic() - t1)
+    data = Response(content=body, media_type="application/json")
     _product_list_cache.update({"at": _time.monotonic(), "key": hide, "data": data})
     return data
 
