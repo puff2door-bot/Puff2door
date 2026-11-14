@@ -39,6 +39,15 @@ async def build_summary(db, overview, visitor_count) -> dict:
     chats = await db.chat_conversations.count_documents({"lastSender": "customer", "status": {"$ne": "resolved"}})
     dash = await overview(db)
     low = [c for c in (dash.get("reorder") or []) if c.get("perWeek", 0) >= 1][:4]
+    agent_notes = []
+    try:  # the agents' warnings that used to arrive in the separate 8 AM briefing email
+        import agents
+        latest = await agents.latest_results(db)
+        names = {a["id"]: a["name"] for a in agents.AGENTS}
+        agent_notes = [f"{names.get(k, k)}: {v.get('headline', '')}" for k, v in latest.items()
+                       if k != "briefing" and v.get("status") in ("warn", "alert") and v.get("headline")][:6]
+    except Exception:
+        pass
     return {
         "day": now_et.strftime("%A, %b %-d"),
         "storeSales": float(sales.get("storeRevenue") or 0), "storeOrders": int(sales.get("storeOrders") or 0),
@@ -47,6 +56,7 @@ async def build_summary(db, overview, visitor_count) -> dict:
         "reviews": reviews, "chats": chats,
         "low": [{"name": c["name"], "stock": c["stock"]} for c in low],
         "attention": [a["text"] for a in (dash.get("attention") or [])][:4],
+        "agents": agent_notes,
     }
 
 
@@ -77,6 +87,7 @@ def summary_html(s: dict, layout) -> str:
     body = (f"<p style='margin:0 0 12px'>Here's how HD Smoke Shop did yesterday.</p><table style='width:100%;font-size:14px'>{''.join(rows)}</table>"
             f"<h3 style='margin:18px 0 6px;font-size:15px'>Running low</h3><ul style='margin:0;padding-left:18px;font-size:14px'>{low}</ul>"
             + (f"<h3 style='margin:18px 0 6px;font-size:15px'>Needs you</h3><ul style='margin:0;padding-left:18px;font-size:14px'>{att}</ul>" if att else "")
+            + (f"<h3 style='margin:18px 0 6px;font-size:15px'>From your agents</h3><ul style='margin:0;padding-left:18px;font-size:14px'>{''.join(f'<li>{escape(t)}</li>' for t in s.get('agents') or [])}</ul>" if s.get("agents") else "")
             + "<p style='margin:18px 0 0'><a href='https://puff2door.com/my-account' style='color:#047857;font-weight:700'>Open your owner home →</a></p>")
     return layout(f"Good morning: {s['day']}", body, "Yesterday's sales, orders and what needs you today")
 
