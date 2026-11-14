@@ -1,7 +1,8 @@
 name: Keep site awake
 
 # Free Render instances sleep after 15 minutes without traffic. A light request
-# every 10 minutes keeps the store, agents and Instagram scheduler running.
+# every 10 minutes keeps the store, agents and Instagram scheduler running,
+# and the second step posts the daily Instagram image as soon as it's due.
 # GitHub may start scheduled runs a few minutes late; the retries cover the
 # ~50 second wake-up when that happens.
 on:
@@ -26,3 +27,7 @@ jobs:
           curl --fail --silent --show-error --output /dev/null \
             --retry 6 --retry-delay 15 --retry-all-errors --max-time 90 \
             https://puff2door.com/api/
+      - name: Post today's Instagram image when it's due
+        # Never posts twice a day; does nothing before the posting time set in Admin.
+        run: |
+          curl --silent --show-error --output /dev/null --max-time 120 https://puff2door.com/api/social/tick || true

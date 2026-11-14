@@ -3986,8 +3986,6 @@ async def admin_social_status(admin: dict = Depends(get_admin_user)):
         missing.append("Meta business portfolio ID")
     if len(INSTAGRAM_TOKEN_ENCRYPTION_KEY.encode("utf-8")) < 32:
         missing.append("Instagram token encryption key")
-    if not AGENT12_CRON_SECRET:
-        missing.append("Social Studio daily trigger secret")
     return {
         **status,
         "missingSetup": missing,
@@ -4078,6 +4076,28 @@ async def admin_social_settings(inp: InstagramSettingsInput, admin: dict = Depen
     return await integration.status()
 
 
+_SOCIAL_TICK = {"at": 0.0}
+# One daily-post check at a time, so the tick and the background scheduler can never post twice.
+_SOCIAL_RUN_LOCK = asyncio.Lock()
+
+
+@api_router.get("/social/tick")
+async def social_daily_tick():
+    """Called by the site's 10-minute keep-awake job. Posts today's Instagram image once it is due;
+    safe to call any time (it never posts twice a day), and runs at most every 5 minutes."""
+    now = asyncio.get_running_loop().time()
+    if now - _SOCIAL_TICK["at"] < 300:
+        return {"status": "skipped"}
+    _SOCIAL_TICK["at"] = now
+    try:
+        async with _SOCIAL_RUN_LOCK:
+            result = await instagram_integration().run_daily()
+        return {"status": result.get("status", "ok")}
+    except Exception as exc:
+        logger.warning("Social Studio tick: %s", instagram_error_detail(exc))
+        return {"status": "error"}
+
+
 @api_router.post("/internal/agent12/daily")
 async def agent12_daily_trigger(request: Request):
     if not AGENT12_CRON_SECRET:
@@ -4086,7 +4106,8 @@ async def agent12_daily_trigger(request: Request):
     if not supplied or not secrets.compare_digest(supplied, AGENT12_CRON_SECRET):
         raise HTTPException(status_code=401, detail="Invalid Social Studio trigger")
     try:
-        return await instagram_integration().run_daily()
+        async with _SOCIAL_RUN_LOCK:
+            return await instagram_integration().run_daily()
     except InstagramError as exc:
         logger.exception("Social Studio daily publish failed")
         raise HTTPException(status_code=502, detail=instagram_error_detail(exc))
@@ -7047,7 +7068,8 @@ async def agent12_social_schedule():
                 integration = instagram_integration()
                 status = await integration.status()
                 if status.get("connected") and status.get("autoPublishEnabled"):
-                    await integration.run_daily()
+                    async with _SOCIAL_RUN_LOCK:
+                        await integration.run_daily()
             except Exception as exc:
                 logger.exception("Social Studio scheduler check failed: %s", exc)
                 # InstagramIntegration.publish_draft records the provider error
