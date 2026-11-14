@@ -14,6 +14,7 @@ import {
   Sun,
 } from "lucide-react";
 import { announcements, BRAND } from "../mock";
+import { STORE } from "../seo/config";
 import { useCatalog } from "../context/CatalogContext";
 import { useCart } from "../context/CartContext";
 import { useWishlist } from "../context/WishlistContext";
@@ -220,8 +221,8 @@ const Header = () => {
               <li><MixSaveButton onClick={() => { setMixSaveInitial(null); setMixSaveOpen(true); }} /></li>
               {/* Same font as the menu. Shown on wide screens only, where it fits on one line with the menu. */}
               <li className="ml-auto hidden xl:flex items-center gap-4 text-[13px] font-semibold tracking-wide uppercase text-white whitespace-nowrap">
-                <span className="flex items-center gap-1.5"><Phone className="h-4 w-4 text-emerald-400" /> {BRAND.phone}</span>
-                <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-emerald-400" /> Altamonte Springs</span>
+                <a href={STORE.phoneHref} data-testid="header-call" aria-label={`Call HD Smoke Shop at ${STORE.phone}`} className="flex items-center gap-1.5 py-3.5 hover:underline underline-offset-4"><Phone className="h-4 w-4 text-emerald-400" /> {BRAND.phone}</a>
+                <a href={STORE.directionsUrl} target="_blank" rel="noopener noreferrer" data-testid="header-directions" aria-label={`Directions to HD Smoke Shop, ${STORE.fullAddress} (opens Google Maps)`} className="flex items-center gap-1.5 py-3.5 hover:underline underline-offset-4"><MapPin className="h-4 w-4 text-emerald-400" /> Altamonte Springs</a>
               </li>
             </ul>
           </div>
