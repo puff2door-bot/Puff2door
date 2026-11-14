@@ -96,7 +96,9 @@ export const useSal = () => {
   const outfitSetting = (live && delivery.salOutfit) || (pre && pre.outfit) || "auto";
   const lines = live ? delivery.salLines || {} : (pre && pre.lines) || {};
   const now = easternNow();
-  return { enabled, animated: animatedSetting && !prefersReducedMotion(), outfit: resolveOutfit(outfitSetting, now), night: now.h < 10 || now.h >= 22, lines };
+  // The sleep cap after hours is part of "Auto" only; an outfit picked in Admin always shows as picked.
+  const night = outfitSetting === "auto" && (now.h < 10 || now.h >= 22);
+  return { enabled, animated: animatedSetting && !prefersReducedMotion(), outfit: resolveOutfit(outfitSetting, now), night, lines };
 };
 
 // One-shot CSS animation helper: returns [className, trigger()].
