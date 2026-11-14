@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { StockBadge, ProductDeliveryCountdown } from "../components/StoreExtras";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { ChevronRight, Minus, Plus, ShoppingCart, Truck, ShieldCheck, RotateCcw, Star, Check, Heart, Bell, BellRing } from "lucide-react";
 import ProductCard from "../components/ProductCard";
@@ -164,6 +165,7 @@ const ProductDetail = () => {
             )}
           </div>
           <RewardsBadge price={price} qty={qty} />
+          {product.inStock && <div className="space-y-2 mb-5"><StockBadge product={product} /><ProductDeliveryCountdown /></div>}
           <p className="text-neutral-600 leading-relaxed mb-5">{product.description}</p>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm mb-7 border border-neutral-200 rounded-xl p-4 bg-neutral-50" data-testid="product-specs">
             {productSpecs(product).map(([k, v]) => (

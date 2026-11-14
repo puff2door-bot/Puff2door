@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { ReorderCard } from "../components/StoreExtras";
 import { Link } from "react-router-dom";
 import { ArrowRight, Truck, ShieldCheck, Clock, BadgePercent, MapPin } from "lucide-react";
 import HeroSlider from "../components/HeroSlider";
@@ -133,6 +134,7 @@ const Home = () => {
         </>
       )}
 
+      <ReorderCard />
       <DealOfTheDay />
       <PersonalizedShelf />
 

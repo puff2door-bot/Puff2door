@@ -352,7 +352,7 @@ def sal_public(settings: dict) -> dict:
             "lines": {spot: (settings.get("salLines") or {}).get(spot) or SAL_DEFAULT_LINES[spot] for spot in SAL_SPOTS}}
 
 
-DEFAULT_SETTINGS = {"taxRate": 0.065, "zipTaxRates": {"32827": 0.065, "32832": 0.065}, "lakeNonaEnabled": False, "countdownStyle": "chip", "salEnabled": True, "salAnimated": True, "visitorsEnabled": True, "salOutfit": "auto", "salLines": SAL_DEFAULT_LINES, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32714", "deliveryRadiusMiles": 20.0, "allowedZipCodes": ["32714"],
+DEFAULT_SETTINGS = {"taxRate": 0.065, "zipTaxRates": {"32827": 0.065, "32832": 0.065}, "lakeNonaEnabled": False, "countdownStyle": "chip", "salEnabled": True, "salAnimated": True, "visitorsEnabled": True, "reorderCardEnabled": True, "cartAddonsEnabled": True, "productCountdownEnabled": True, "stockBadgeEnabled": True, "spotsLeftEnabled": True, "morningSummaryEnabled": True, "lowStockAlertsEnabled": True, "lowStockThreshold": 3, "counterDealEnabled": True, "counterDealPercent": 10, "counterDealEnds": "2026-12-31", "salOutfit": "auto", "salLines": SAL_DEFAULT_LINES, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32714", "deliveryRadiusMiles": 20.0, "allowedZipCodes": ["32714"],
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
                     "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryStart": "11:00", "deliveryEnd": "21:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6], "homepageLayout": "classic",
                     "countdownVisible": True, "countdownHeadlineVisible": True, "countdownHoursVisible": True,
@@ -700,6 +700,17 @@ class StoreSettingsInput(BaseModel):
     salEnabled: bool = True
     salAnimated: bool = True
     visitorsEnabled: bool = True
+    reorderCardEnabled: bool = True
+    cartAddonsEnabled: bool = True
+    productCountdownEnabled: bool = True
+    stockBadgeEnabled: bool = True
+    spotsLeftEnabled: bool = True
+    morningSummaryEnabled: bool = True
+    lowStockAlertsEnabled: bool = True
+    lowStockThreshold: int = Field(default=3, ge=1, le=50)
+    counterDealEnabled: bool = True
+    counterDealPercent: int = Field(default=10, ge=1, le=50)
+    counterDealEnds: str = Field(default="2026-12-31", max_length=10)
     salOutfit: str = "auto"
     salLines: Dict[str, List[str]] = Field(default_factory=lambda: {k: list(v) for k, v in SAL_DEFAULT_LINES.items()})
     zipTaxRates: Dict[str, float] = Field(default_factory=lambda: {"32827": 0.065, "32832": 0.065})
@@ -975,6 +986,7 @@ def delivery_rules(settings: dict) -> dict:
             "salEnabled": bool(settings.get("salEnabled", True)),
             "salAnimated": bool(settings.get("salAnimated", True)),
             "salOutfit": sal_public(settings)["outfit"],
+            "features": {k: bool(settings.get(k, True)) for k in ("reorderCardEnabled", "cartAddonsEnabled", "productCountdownEnabled", "stockBadgeEnabled", "spotsLeftEnabled", "counterDealEnabled")},
             "salLines": {spot: (settings.get("salLines") or {}).get(spot) or SAL_DEFAULT_LINES[spot] for spot in SAL_SPOTS}}
 
 
@@ -3425,6 +3437,9 @@ async def delivery_area():
     """Configured ZIP whitelist, or all ZIP codes inside the configured radius."""
     settings = await get_settings()
     allowed = tuple(settings.get("allowedZipCodes") or [])
+    if allowed and settings.get("lakeNonaEnabled"):
+        # Lake Nona ZIPs are served whenever Lake Nona delivery is on; list them so every page agrees.
+        allowed = tuple(dict.fromkeys(allowed + tuple(LAKE_NONA_ZIPS)))
     key = (settings["deliveryZip"], float(settings["deliveryRadiusMiles"]), allowed)
     if key in _area_cache:
         return _area_cache[key]
@@ -6027,6 +6042,89 @@ async def admin_visitors(range: str = "today", admin: dict = Depends(get_admin_u
     return data
 
 
+import owner_alerts as hd_owner_alerts  # noqa: E402
+
+
+# ---- "Show this at the counter" first-visit deal: one code per phone, redeemed by staff in Admin ----
+class CounterClaimInput(BaseModel):
+    device: str = Field(..., min_length=8, max_length=64)
+
+
+class CounterRedeemInput(BaseModel):
+    code: str = Field(..., min_length=4, max_length=12)
+
+
+def _counter_deal_info(settings: dict) -> dict:
+    ends = str(settings.get("counterDealEnds") or "")
+    try:
+        active = bool(settings.get("counterDealEnabled", True)) and (not ends or date.fromisoformat(ends) >= datetime.now(STORE_TZ).date())
+    except ValueError:
+        active = bool(settings.get("counterDealEnabled", True))
+    return {"active": active, "percent": int(settings.get("counterDealPercent", 10) or 10), "ends": ends}
+
+
+@api_router.get("/counter-deal")
+async def counter_deal_info():
+    return _counter_deal_info(await get_settings())
+
+
+@api_router.post("/counter-deal/claim")
+async def counter_deal_claim(inp: CounterClaimInput, request: Request):
+    info = _counter_deal_info(await get_settings())
+    if not info["active"]:
+        raise HTTPException(status_code=410, detail="This in-store offer has ended.")
+    await enforce_rate_limit(request, "counter-claim", 20, 3600)
+    existing = await db.counter_codes.find_one({"device": inp.device}, {"_id": 0})
+    if existing:
+        return {**info, "code": existing["code"], "redeemed": bool(existing.get("redeemedAt"))}
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    for _ in range(10):
+        code = "HD-" + "".join(secrets.choice(alphabet) for _ in range(4))
+        if not await db.counter_codes.find_one({"code": code}):
+            break
+    await db.counter_codes.insert_one({"code": code, "device": inp.device, "percent": info["percent"], "createdAt": now_utc(), "redeemedAt": None})
+    return {**info, "code": code, "redeemed": False}
+
+
+@api_router.post("/admin/counter-deal/redeem")
+async def counter_deal_redeem(inp: CounterRedeemInput, admin: dict = Depends(get_admin_user)):
+    code = inp.code.strip().upper()
+    if not code.startswith("HD-"):
+        code = "HD-" + code
+    row = await db.counter_codes.find_one({"code": code})
+    if not row:
+        raise HTTPException(status_code=404, detail="That code doesn't exist. Check the letters and try again.")
+    if row.get("redeemedAt"):
+        when = _aware_dt(row["redeemedAt"]).astimezone(STORE_TZ).strftime("%b %-d at %-I:%M %p")
+        raise HTTPException(status_code=409, detail=f"Already used on {when}.")
+    await db.counter_codes.update_one({"code": code}, {"$set": {"redeemedAt": now_utc(), "redeemedBy": admin.get("email", "")}})
+    return {"ok": True, "code": code, "percent": row.get("percent", 10)}
+
+
+@api_router.get("/admin/counter-deal")
+async def counter_deal_admin(admin: dict = Depends(get_admin_user)):
+    info = _counter_deal_info(await get_settings())
+    total = await db.counter_codes.count_documents({})
+    used = await db.counter_codes.count_documents({"redeemedAt": {"$ne": None}})
+    recent = await db.counter_codes.find({"redeemedAt": {"$ne": None}}, {"_id": 0, "code": 1, "redeemedAt": 1}).sort("redeemedAt", -1).to_list(15)
+    return {**info, "claimed": total, "redeemed": used,
+            "recent": [{"code": r["code"], "at": _aware_dt(r["redeemedAt"]).isoformat()} for r in recent]}
+
+
+def _aware_dt(value):
+    return value if getattr(value, "tzinfo", None) else value.replace(tzinfo=timezone.utc)
+
+
+async def _visitor_count(start, end) -> int:
+    return len(await db.visits.distinct("sid", {"at": {"$gte": start, "$lt": end}}))
+
+
+async def start_owner_alerts():
+    await asyncio.sleep(30)
+    await hd_owner_alerts.run_loop(db, get_settings, hd_dashboard.overview, _visitor_count, send_push_to_user,
+                                   emails._send, emails.layout, ADMIN_EMAILS)
+
+
 app.include_router(api_router)
 
 
@@ -6314,6 +6412,9 @@ async def create_indexes():
     await db.visits.create_index("sid")
     asyncio.create_task(hd_visitors.ensure_geo_db())
     asyncio.create_task(product_list_refresher())
+    asyncio.create_task(start_owner_alerts())
+    await db.counter_codes.create_index("code", unique=True)
+    await db.counter_codes.create_index("device")
     await db.users.create_index("id")
     await db.user_sessions.create_index("session_token")
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
@@ -7414,7 +7515,7 @@ CATEGORY_INTROS = {
 }
 LAKE_NONA_ZIPS = ("32832", "32827")
 LAKE_NONA_META = (
-    "Smoke Shop & Vape Delivery in Lake Nona (32832) – HD Smoke Shop",
+    "Lake Nona Smoke Shop & Vape Delivery (32832, 32827) – HD Smoke Shop",
     "Same-day smoke shop and vape delivery to Lake Nona, Orlando (32832, 32827). Order online by {cutoff}. Adults 21+ only; ID checked at the door.",
 )
 SEO_PRIVATE_PREFIXES = ("admin", "cart", "checkout", "wishlist", "my-account", "order", "track")

@@ -1,4 +1,5 @@
 import React from "react";
+import { StockBadge } from "./StoreExtras";
 import { Link } from "react-router-dom";
 import { ShoppingCart, Check, Heart, Scale } from "lucide-react";
 import { useCart } from "../context/CartContext";
@@ -94,6 +95,7 @@ const ProductCard = ({ product, priority = false }) => {
             {product.name}
           </h3>
         </Link>
+        {product.inStock && product.stock > 0 && product.stock <= 5 && <div className="mt-1"><StockBadge product={product} compact /></div>}
         <div className="mt-auto pt-3 flex items-center justify-between">
           <span className="font-heading text-xl text-neutral-900 flex items-baseline gap-2">
             ${price.toFixed(2)}

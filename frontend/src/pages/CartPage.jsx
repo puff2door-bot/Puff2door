@@ -1,5 +1,6 @@
 import { imgUrl } from "../api";
 import { SalFreeDelivery } from "../components/SalMascot";
+import { CartAddons } from "../components/StoreExtras";
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Trash2, Minus, Plus, ShoppingBag, ArrowRight, Tag } from "lucide-react";
@@ -113,6 +114,7 @@ const CartPage = () => {
               <div className="flex justify-between"><span className="text-neutral-500">Delivery</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
               <div className="flex justify-between" data-testid="cart-tax"><span className="text-neutral-500">{pricing.taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>
               <SalFreeDelivery subtotal={subtotal} min={pricing.freeDeliveryMin} />
+              <CartAddons subtotal={subtotal} min={pricing.freeDeliveryMin} />
             </div>
             <div className="flex justify-between items-center border-t mt-4 pt-4">
               <span className="font-heading text-lg uppercase">Total</span>

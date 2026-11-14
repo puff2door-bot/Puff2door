@@ -4,6 +4,16 @@ import { Save, Percent, Truck, Gift, MapPin, Radius, Clock, LayoutTemplate, Gaug
 import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
 
+const FEATURES = [
+  ["reorderCardEnabled", "One-tap reorder", "Homepage card for returning customers: \"Same as last time?\""],
+  ["cartAddonsEnabled", "Free-delivery add-ons", "Cart suggests small in-stock items that reach free delivery"],
+  ["productCountdownEnabled", "Delivery countdown on products", "\"Order in 1h 20m for delivery today\" on product pages"],
+  ["stockBadgeEnabled", "In-stock badges", "\"In stock at the store\" and \"Only 3 left\""],
+  ["spotsLeftEnabled", "Delivery spots left", "Checkout shows \"Only 2 spots left\" when a window is nearly full"],
+  ["counterDealEnabled", "Counter deal (puff2door.com/in-store)", "First-visit code customers show at the register"],
+  ["morningSummaryEnabled", "Morning summary at 9 AM", "Phone notification and email to admins"],
+  ["lowStockAlertsEnabled", "Low-stock alerts", "Phone notification when a weekly seller runs low (9 AM–10 PM)"],
+];
 const SAL_SPOTS = [
   ["banner", "Footer (not on shopping or delivery pages)"], ["deliveryPage", "Delivery Area & Lake Nona pages"], ["checkout", "Checkout (delivery)"],
   ["preparing", "Order tracking: preparing"], ["outForDelivery", "Order tracking: out for delivery"], ["delivered", "Order tracking: delivered"],
@@ -44,7 +54,7 @@ const AdminSettings = () => {
     pickupEnabled: data.pickupEnabled ?? false, pickupAddress: data.pickupAddress || "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714", pickupHoursText: data.pickupHoursText ?? "Pick up during store hours.",
     pickupReadyMinutes: data.pickupReadyMinutes ?? 15, pickupHoldDays: data.pickupHoldDays ?? 1, pickupInstructions: data.pickupInstructions ?? "Bring a valid, unexpired 21+ photo ID that matches the name on the order.",
     lakeNonaEnabled: data.lakeNonaEnabled ?? false, countdownStyle: data.countdownStyle || "chip",
-    salEnabled: data.salEnabled ?? true, visitorsEnabled: data.visitorsEnabled ?? true, salAnimated: data.salAnimated ?? true, salOutfit: data.salOutfit || "auto", salLines: Object.fromEntries(SAL_SPOTS.map(([k]) => [k, ((data.salLines || {})[k] || []).join("\n")])), zipTaxRates: Object.entries(data.zipTaxRates || {}).map(([z, r]) => `${z}=${+(r * 100).toFixed(3)}`).join(", ") });
+    salEnabled: data.salEnabled ?? true, visitorsEnabled: data.visitorsEnabled ?? true, ...Object.fromEntries(FEATURES.map(([k]) => [k, data[k] ?? true])), lowStockThreshold: data.lowStockThreshold ?? 3, counterDealPercent: data.counterDealPercent ?? 10, counterDealEnds: data.counterDealEnds || "", salAnimated: data.salAnimated ?? true, salOutfit: data.salOutfit || "auto", salLines: Object.fromEntries(SAL_SPOTS.map(([k]) => [k, ((data.salLines || {})[k] || []).join("\n")])), zipTaxRates: Object.entries(data.zipTaxRates || {}).map(([z, r]) => `${z}=${+(r * 100).toFixed(3)}`).join(", ") });
 
   useEffect(() => {
     Promise.all([api.get("/admin/settings"), api.get("/categories"), api.get("/products")]).then(([settings, categoryData, productData]) => {
@@ -67,7 +77,7 @@ const AdminSettings = () => {
         mixSaveCategorySlugs: f.mixSaveCategorySlugs, mixSaveProductIds: f.mixSaveProductIds.map(Number), mixSaveButtonText: f.mixSaveButtonText.trim(),
         pickupEnabled: Boolean(f.pickupEnabled), pickupAddress: f.pickupAddress.trim(), pickupHoursText: f.pickupHoursText, pickupReadyMinutes: Number(f.pickupReadyMinutes), pickupHoldDays: Number(f.pickupHoldDays), pickupInstructions: f.pickupInstructions,
         lakeNonaEnabled: Boolean(f.lakeNonaEnabled), countdownStyle: f.countdownStyle,
-        salEnabled: Boolean(f.salEnabled), visitorsEnabled: Boolean(f.visitorsEnabled), salAnimated: Boolean(f.salAnimated), salOutfit: f.salOutfit || "auto", salLines: Object.fromEntries(SAL_SPOTS.map(([k]) => [k, (f.salLines[k] || "").split("\n").map((l) => l.trim()).filter(Boolean)])), zipTaxRates: Object.fromEntries(f.zipTaxRates.split(/[\s,]+/).filter(Boolean).map((pair) => { const [z, r] = pair.split("="); return [z.trim(), Number(r) / 100]; })) });
+        salEnabled: Boolean(f.salEnabled), visitorsEnabled: Boolean(f.visitorsEnabled), ...Object.fromEntries(FEATURES.map(([k]) => [k, Boolean(f[k])])), lowStockThreshold: Number(f.lowStockThreshold) || 3, counterDealPercent: Number(f.counterDealPercent) || 10, counterDealEnds: f.counterDealEnds || "", salAnimated: Boolean(f.salAnimated), salOutfit: f.salOutfit || "auto", salLines: Object.fromEntries(SAL_SPOTS.map(([k]) => [k, (f.salLines[k] || "").split("\n").map((l) => l.trim()).filter(Boolean)])), zipTaxRates: Object.fromEntries(f.zipTaxRates.split(/[\s,]+/).filter(Boolean).map((pair) => { const [z, r] = pair.split("="); return [z.trim(), Number(r) / 100]; })) });
       setF(toForm(data));
       toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
     } catch (err) {
@@ -151,6 +161,24 @@ const AdminSettings = () => {
           <span className="flex items-center gap-2 text-sm font-bold">{f.lakeNonaEnabled ? "On" : "Off"}<input type="checkbox" data-testid="settings-lake-nona-enabled" className="accent-emerald-600 h-5 w-5" checked={f.lakeNonaEnabled} onChange={(e) => setF({ ...f, lakeNonaEnabled: e.target.checked })} /></span>
         </label>
         <p className="text-xs text-neutral-500">When on, customers in 32832 and 32827 can place delivery orders, and the Lake Nona delivery page is shown in the footer, on the Delivery Area page and in the Google sitemap. Turn it off to stop Lake Nona orders and hide the page.</p>
+      </div>
+
+      <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-features">
+        <p className="text-sm font-bold text-neutral-900 mb-1">Store features</p>
+        <p className="text-xs text-neutral-500 mb-3">Turn each one on or off. Changes show on the site within a minute.</p>
+        <div className="grid sm:grid-cols-2 gap-2">
+          {FEATURES.map(([key, label, hint]) => (
+            <label key={key} className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 px-3 py-2 cursor-pointer">
+              <span><span className="block text-sm font-semibold">{label}</span><span className="block text-xs text-neutral-500">{hint}</span></span>
+              <input type="checkbox" className="accent-emerald-600 h-5 w-5 shrink-0" checked={Boolean(f[key])} onChange={(e) => setF({ ...f, [key]: e.target.checked })} />
+            </label>
+          ))}
+        </div>
+        <div className="grid sm:grid-cols-3 gap-3 mt-3">
+          <label className="text-xs font-semibold text-neutral-700">Counter deal % off<input type="number" min="1" max="50" className={inputCls} value={f.counterDealPercent} onChange={(e) => setF({ ...f, counterDealPercent: e.target.value })} /></label>
+          <label className="text-xs font-semibold text-neutral-700">Counter deal ends<input type="date" className={inputCls} value={f.counterDealEnds} onChange={(e) => setF({ ...f, counterDealEnds: e.target.value })} /></label>
+          <label className="text-xs font-semibold text-neutral-700">Low-stock alert when under<input type="number" min="1" max="50" className={inputCls} value={f.lowStockThreshold} onChange={(e) => setF({ ...f, lowStockThreshold: e.target.value })} /></label>
+        </div>
       </div>
 
       <label className="flex items-center justify-between gap-4 border border-neutral-200 rounded-2xl p-5 mb-6 cursor-pointer" data-testid="settings-visitors">
