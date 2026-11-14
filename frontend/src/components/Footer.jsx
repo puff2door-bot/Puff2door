@@ -14,7 +14,9 @@ import { useCart } from "../context/CartContext";
 import AnimatedLogo from "./AnimatedLogo";
 import { SalSays } from "./SalMascot";
 
-const SAL_FOOTER_PAGES = ["/about", "/contact", "/faq", "/guides", "/delivery-policy"];
+// Sal shows in the footer everywhere except shopping pages (never near products) and the pages
+// where he already talks (delivery pages, checkout, order tracking).
+const NO_FOOTER_SAL = ["/shop", "/product-category", "/brand", "/brands", "/cart", "/wishlist", "/checkout", "/order", "/track", "/delivery-area", "/delivery"];
 import { useApp } from "../context/AppContext";
 
 const Footer = () => {
@@ -79,12 +81,7 @@ const Footer = () => {
             <li><Link to="/contact" className="hover:text-emerald-400 transition-colors">Contact</Link></li>
             <li><Link to="/faq" className="hover:text-emerald-400 transition-colors">FAQ</Link></li>
             <li><Link to="/guides" className="hover:text-emerald-400 transition-colors">Guides</Link></li>
-            <li><Link to="/track" className="hover:text-emerald-400 transition-colors">Track Order</Link></li>
-            <li><Link to="/delivery-area" className="hover:text-emerald-400 transition-colors">Delivery Area (32714)</Link></li>
-            {delivery?.lakeNonaEnabled && <li><Link to="/delivery/lake-nona" className="hover:text-emerald-400 transition-colors">Lake Nona Delivery (32832)</Link></li>}
             <li><Link to="/brands" className="hover:text-emerald-400 transition-colors">Brands</Link></li>
-            <li><Link to="/my-account" className="hover:text-emerald-400 transition-colors">My Account</Link></li>
-            <li><Link to="/cart" className="hover:text-emerald-400 transition-colors">Cart</Link></li>
             <li><Link to="/request-product" className="hover:text-emerald-400 transition-colors">Request a Product</Link></li>
           </ul>
         </div>
@@ -97,11 +94,15 @@ const Footer = () => {
             <li className="flex items-start gap-3"><MapPin className="h-4 w-4 text-emerald-500 mt-0.5" /> <a href={STORE.directionsUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">{STORE.fullAddress}</a></li>
             <li className="flex items-start gap-3"><Clock className="h-4 w-4 text-emerald-500 mt-0.5" /> Open {STORE.hoursText}</li>
           </ul>
-          {/* One Sal per page and never near products: the footer Sal only shows on info pages,
-              which have no other Sal (home, delivery, checkout and tracking already have one). */}
-          {SAL_FOOTER_PAGES.some((p) => pathname === p || pathname.startsWith(`${p}/`)) && (
-            <SalSays spot="banner" size={36} className="mt-5" textClassName="text-xs text-neutral-300" />
+          <p className="font-heading text-white text-base tracking-wide mt-7 mb-3 uppercase">Delivery</p>
+          {!NO_FOOTER_SAL.some((p) => pathname === p || pathname.startsWith(`${p}/`)) && (
+            <SalSays spot="banner" size={48} className="mb-3" textClassName="text-xs text-neutral-300 leading-snug" />
           )}
+          <ul className="space-y-2.5 text-sm">
+            <li><Link to="/delivery-area" className="hover:text-emerald-400 transition-colors">Delivery Area (32714)</Link></li>
+            {delivery?.lakeNonaEnabled && <li><Link to="/delivery/lake-nona" className="hover:text-emerald-400 transition-colors">Lake Nona Delivery (32832)</Link></li>}
+            <li><Link to="/track" className="hover:text-emerald-400 transition-colors">Track Order</Link></li>
+          </ul>
         </div>
 
         <div>
