@@ -44,7 +44,7 @@ const AdminSettings = () => {
     pickupEnabled: data.pickupEnabled ?? false, pickupAddress: data.pickupAddress || "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714", pickupHoursText: data.pickupHoursText ?? "Pick up during store hours.",
     pickupReadyMinutes: data.pickupReadyMinutes ?? 15, pickupHoldDays: data.pickupHoldDays ?? 1, pickupInstructions: data.pickupInstructions ?? "Bring a valid, unexpired 21+ photo ID that matches the name on the order.",
     lakeNonaEnabled: data.lakeNonaEnabled ?? false, countdownStyle: data.countdownStyle || "chip",
-    salEnabled: data.salEnabled ?? true, salAnimated: data.salAnimated ?? true, salOutfit: data.salOutfit || "auto", salLines: Object.fromEntries(SAL_SPOTS.map(([k]) => [k, ((data.salLines || {})[k] || []).join("\n")])), zipTaxRates: Object.entries(data.zipTaxRates || {}).map(([z, r]) => `${z}=${+(r * 100).toFixed(3)}`).join(", ") });
+    salEnabled: data.salEnabled ?? true, visitorsEnabled: data.visitorsEnabled ?? true, salAnimated: data.salAnimated ?? true, salOutfit: data.salOutfit || "auto", salLines: Object.fromEntries(SAL_SPOTS.map(([k]) => [k, ((data.salLines || {})[k] || []).join("\n")])), zipTaxRates: Object.entries(data.zipTaxRates || {}).map(([z, r]) => `${z}=${+(r * 100).toFixed(3)}`).join(", ") });
 
   useEffect(() => {
     Promise.all([api.get("/admin/settings"), api.get("/categories"), api.get("/products")]).then(([settings, categoryData, productData]) => {
@@ -67,7 +67,7 @@ const AdminSettings = () => {
         mixSaveCategorySlugs: f.mixSaveCategorySlugs, mixSaveProductIds: f.mixSaveProductIds.map(Number), mixSaveButtonText: f.mixSaveButtonText.trim(),
         pickupEnabled: Boolean(f.pickupEnabled), pickupAddress: f.pickupAddress.trim(), pickupHoursText: f.pickupHoursText, pickupReadyMinutes: Number(f.pickupReadyMinutes), pickupHoldDays: Number(f.pickupHoldDays), pickupInstructions: f.pickupInstructions,
         lakeNonaEnabled: Boolean(f.lakeNonaEnabled), countdownStyle: f.countdownStyle,
-        salEnabled: Boolean(f.salEnabled), salAnimated: Boolean(f.salAnimated), salOutfit: f.salOutfit || "auto", salLines: Object.fromEntries(SAL_SPOTS.map(([k]) => [k, (f.salLines[k] || "").split("\n").map((l) => l.trim()).filter(Boolean)])), zipTaxRates: Object.fromEntries(f.zipTaxRates.split(/[\s,]+/).filter(Boolean).map((pair) => { const [z, r] = pair.split("="); return [z.trim(), Number(r) / 100]; })) });
+        salEnabled: Boolean(f.salEnabled), visitorsEnabled: Boolean(f.visitorsEnabled), salAnimated: Boolean(f.salAnimated), salOutfit: f.salOutfit || "auto", salLines: Object.fromEntries(SAL_SPOTS.map(([k]) => [k, (f.salLines[k] || "").split("\n").map((l) => l.trim()).filter(Boolean)])), zipTaxRates: Object.fromEntries(f.zipTaxRates.split(/[\s,]+/).filter(Boolean).map((pair) => { const [z, r] = pair.split("="); return [z.trim(), Number(r) / 100]; })) });
       setF(toForm(data));
       toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
     } catch (err) {
@@ -152,6 +152,11 @@ const AdminSettings = () => {
         </label>
         <p className="text-xs text-neutral-500">When on, customers in 32832 and 32827 can place delivery orders, and the Lake Nona delivery page is shown in the footer, on the Delivery Area page and in the Google sitemap. Turn it off to stop Lake Nona orders and hide the page.</p>
       </div>
+
+      <label className="flex items-center justify-between gap-4 border border-neutral-200 rounded-2xl p-5 mb-6 cursor-pointer" data-testid="settings-visitors">
+        <span><span className="block text-sm font-bold text-neutral-900">Visitor areas (Admin → Visitors)</span><span className="block text-xs text-neutral-500">Counts page views by approximate area (city, ZIP when available), never you or staff. No IP addresses or cookies stored; kept 90 days.</span></span>
+        <span className="flex items-center gap-2 text-sm font-bold shrink-0">{f.visitorsEnabled ? "On" : "Off"}<input type="checkbox" data-testid="settings-visitors-enabled" className="accent-emerald-600 h-5 w-5" checked={f.visitorsEnabled} onChange={(e) => setF({ ...f, visitorsEnabled: e.target.checked })} /></span>
+      </label>
 
       <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-sal">
         <label className="flex items-center justify-between gap-4 cursor-pointer mb-1">

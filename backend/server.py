@@ -351,7 +351,7 @@ def sal_public(settings: dict) -> dict:
             "lines": {spot: (settings.get("salLines") or {}).get(spot) or SAL_DEFAULT_LINES[spot] for spot in SAL_SPOTS}}
 
 
-DEFAULT_SETTINGS = {"taxRate": 0.065, "zipTaxRates": {"32827": 0.065, "32832": 0.065}, "lakeNonaEnabled": False, "countdownStyle": "chip", "salEnabled": True, "salAnimated": True, "salOutfit": "auto", "salLines": SAL_DEFAULT_LINES, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32714", "deliveryRadiusMiles": 20.0, "allowedZipCodes": ["32714"],
+DEFAULT_SETTINGS = {"taxRate": 0.065, "zipTaxRates": {"32827": 0.065, "32832": 0.065}, "lakeNonaEnabled": False, "countdownStyle": "chip", "salEnabled": True, "salAnimated": True, "visitorsEnabled": True, "salOutfit": "auto", "salLines": SAL_DEFAULT_LINES, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32714", "deliveryRadiusMiles": 20.0, "allowedZipCodes": ["32714"],
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
                     "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryStart": "11:00", "deliveryEnd": "21:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6], "homepageLayout": "classic",
                     "countdownVisible": True, "countdownHeadlineVisible": True, "countdownHoursVisible": True,
@@ -698,6 +698,7 @@ class StoreSettingsInput(BaseModel):
     countdownStyle: str = "chip"
     salEnabled: bool = True
     salAnimated: bool = True
+    visitorsEnabled: bool = True
     salOutfit: str = "auto"
     salLines: Dict[str, List[str]] = Field(default_factory=lambda: {k: list(v) for k, v in SAL_DEFAULT_LINES.items()})
     zipTaxRates: Dict[str, float] = Field(default_factory=lambda: {"32827": 0.065, "32832": 0.065})
@@ -5911,6 +5912,69 @@ async def unpublish_store_photo(capture: dict) -> dict:
 
 
 api_router.include_router(create_inventory_capture_router(db, inventory_photo_bucket, get_admin_user, validate_photo, publish=publish_store_photo, unpublish=unpublish_store_photo, delete_product=delete_store_photo_product), prefix="/admin")
+import visitors as hd_visitors  # noqa: E402
+
+
+class VisitInput(BaseModel):
+    sid: str = Field(..., min_length=8, max_length=40)
+    path: str = Field("/", max_length=300)
+    ref: str = Field("", max_length=300)
+    utm: str = Field("", max_length=60)
+    event: str = Field("view", max_length=10)
+    product: str = Field("", max_length=200)
+
+
+@api_router.post("/visit", status_code=204)
+async def record_visit(inp: VisitInput, request: Request):
+    """One page view or add-to-cart, with approximate area only (Admin > Visitors). Never fails the page."""
+    try:
+        ua = request.headers.get("user-agent", "")
+        if hd_visitors.is_bot(ua) or not re.fullmatch(r"[A-Za-z0-9_-]{8,40}", inp.sid):
+            return Response(status_code=204)
+        path = hd_visitors.clean_path(inp.path)
+        if path.startswith(("/admin", "/driver")):
+            return Response(status_code=204)
+        if not (await get_settings()).get("visitorsEnabled", True):
+            return Response(status_code=204)
+        user = await get_optional_user(request)
+        if user and is_admin(user):
+            return Response(status_code=204)  # the owner and staff are never counted
+        # at most 400 events an hour per visitor session, so a stuck tab can't flood the log
+        key = f"visit:{inp.sid}"
+        count = await db.rate_limits.find_one_and_update(
+            {"key": key}, {"$inc": {"count": 1}, "$setOnInsert": {"expires_at": now_utc() + timedelta(hours=2)}},
+            upsert=True, return_document=ReturnDocument.AFTER)
+        if count and count.get("count", 0) > 400:
+            return Response(status_code=204)
+        geo = hd_visitors.locate(request.headers, request_ip(request))
+        await db.visits.insert_one({
+            "at": now_utc(), "sid": inp.sid, "path": path, "event": "cart" if inp.event == "cart" else "view",
+            "product": inp.product[:200] if inp.event == "cart" else "",
+            "src": hd_visitors.source_of(inp.ref, inp.utm), "device": hd_visitors.device_of(ua), **geo,
+        })
+    except Exception as exc:  # visitor stats must never break the storefront
+        logger.warning("visit not recorded: %s", exc)
+    return Response(status_code=204)
+
+
+@api_router.get("/admin/visitors")
+async def admin_visitors(range: str = "today", admin: dict = Depends(get_admin_user)):
+    settings = await get_settings()
+    zips = set(settings.get("allowedZipCodes") or [])
+    if settings.get("lakeNonaEnabled"):
+        zips |= set(LAKE_NONA_ZIPS)
+    cities = {"Altamonte Springs"}
+    for z in zips:
+        hit = zip_lookup(z)
+        if hit and hit.get("city"):
+            cities.add(hit["city"].title())
+    if settings.get("lakeNonaEnabled"):
+        cities.add("Lake Nona")
+    data = await hd_visitors.report(db, range if range in ("today", "7d", "30d") else "today", zips, cities)
+    data["enabled"] = bool(settings.get("visitorsEnabled", True))
+    return data
+
+
 app.include_router(api_router)
 
 
@@ -6185,6 +6249,9 @@ async def cleanup_confirmed_orphan_uploads():
 @app.on_event("startup")
 async def create_indexes():
     await db.users.create_index("email", unique=True)
+    await db.visits.create_index("at", expireAfterSeconds=hd_visitors.RETENTION_SECONDS)
+    await db.visits.create_index("sid")
+    asyncio.create_task(hd_visitors.ensure_geo_db())
     await db.users.create_index("id")
     await db.user_sessions.create_index("session_token")
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)

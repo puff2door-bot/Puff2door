@@ -9,6 +9,7 @@ import { Toaster } from "./components/ui/toaster";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import { SalCartPop } from "./components/SalMascot";
+import VisitTracker from "./components/VisitTracker";
 import AgeGate from "./components/AgeGate";
 import Home from "./pages/Home";
 import ShopPage from "./pages/ShopPage";
@@ -62,6 +63,7 @@ const AdminChat = lazyPage(() => import("./pages/admin/AdminChat"));
 const AdminOperations = lazyPage(() => import("./pages/admin/AdminOperations"));
 const AdminCompliance = lazyPage(() => import("./pages/admin/AdminCompliance"));
 const AdminAnalytics = lazyPage(() => import("./pages/admin/AdminAnalytics"));
+const AdminVisitors = lazyPage(() => import("./pages/admin/AdminVisitors"));
 const AdminAgents = lazyPage(() => import("./pages/admin/AdminAgents"));
 const MissingBarcodes = lazyPage(() => import("./pages/admin/MissingBarcodes"));
 const ProductDetails = lazyPage(() => import("./pages/admin/ProductDetails"));
@@ -188,6 +190,7 @@ const AppRoutes = () => {
         <Route path="product-requests" element={<AdminProductRequests />} />
         <Route path="compliance" element={<AdminCompliance />} />
         <Route path="analytics" element={<AdminAnalytics />} />
+        <Route path="visitors" element={<AdminVisitors />} />
         <Route path="agents" element={<AdminAgents />} />
         <Route path="inventory-capture" element={<InventoryCapture />} />
         <Route path="missing-photos" element={<MissingPhotos />} />
@@ -232,6 +235,7 @@ const AppFrame = () => {
     {!dedicatedDriver && <ChatWidget />}
     {!dedicatedDriver && <CompareTray />}
     {!dedicatedDriver && <SalCartPop />}
+    {!dedicatedDriver && <VisitTracker />}
     {!dedicatedDriver && <MobileBottomNav />}
     {!dedicatedDriver && <PwaExperience />}
     <Toaster />

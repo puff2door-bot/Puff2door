@@ -147,7 +147,7 @@ export const CartProvider = ({ children }) => {
 
   const addItem = (product, qty = 1, options = {}) => {
     ecommerce.addToCart(product, qty, product.price);
-    try { window.dispatchEvent(new CustomEvent("p2d-cart-add")); } catch { /* old browsers */ }
+    try { window.dispatchEvent(new CustomEvent("p2d-cart-add", { detail: { slug: product.slug || "" } })); } catch { /* old browsers */ }
     setItems((prev) => {
       const existing = prev.find((i) => i.id === product.id);
       const bundleQty = options.mixSaveQty == null ? 0 : Math.min(Number(options.mixSaveQty || 0), qty);

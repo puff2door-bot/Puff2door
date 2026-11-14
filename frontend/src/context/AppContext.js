@@ -28,6 +28,10 @@ export const AppProvider = ({ children }) => {
   });
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  // A device that has ever logged into Admin is never counted in Admin > Visitors, even when logged out.
+  useEffect(() => {
+    if (user && user.role === "admin") { try { localStorage.setItem("p2d_no_track", "1"); } catch { /* private mode */ } }
+  }, [user]);
   const [googleClientId, setGoogleClientId] = useState("");
 
   const verifyAge = (ok) => {

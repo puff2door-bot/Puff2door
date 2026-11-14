@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Link, Outlet, useLocation } from "react-router-dom";
-import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle, Truck, ShieldCheck, BarChart3, Store, Camera, Bot, Barcode, Receipt, Wallet, FileText, UserRound, Sparkles, ClipboardList, Star, PackageSearch, ScanLine, Smartphone, Menu, Search, X, Home } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingBag, Bell, ArrowLeft, ShieldAlert, Images, Mail, Ticket, Settings, Tag, FolderTree, Gift, MessageCircle, Truck, ShieldCheck, BarChart3, Store, Camera, Bot, Barcode, Receipt, Wallet, FileText, UserRound, Sparkles, ClipboardList, Star, PackageSearch, ScanLine, Smartphone, Menu, Search, X, Home, MapPinned } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import api from "../../api";
 
@@ -26,6 +26,7 @@ const nav = [
   { to: "/admin/operations", label: "Delivery Operations", icon: Truck },
   { to: "/admin/compliance", label: "Compliance", icon: ShieldCheck },
   { to: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+  { to: "/admin/visitors", label: "Visitors", icon: MapPinned },
   { to: "/admin/chat", label: "Live Chat", icon: MessageCircle, badge: "chat" },
   { to: "/admin/loyalty", label: "Loyalty Rewards", icon: Gift },
   { to: "/admin/alerts", label: "Restock Alerts", icon: Bell },
@@ -42,7 +43,7 @@ const GROUPS = [
   ["Orders & delivery", ["/admin/orders", "/admin/picking", "/admin/operations", "/driver-app", "/admin/alerts", "/admin/product-requests"]],
   ["Products", ["/admin/products", "/admin/clover", "/admin/inventory-capture", "/admin/missing-photos", "/admin/missing-barcodes", "/admin/missing-details", "/admin/product-details", "/admin/categories", "/admin/brands"]],
   ["Marketing", ["/admin/banners", "/admin/promos", "/admin/loyalty", "/admin/reviews", "/admin/agents", "/admin/emails"]],
-  ["Customers & numbers", ["/admin/customers", "/admin/analytics", "/admin/chat"]],
+  ["Customers & numbers", ["/admin/customers", "/admin/visitors", "/admin/analytics", "/admin/chat"]],
   ["Money & paperwork", ["/admin/receipts", "/admin/expenses", "/admin/documents", "/admin/compliance"]],
   ["Settings", ["/admin/settings", "/admin"]],
 ];
@@ -52,7 +53,7 @@ const KEYWORDS = {
   "/admin/picking": "pick scan barcode packing", "/admin/missing-barcodes": "barcode upc scan", "/admin/promos": "coupon discount code",
   "/admin/banners": "hero slider homepage", "/admin/settings": "tax delivery fee sal mascot hours zip", "/admin/operations": "driver delivery windows cutoff",
   "/admin/clover": "pos inventory stock sync", "/admin/expenses": "money bills spending", "/admin/receipts": "sales clover daily", "/admin/documents": "license permit tobacco",
-  "/admin/agents": "instagram automation google review emails", "/admin/loyalty": "points rewards", "/admin/inventory-capture": "photos camera", "/admin/customers": "regulars people",
+  "/admin/agents": "instagram automation google review emails", "/admin/loyalty": "points rewards", "/admin/inventory-capture": "photos camera", "/admin/customers": "regulars people", "/admin/visitors": "traffic city area location where clicks people zip",
 };
 const TABS = [
   { to: "/admin", label: "Home", icon: Home, end: true },
