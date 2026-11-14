@@ -21,10 +21,10 @@ export const DeliveryBanner = () => {
       {/* Fixed height (2 lines on phones, 1 on larger screens, room for Sal's face) so the page doesn't jump when the delivery area loads. */}
       <p className="max-w-[1280px] mx-auto px-4 py-[3px] h-[48px] sm:h-[40px] flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold tracking-wide text-center overflow-hidden">
         {sal.enabled
-          ? <SalMascot pose="face" size={34} label="Sal from Puff2door" />
+          ? <SalMascot pose="face" size={34} label="Sal from Puff2door" interactive />
           : <MapPin className="h-3.5 w-3.5 shrink-0" />}
         <span className="line-clamp-2 sm:line-clamp-1">{message}</span>
-        <Link to="/delivery-area" data-testid="delivery-banner-link" className="underline underline-offset-2 hover:text-emerald-100 font-medium">See delivery area</Link>
+        <Link to="/delivery-area" data-testid="delivery-banner-link" className="shrink-0 whitespace-nowrap underline underline-offset-2 hover:text-emerald-100 font-medium"><span className="sm:hidden">See area</span><span className="hidden sm:inline">See delivery area</span></Link>
       </p>
     </div>
   );
@@ -34,6 +34,7 @@ export const DeliveryChecker = () => {
   const [zip, setZip] = useState("");
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
+  const sal = useSal();
 
   const check = async (e) => {
     e.preventDefault();
@@ -41,7 +42,7 @@ export const DeliveryChecker = () => {
     setBusy(true);
     try {
       const { data } = await api.get("/delivery/check", { params: { zip } });
-      setResult(data);
+      setResult({ ...data, at: Date.now() });
     } catch {
       setResult({ eligible: false, message: "Couldn't check that ZIP right now. Please try again." });
     } finally { setBusy(false); }
@@ -66,8 +67,10 @@ export const DeliveryChecker = () => {
         </form>
         {result && (
           <p data-testid="delivery-check-result" className={`flex items-center gap-1.5 text-sm font-semibold ${result.eligible ? "text-emerald-700" : "text-red-600"}`}>
-            {result.eligible ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <XCircle className="h-4 w-4 shrink-0" />}
-            {result.message}
+            {sal.enabled && result.at
+              ? <span key={result.at} className={`inline-flex shrink-0 ${sal.animated ? (result.eligible ? "sal-dance" : "sal-shrug") : ""}`}><SalMascot pose="face" size={32} /></span>
+              : result.eligible ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <XCircle className="h-4 w-4 shrink-0" />}
+            <span>{sal.enabled && result.at ? <b>{result.eligible ? "I got you! " : "Too far for my wheels. "}</b> : null}{result.message}</span>
           </p>
         )}
       </div>

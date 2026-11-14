@@ -73,7 +73,7 @@ export const useDeliveryWindow = () => {
 const DeliveryCountdown = ({ variant = "home" }) => {
   const { window: win, text, template, values, sameDayOpen, enabled, copy } = useDeliveryWindow();
   // Hold the banner's space while delivery times load, so the homepage doesn't jump down afterwards.
-  if (!win && variant === "home") return <div data-testid="delivery-countdown-placeholder" aria-hidden="true" className="bg-neutral-950 min-h-[82px] sm:min-h-[44px]" />;
+  if (!win && variant === "home") return <div data-testid="delivery-countdown-placeholder" aria-hidden="true" className="bg-neutral-950 min-h-[56px] sm:min-h-[44px]" />;
   if (!win || !enabled || copy.countdownVisible === false) return null;
   const showHeadline = copy.countdownHeadlineVisible !== false && Boolean(text);
   const hoursTemplate = Object.prototype.hasOwnProperty.call(copy, "countdownHoursText") ? copy.countdownHoursText : "Same-day cutoff is {cutoff} ET. No deliveries after {end} or before {start}.";
@@ -99,12 +99,13 @@ const DeliveryCountdown = ({ variant = "home" }) => {
     const detail = sameDayOpen ? `Order by ${values.cutoff} for delivery today` : nextDay ? `Next delivery: ${nextDay.toLowerCase() === "tomorrow" ? "tomorrow" : nextDay}${nextTime ? `, ${nextTime}` : ""}` : "";
     return (
       <div data-testid="delivery-countdown" className="p2d-countdown bg-neutral-950 text-white">
-        <div className="max-w-[1280px] mx-auto px-4 py-2 min-h-[82px] sm:min-h-[44px] flex items-center content-center justify-between gap-3 flex-wrap sm:justify-center sm:gap-5">
-          <div className="flex items-center gap-2.5 flex-wrap text-xs sm:text-sm">
+        <div className="max-w-[1280px] mx-auto px-4 py-2 min-h-[56px] sm:min-h-[44px] flex items-center justify-between gap-3 sm:justify-center sm:gap-5">
+          {/* Phones: chip over the next-delivery line on the left, Shop now on the right, one compact row. */}
+          <div className="flex flex-col items-start gap-1 min-w-0 sm:flex-row sm:items-center sm:gap-2.5 text-xs sm:text-sm">
             <span data-testid="delivery-countdown-chip" className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold tabular-nums" style={sameDayOpen ? { background: "#d1fae5", color: "#065f46" } : { background: "#fef3c7", color: "#78350f" }}>
               {sameDayOpen ? <Truck className="h-3.5 w-3.5" aria-hidden="true" /> : <Clock className="h-3.5 w-3.5" aria-hidden="true" />}{chip}
             </span>
-            {detail && <span data-testid="delivery-countdown-text" className="text-neutral-200">{detail}</span>}
+            {detail && <span data-testid="delivery-countdown-text" className="text-[11px] leading-tight sm:text-sm text-neutral-200">{detail}</span>}
           </div>
           <Link to="/shop" data-testid="delivery-countdown-shop" className="shrink-0 rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition-colors">Shop now</Link>
         </div>

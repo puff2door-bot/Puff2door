@@ -89,12 +89,12 @@ const Header = () => {
             </button>
 
             <Link to="/" className="flex items-center gap-2 shrink-0 min-w-0">
-              <AnimatedLogo testId="header-logo" className="h-10 w-10 sm:h-11 sm:w-11" />
+              <AnimatedLogo testId="header-logo" className="h-12 w-12 sm:h-11 sm:w-11" />
               <span className="leading-none">
-                <span className="block font-heading font-700 text-[17px] sm:text-[21px] tracking-tight text-neutral-900 whitespace-nowrap">
+                <span className="block font-heading font-700 text-[21px] tracking-tight text-neutral-900 whitespace-nowrap">
                   H<span className="p2d-logo-accent text-emerald-600">D</span> Smoke Shop
                 </span>
-                <span className="block text-[7px] sm:text-[9px] tracking-[0.13em] sm:tracking-[0.2em] text-neutral-500 uppercase whitespace-nowrap mt-0.5">
+                <span className="block text-[9px] tracking-[0.12em] sm:tracking-[0.2em] text-neutral-500 uppercase whitespace-nowrap mt-0.5">
                   {BRAND.tagline}
                 </span>
               </span>

@@ -23,3 +23,15 @@ def test_sal_lines_are_cleaned_and_empty_spots_fall_back_to_defaults():
     assert len(cleaned["checkout"][1]) == 140
     assert cleaned["banner"] == server.SAL_DEFAULT_LINES["banner"]
     assert set(cleaned) == set(server.SAL_SPOTS)
+
+
+def test_sal_animations_and_outfit_default_on_and_auto():
+    rules = server.delivery_rules({**server.DEFAULT_SETTINGS})
+    assert rules["salAnimated"] is True
+    assert rules["salOutfit"] == "auto"
+    pub = server.sal_public({**server.DEFAULT_SETTINGS, "salAnimated": False, "salOutfit": "santa"})
+    assert pub["animated"] is False and pub["outfit"] == "santa"
+
+
+def test_unknown_outfit_falls_back_to_auto():
+    assert server.sal_public({**server.DEFAULT_SETTINGS, "salOutfit": "pirate"})["outfit"] == "auto"

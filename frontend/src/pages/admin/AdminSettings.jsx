@@ -44,7 +44,7 @@ const AdminSettings = () => {
     pickupEnabled: data.pickupEnabled ?? false, pickupAddress: data.pickupAddress || "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714", pickupHoursText: data.pickupHoursText ?? "Pick up during store hours.",
     pickupReadyMinutes: data.pickupReadyMinutes ?? 15, pickupHoldDays: data.pickupHoldDays ?? 1, pickupInstructions: data.pickupInstructions ?? "Bring a valid, unexpired 21+ photo ID that matches the name on the order.",
     lakeNonaEnabled: data.lakeNonaEnabled ?? false, countdownStyle: data.countdownStyle || "chip",
-    salEnabled: data.salEnabled ?? true, salLines: Object.fromEntries(SAL_SPOTS.map(([k]) => [k, ((data.salLines || {})[k] || []).join("\n")])), zipTaxRates: Object.entries(data.zipTaxRates || {}).map(([z, r]) => `${z}=${+(r * 100).toFixed(3)}`).join(", ") });
+    salEnabled: data.salEnabled ?? true, salAnimated: data.salAnimated ?? true, salOutfit: data.salOutfit || "auto", salLines: Object.fromEntries(SAL_SPOTS.map(([k]) => [k, ((data.salLines || {})[k] || []).join("\n")])), zipTaxRates: Object.entries(data.zipTaxRates || {}).map(([z, r]) => `${z}=${+(r * 100).toFixed(3)}`).join(", ") });
 
   useEffect(() => {
     Promise.all([api.get("/admin/settings"), api.get("/categories"), api.get("/products")]).then(([settings, categoryData, productData]) => {
@@ -67,7 +67,7 @@ const AdminSettings = () => {
         mixSaveCategorySlugs: f.mixSaveCategorySlugs, mixSaveProductIds: f.mixSaveProductIds.map(Number), mixSaveButtonText: f.mixSaveButtonText.trim(),
         pickupEnabled: Boolean(f.pickupEnabled), pickupAddress: f.pickupAddress.trim(), pickupHoursText: f.pickupHoursText, pickupReadyMinutes: Number(f.pickupReadyMinutes), pickupHoldDays: Number(f.pickupHoldDays), pickupInstructions: f.pickupInstructions,
         lakeNonaEnabled: Boolean(f.lakeNonaEnabled), countdownStyle: f.countdownStyle,
-        salEnabled: Boolean(f.salEnabled), salLines: Object.fromEntries(SAL_SPOTS.map(([k]) => [k, (f.salLines[k] || "").split("\n").map((l) => l.trim()).filter(Boolean)])), zipTaxRates: Object.fromEntries(f.zipTaxRates.split(/[\s,]+/).filter(Boolean).map((pair) => { const [z, r] = pair.split("="); return [z.trim(), Number(r) / 100]; })) });
+        salEnabled: Boolean(f.salEnabled), salAnimated: Boolean(f.salAnimated), salOutfit: f.salOutfit || "auto", salLines: Object.fromEntries(SAL_SPOTS.map(([k]) => [k, (f.salLines[k] || "").split("\n").map((l) => l.trim()).filter(Boolean)])), zipTaxRates: Object.fromEntries(f.zipTaxRates.split(/[\s,]+/).filter(Boolean).map((pair) => { const [z, r] = pair.split("="); return [z.trim(), Number(r) / 100]; })) });
       setF(toForm(data));
       toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
     } catch (err) {
@@ -159,6 +159,25 @@ const AdminSettings = () => {
           <span className="flex items-center gap-2 text-sm font-bold">{f.salEnabled ? "On" : "Off"}<input type="checkbox" data-testid="settings-sal-enabled" className="accent-emerald-600 h-5 w-5" checked={f.salEnabled} onChange={(e) => setF({ ...f, salEnabled: e.target.checked })} /></span>
         </label>
         <p className="text-xs text-neutral-500 mb-3">Sal appears only on delivery spots: a small Sal in the homepage delivery banner, the delivery pages, checkout, order tracking, the page-not-found screen, and the footer (except on shopping pages and pages where he already talks). Never on products or the 21+ screen. Each spot shows one of its lines, changing on each visit. One line per row; leave a box empty to use the default lines.</p>
+        {f.salEnabled && (
+          <div className="grid sm:grid-cols-2 gap-3 mb-4">
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 px-3 py-2 cursor-pointer">
+              <span><span className="block text-sm font-bold text-neutral-900">Sal animations</span><span className="block text-xs text-neutral-500">Winks, dances, the free-delivery car, the footer wave. Off keeps Sal on the site, standing still.</span></span>
+              <span className="flex items-center gap-2 text-sm font-bold shrink-0">{f.salAnimated ? "On" : "Off"}<input type="checkbox" data-testid="settings-sal-animated" className="accent-emerald-600 h-5 w-5" checked={f.salAnimated} onChange={(e) => setF({ ...f, salAnimated: e.target.checked })} /></span>
+            </label>
+            <div className="rounded-xl border border-neutral-200 px-3 py-2">
+              <label htmlFor="sal-outfit" className="block text-sm font-bold text-neutral-900">Sal's outfit</label>
+              <select id="sal-outfit" data-testid="settings-sal-outfit" className={inputCls} value={f.salOutfit} onChange={(e) => setF({ ...f, salOutfit: e.target.value })}>
+                <option value="auto">Auto by date (Christmas, Halloween, July 4th, New Year)</option>
+                <option value="none">Regular cap, always</option>
+                <option value="santa">Santa hat</option>
+                <option value="witch">Halloween hat</option>
+                <option value="usa">Stars &amp; stripes cap</option>
+                <option value="party">Party hat</option>
+              </select>
+            </div>
+          </div>
+        )}
         {f.salEnabled && (
           <div className="grid sm:grid-cols-2 gap-3">
             {SAL_SPOTS.map(([key, label]) => (

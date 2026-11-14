@@ -339,8 +339,19 @@ def clean_sal_lines(values) -> dict:
         cleaned[spot] = lines or list(SAL_DEFAULT_LINES[spot])
     return cleaned
 
+# Sal's outfit: "auto" follows the calendar (Christmas, Halloween, July 4th, New Year), "none" never dresses him up.
+SAL_OUTFITS = ("auto", "none", "santa", "witch", "usa", "party")
 
-DEFAULT_SETTINGS = {"taxRate": 0.065, "zipTaxRates": {"32827": 0.065, "32832": 0.065}, "lakeNonaEnabled": False, "countdownStyle": "chip", "salEnabled": True, "salLines": SAL_DEFAULT_LINES, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32714", "deliveryRadiusMiles": 20.0, "allowedZipCodes": ["32714"],
+def sal_public(settings: dict) -> dict:
+    """Sal's switch, animation switch, outfit and lines, as the storefront needs them."""
+    outfit = settings.get("salOutfit", "auto")
+    return {"enabled": bool(settings.get("salEnabled", True)),
+            "animated": bool(settings.get("salAnimated", True)),
+            "outfit": outfit if outfit in SAL_OUTFITS else "auto",
+            "lines": {spot: (settings.get("salLines") or {}).get(spot) or SAL_DEFAULT_LINES[spot] for spot in SAL_SPOTS}}
+
+
+DEFAULT_SETTINGS = {"taxRate": 0.065, "zipTaxRates": {"32827": 0.065, "32832": 0.065}, "lakeNonaEnabled": False, "countdownStyle": "chip", "salEnabled": True, "salAnimated": True, "salOutfit": "auto", "salLines": SAL_DEFAULT_LINES, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32714", "deliveryRadiusMiles": 20.0, "allowedZipCodes": ["32714"],
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
                     "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryStart": "11:00", "deliveryEnd": "21:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6], "homepageLayout": "classic",
                     "countdownVisible": True, "countdownHeadlineVisible": True, "countdownHoursVisible": True,
@@ -686,6 +697,8 @@ class StoreSettingsInput(BaseModel):
     lakeNonaEnabled: bool = False
     countdownStyle: str = "chip"
     salEnabled: bool = True
+    salAnimated: bool = True
+    salOutfit: str = "auto"
     salLines: Dict[str, List[str]] = Field(default_factory=lambda: {k: list(v) for k, v in SAL_DEFAULT_LINES.items()})
     zipTaxRates: Dict[str, float] = Field(default_factory=lambda: {"32827": 0.065, "32832": 0.065})
 
@@ -790,6 +803,13 @@ class StoreSettingsInput(BaseModel):
     @classmethod
     def _sal_lines(cls, values):
         return clean_sal_lines(values)
+
+    @field_validator("salOutfit")
+    @classmethod
+    def _sal_outfit(cls, v):
+        if v not in SAL_OUTFITS:
+            raise ValueError("Unknown outfit for Sal")
+        return v
 
     @field_validator("countdownStyle")
     @classmethod
@@ -951,6 +971,8 @@ def delivery_rules(settings: dict) -> dict:
             "mode": "selected_zips" if allowed else "radius", "sameDayEnabled": bool(settings.get("sameDayEnabled", True)),
             "lakeNonaEnabled": bool(settings.get("lakeNonaEnabled", False)),
             "salEnabled": bool(settings.get("salEnabled", True)),
+            "salAnimated": bool(settings.get("salAnimated", True)),
+            "salOutfit": sal_public(settings)["outfit"],
             "salLines": {spot: (settings.get("salLines") or {}).get(spot) or SAL_DEFAULT_LINES[spot] for spot in SAL_SPOTS}}
 
 
@@ -7560,11 +7582,14 @@ async def _seo_body_html(path: str, meta: dict) -> str:
     headline = re.split(r"\s[|–]\s", meta.get("title", ""), maxsplit=1)[0]
     main = f"<h1>{_h(headline)}</h1><p>{_h(meta.get('description'))}</p>"
     if normalized == "":
-        pickup = "order online for store pickup, or get local delivery" if (await get_settings()).get("pickupEnabled") else "or order online for local delivery"
+        home_settings = await get_settings()
+        pickup = "order online for store pickup, or get local delivery" if home_settings.get("pickupEnabled") else "or order online for local delivery"
+        home_area = ("in Altamonte Springs (ZIP 32714) and Lake Nona (ZIPs 32832 and 32827)" if home_settings.get("lakeNonaEnabled")
+                     else "within ZIP 32714")
         main = ("<h1>HD Smoke Shop – Smoke &amp; Vape Shop in Altamonte Springs, FL</h1>"
                 "<p>Locally owned smoke shop on SR 434 in Altamonte Springs, open 10 AM–10 PM every day. Disposable vapes, pods, "
                 f"hookah, glass pipes, rolling papers and cones, cigars and wraps, lighters, kratom and hemp products. Walk in, {pickup} "
-                "within ZIP 32714. Adults 21+ only.</p>"
+                f"{home_area}. Adults 21+ only.</p>"
                 "<p>Close to Longwood, Casselberry, Maitland, Winter Springs, Forest City and Apopka.</p>")
         bcounts = await brand_counts()
         top_brands = sorted(((slug, n) for slug, n in bcounts.items() if slug and n), key=lambda x: -x[1])[:16]
@@ -7868,8 +7893,7 @@ if FRONTEND_BUILD_DIR.exists():
             # Sal's on/off switch and lines go into the page, so he shows (or not) from the first paint
             # instead of popping in after the settings load.
             sal_settings = await get_settings()
-            sal = {"enabled": bool(sal_settings.get("salEnabled", True)),
-                   "lines": {spot: (sal_settings.get("salLines") or {}).get(spot) or SAL_DEFAULT_LINES[spot] for spot in SAL_SPOTS}}
+            sal = sal_public(sal_settings)
             document = document.replace("</head>", "<script>window.__P2D_SAL__=" + json.dumps(sal).replace("</", "<\\/") + "</script></head>", 1)
         except Exception as exc:
             logger.warning("Sal settings skipped: %s", exc)

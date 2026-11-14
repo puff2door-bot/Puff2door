@@ -1,4 +1,5 @@
 import { imgUrl } from "../api";
+import { SalFreeDelivery } from "../components/SalMascot";
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Trash2, Minus, Plus, ShoppingBag, ArrowRight, Tag } from "lucide-react";
@@ -111,7 +112,7 @@ const CartPage = () => {
               {totals.reward > 0 && (<div className="flex justify-between text-emerald-600" data-testid="cart-reward"><span>Rewards applied</span><span className="font-semibold">-${totals.reward.toFixed(2)}</span></div>)}
               <div className="flex justify-between"><span className="text-neutral-500">Delivery</span><span className="font-semibold">{shipping === 0 ? "FREE" : `$${shipping.toFixed(2)}`}</span></div>
               <div className="flex justify-between" data-testid="cart-tax"><span className="text-neutral-500">{pricing.taxLabel}</span><span className="font-semibold">${tax.toFixed(2)}</span></div>
-              {subtotal < pricing.freeDeliveryMin && (<p className="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">Add ${(pricing.freeDeliveryMin - subtotal).toFixed(2)} more for FREE delivery!</p>)}
+              <SalFreeDelivery subtotal={subtotal} min={pricing.freeDeliveryMin} />
             </div>
             <div className="flex justify-between items-center border-t mt-4 pt-4">
               <span className="font-heading text-lg uppercase">Total</span>
