@@ -83,18 +83,19 @@ const Header = () => {
       {/* Main bar */}
       <div className={`bg-white border-b transition-shadow ${scrolled ? "shadow-md" : ""}`}>
         <div className="max-w-[1280px] mx-auto px-4">
-          <div className="flex items-center gap-2 sm:gap-4 h-[68px] sm:h-[76px]">
+          {/* Small phones (320–419 px) get a slightly smaller logo and name so the cart never runs off the screen. */}
+          <div className="flex items-center gap-1 min-[360px]:gap-1.5 min-[420px]:gap-2 sm:gap-4 h-[68px] sm:h-[76px]">
             <button className="lg:hidden p-2 -ml-2 shrink-0" onClick={() => setMobileOpen(true)} aria-label="Menu">
               <Menu className="h-6 w-6" />
             </button>
 
             <Link to="/" className="flex items-center gap-2 shrink-0 min-w-0">
-              <AnimatedLogo testId="header-logo" className="h-12 w-12 sm:h-11 sm:w-11" />
+              <AnimatedLogo testId="header-logo" className="h-9 w-9 min-[360px]:h-10 min-[360px]:w-10 min-[420px]:h-12 min-[420px]:w-12 sm:h-11 sm:w-11" />
               <span className="leading-none">
-                <span className="block font-heading font-700 text-[21px] tracking-tight text-neutral-900 whitespace-nowrap">
+                <span className="block font-heading font-700 text-[16px] min-[360px]:text-[18px] min-[420px]:text-[21px] tracking-tight text-neutral-900 whitespace-nowrap">
                   H<span className="p2d-logo-accent text-emerald-600">D</span> Smoke Shop
                 </span>
-                <span className="block text-[9px] tracking-[0.12em] sm:tracking-[0.2em] text-neutral-500 uppercase whitespace-nowrap mt-0.5">
+                <span className="hidden min-[360px]:block text-[8px] min-[420px]:text-[9px] tracking-[0.1em] min-[420px]:tracking-[0.12em] sm:tracking-[0.2em] text-neutral-500 uppercase whitespace-nowrap mt-0.5">
                   {BRAND.tagline}
                 </span>
               </span>
@@ -104,7 +105,7 @@ const Header = () => {
             <SmartSearch query={query} setQuery={setQuery} onSubmit={submitSearch} />
 
             <div className="flex items-center gap-0.5 sm:gap-1 ml-auto lg:ml-0 shrink-0">
-              <button onClick={() => setDark((value) => !value)} data-testid="theme-toggle" aria-label={dark ? "Use light mode" : "Use dark mode"} className="p-2.5 rounded-lg hover:bg-neutral-100 transition-colors">
+              <button onClick={() => setDark((value) => !value)} data-testid="theme-toggle" aria-label={dark ? "Use light mode" : "Use dark mode"} className="p-2 min-[420px]:p-2.5 rounded-lg hover:bg-neutral-100 transition-colors">
                 {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </button>
               <Link to="/my-account" className="hidden lg:flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
@@ -114,7 +115,7 @@ const Header = () => {
                   <span className="block font-semibold">{user ? user.firstName || "Member" : "Login"}</span>
                 </span>
               </Link>
-              <Link to="/wishlist" aria-label="Wishlist" data-testid="header-wishlist-link" className="relative flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
+              <Link to="/wishlist" aria-label="Wishlist" data-testid="header-wishlist-link" className="relative flex items-center gap-2 px-1.5 min-[420px]:px-2 sm:px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
                 <div className="relative">
                   <Heart className="h-6 w-6" />
                   {wishCount > 0 && (
@@ -125,7 +126,7 @@ const Header = () => {
                 </div>
                 <span className="hidden lg:block text-xs font-semibold">Wishlist</span>
               </Link>
-              <Link to="/cart" aria-label={count > 0 ? `Cart, ${count} item${count === 1 ? "" : "s"}` : "Cart"} data-testid="header-cart-link" className="relative flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
+              <Link to="/cart" aria-label={count > 0 ? `Cart, ${count} item${count === 1 ? "" : "s"}` : "Cart"} data-testid="header-cart-link" className="relative flex items-center gap-2 px-1.5 min-[420px]:px-2 sm:px-3 py-2 rounded-lg hover:bg-neutral-100 transition-colors">
                 <div className="relative">
                   <ShoppingCart className="h-6 w-6" />
                   {count > 0 && (
