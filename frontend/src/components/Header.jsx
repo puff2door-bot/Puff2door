@@ -217,9 +217,10 @@ const Header = () => {
               </li>
               {liveShelfVisible && <li><Link to="/live-shelf" data-testid="nav-live-shelf" className="block px-3 py-3.5 text-[13px] font-semibold tracking-wide uppercase text-sky-300 hover:text-sky-200 transition-colors">Live Shelf</Link></li>}
               <li><MixSaveButton onClick={() => { setMixSaveInitial(null); setMixSaveOpen(true); }} /></li>
-              <li className="ml-auto flex items-center gap-5 text-[12px] text-neutral-300">
+              {/* Same font as the menu. Shown on wide screens only, where it fits on one line with the menu. */}
+              <li className="ml-auto hidden xl:flex items-center gap-4 text-[13px] font-semibold tracking-wide uppercase text-white whitespace-nowrap">
                 <span className="flex items-center gap-1.5"><Phone className="h-4 w-4 text-emerald-400" /> {BRAND.phone}</span>
-                <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-emerald-400" /> Altamonte Springs, FL</span>
+                <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-emerald-400" /> Altamonte Springs</span>
               </li>
             </ul>
           </div>
