@@ -318,7 +318,20 @@ VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
 VAPID_SUBJECT = os.environ.get("VAPID_SUBJECT", "mailto:puff2door@gmail.com").strip()
 WEB_PUSH_ENABLED = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY and VAPID_SUBJECT and webpush)
 PAYMENT_METHODS = {"test_card", "square", "cash_app", "paypal", "apple_pay", "zelle"}
-DEFAULT_SETTINGS = {"taxRate": 0.065, "zipTaxRates": {"32827": 0.065, "32832": 0.065}, "lakeNonaEnabled": False, "countdownStyle": "chip", "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32714", "deliveryRadiusMiles": 20.0, "allowedZipCodes": ["32714"],
+# Sal from Puff2door, the delivery mascot. Each spot shows one of its lines, rotating;
+# the owner edits them (and can switch Sal off) in Admin > Store Settings.
+SAL_SPOTS = ("banner", "deliveryPage", "checkout", "preparing", "outForDelivery", "delivered", "notFound")
+SAL_DEFAULT_LINES = {
+    "banner": ["Sal delivers to 32714. He knows a shortcut.", "Sal's on the road. Order before the cutoff."],
+    "deliveryPage": ["Hey, I'm Sal. I've been driving SR 434 since before GPS.", "Sal here. If you're in the zone, I'm on my way."],
+    "checkout": ["Sal will bring it in your delivery window. Have your 21+ ID ready.", "Sal's warming up the car. ID ready at the door, please."],
+    "preparing": ["Sal's packing your order.", "Sal's double-checking your bag. Twice."],
+    "outForDelivery": ["Sal's on the way. He knows a shortcut.", "Sal's out the door. Keep your ID handy."],
+    "delivered": ["Delivered. Sal says enjoy.", "Done. Sal's already planning the next shortcut."],
+    "notFound": ["Sal took a wrong turn. This page doesn't exist.", "Even Sal can't find this page."],
+}
+
+DEFAULT_SETTINGS = {"taxRate": 0.065, "zipTaxRates": {"32827": 0.065, "32832": 0.065}, "lakeNonaEnabled": False, "countdownStyle": "chip", "salEnabled": True, "salLines": SAL_DEFAULT_LINES, "deliveryFee": 15.0, "freeDeliveryMin": 99.0, "deliveryZip": "32714", "deliveryRadiusMiles": 20.0, "allowedZipCodes": ["32714"],
                     "loyaltyEnabled": True, "pointsPerDollar": 1.0, "pointsPerReward": 100, "rewardValue": 5.0, "minRedeemPoints": 100, "maxRedeemPerOrder": 0, "minPurchaseForRedeem": 0.0, "signupBonusPoints": 50,
                     "sameDayEnabled": True, "deliveryCutoff": "20:00", "deliveryStart": "11:00", "deliveryEnd": "21:00", "deliveryDays": [0, 1, 2, 3, 4, 5, 6], "homepageLayout": "classic",
                     "countdownVisible": True, "countdownHeadlineVisible": True, "countdownHoursVisible": True,
@@ -663,6 +676,8 @@ class StoreSettingsInput(BaseModel):
     pickupInstructions: str = Field(default="Bring a valid, unexpired 21+ photo ID that matches the name on the order.", max_length=400)
     lakeNonaEnabled: bool = False
     countdownStyle: str = "chip"
+    salEnabled: bool = True
+    salLines: Dict[str, List[str]] = Field(default_factory=lambda: {k: list(v) for k, v in SAL_DEFAULT_LINES.items()})
     zipTaxRates: Dict[str, float] = Field(default_factory=lambda: {"32827": 0.065, "32832": 0.065})
 
     @field_validator("homepageLayout")
@@ -761,6 +776,15 @@ class StoreSettingsInput(BaseModel):
         if not zip_lookup(v):
             raise ValueError("Delivery ZIP must be a valid US ZIP code")
         return re.sub(r"\D", "", v)[:5]
+
+    @field_validator("salLines")
+    @classmethod
+    def _sal_lines(cls, values):
+        cleaned = {}
+        for spot in SAL_SPOTS:
+            lines = [str(x).strip()[:140] for x in (values or {}).get(spot, []) if str(x).strip()][:6]
+            cleaned[spot] = lines or list(SAL_DEFAULT_LINES[spot])
+        return cleaned
 
     @field_validator("countdownStyle")
     @classmethod
@@ -920,7 +944,9 @@ def delivery_rules(settings: dict) -> dict:
     allowed = settings.get("allowedZipCodes") or []
     return {"zip": settings["deliveryZip"], "radiusMiles": float(settings["deliveryRadiusMiles"]), "allowedZipCodes": allowed,
             "mode": "selected_zips" if allowed else "radius", "sameDayEnabled": bool(settings.get("sameDayEnabled", True)),
-            "lakeNonaEnabled": bool(settings.get("lakeNonaEnabled", False))}
+            "lakeNonaEnabled": bool(settings.get("lakeNonaEnabled", False)),
+            "salEnabled": bool(settings.get("salEnabled", True)),
+            "salLines": {spot: (settings.get("salLines") or {}).get(spot) or SAL_DEFAULT_LINES[spot] for spot in SAL_SPOTS}}
 
 
 def promo_public(p: dict) -> dict:
@@ -7811,6 +7837,15 @@ if FRONTEND_BUILD_DIR.exists():
         except Exception as exc:
             logger.warning("SEO page content failed for %s: %s", full_path, exc)
             body_html = ""
+        try:
+            # Sal's on/off switch and lines go into the page, so he shows (or not) from the first paint
+            # instead of popping in after the settings load.
+            sal_settings = await get_settings()
+            sal = {"enabled": bool(sal_settings.get("salEnabled", True)),
+                   "lines": {spot: (sal_settings.get("salLines") or {}).get(spot) or SAL_DEFAULT_LINES[spot] for spot in SAL_SPOTS}}
+            document = document.replace("</head>", "<script>window.__P2D_SAL__=" + json.dumps(sal).replace("</", "<\\/") + "</script></head>", 1)
+        except Exception as exc:
+            logger.warning("Sal settings skipped: %s", exc)
         if normalized_path == "":
             document = await _inject_hero_preload(document)
             if body_html.startswith('<div data-seo-fallback="1"'):

@@ -1,7 +1,14 @@
 import React, { useEffect, useState } from "react";
+import SalMascot from "../../components/SalMascot";
 import { Save, Percent, Truck, Gift, MapPin, Radius, Clock, LayoutTemplate, Gauge, Plus, Trash2, Eye, EyeOff, Star, Store, Sparkles, Search } from "lucide-react";
 import api from "../../api";
 import { useToast } from "../../hooks/use-toast";
+
+const SAL_SPOTS = [
+  ["banner", "Footer (next to the store address)"], ["deliveryPage", "Delivery Area & Lake Nona pages"], ["checkout", "Checkout (delivery)"],
+  ["preparing", "Order tracking: preparing"], ["outForDelivery", "Order tracking: out for delivery"], ["delivered", "Order tracking: delivered"],
+  ["notFound", "Page not found (404)"],
+];
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -36,7 +43,8 @@ const AdminSettings = () => {
     mixSaveCategorySlugs: data.mixSaveCategorySlugs || ["disposable", "delta-smokeables", "delta", "delta-cartridges"], mixSaveProductIds: data.mixSaveProductIds || [], mixSaveButtonText: data.mixSaveButtonText || "Mix & Save 10%",
     pickupEnabled: data.pickupEnabled ?? false, pickupAddress: data.pickupAddress || "481 N State Rd 434, Suite 1050, Altamonte Springs, FL 32714", pickupHoursText: data.pickupHoursText ?? "Pick up during store hours.",
     pickupReadyMinutes: data.pickupReadyMinutes ?? 15, pickupHoldDays: data.pickupHoldDays ?? 1, pickupInstructions: data.pickupInstructions ?? "Bring a valid, unexpired 21+ photo ID that matches the name on the order.",
-    lakeNonaEnabled: data.lakeNonaEnabled ?? false, countdownStyle: data.countdownStyle || "chip", zipTaxRates: Object.entries(data.zipTaxRates || {}).map(([z, r]) => `${z}=${+(r * 100).toFixed(3)}`).join(", ") });
+    lakeNonaEnabled: data.lakeNonaEnabled ?? false, countdownStyle: data.countdownStyle || "chip",
+    salEnabled: data.salEnabled ?? true, salLines: Object.fromEntries(SAL_SPOTS.map(([k]) => [k, ((data.salLines || {})[k] || []).join("\n")])), zipTaxRates: Object.entries(data.zipTaxRates || {}).map(([z, r]) => `${z}=${+(r * 100).toFixed(3)}`).join(", ") });
 
   useEffect(() => {
     Promise.all([api.get("/admin/settings"), api.get("/categories"), api.get("/products")]).then(([settings, categoryData, productData]) => {
@@ -58,7 +66,8 @@ const AdminSettings = () => {
         mixSaveDiscountType: f.mixSaveDiscountType, mixSaveDiscountValue: Number(f.mixSaveDiscountValue), mixSaveMinQuantity: Number(f.mixSaveMinQuantity), mixSaveMinSubtotal: Number(f.mixSaveMinSubtotal),
         mixSaveCategorySlugs: f.mixSaveCategorySlugs, mixSaveProductIds: f.mixSaveProductIds.map(Number), mixSaveButtonText: f.mixSaveButtonText.trim(),
         pickupEnabled: Boolean(f.pickupEnabled), pickupAddress: f.pickupAddress.trim(), pickupHoursText: f.pickupHoursText, pickupReadyMinutes: Number(f.pickupReadyMinutes), pickupHoldDays: Number(f.pickupHoldDays), pickupInstructions: f.pickupInstructions,
-        lakeNonaEnabled: Boolean(f.lakeNonaEnabled), countdownStyle: f.countdownStyle, zipTaxRates: Object.fromEntries(f.zipTaxRates.split(/[\s,]+/).filter(Boolean).map((pair) => { const [z, r] = pair.split("="); return [z.trim(), Number(r) / 100]; })) });
+        lakeNonaEnabled: Boolean(f.lakeNonaEnabled), countdownStyle: f.countdownStyle,
+        salEnabled: Boolean(f.salEnabled), salLines: Object.fromEntries(SAL_SPOTS.map(([k]) => [k, (f.salLines[k] || "").split("\n").map((l) => l.trim()).filter(Boolean)])), zipTaxRates: Object.fromEntries(f.zipTaxRates.split(/[\s,]+/).filter(Boolean).map((pair) => { const [z, r] = pair.split("="); return [z.trim(), Number(r) / 100]; })) });
       setF(toForm(data));
       toast({ title: "Settings saved", description: "New rates, delivery zone and same-day cutoff apply immediately." });
     } catch (err) {
@@ -142,6 +151,24 @@ const AdminSettings = () => {
           <span className="flex items-center gap-2 text-sm font-bold">{f.lakeNonaEnabled ? "On" : "Off"}<input type="checkbox" data-testid="settings-lake-nona-enabled" className="accent-emerald-600 h-5 w-5" checked={f.lakeNonaEnabled} onChange={(e) => setF({ ...f, lakeNonaEnabled: e.target.checked })} /></span>
         </label>
         <p className="text-xs text-neutral-500">When on, customers in 32832 and 32827 can place delivery orders, and the Lake Nona delivery page is shown in the footer, on the Delivery Area page and in the Google sitemap. Turn it off to stop Lake Nona orders and hide the page.</p>
+      </div>
+
+      <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-sal">
+        <label className="flex items-center justify-between gap-4 cursor-pointer mb-1">
+          <span className="flex items-center gap-2"><SalMascot pose="avatar" size={28} /><span className="text-sm font-bold text-neutral-900">Sal, the Puff2door delivery mascot</span></span>
+          <span className="flex items-center gap-2 text-sm font-bold">{f.salEnabled ? "On" : "Off"}<input type="checkbox" data-testid="settings-sal-enabled" className="accent-emerald-600 h-5 w-5" checked={f.salEnabled} onChange={(e) => setF({ ...f, salEnabled: e.target.checked })} /></span>
+        </label>
+        <p className="text-xs text-neutral-500 mb-3">Sal appears only on delivery spots: a small Sal in the homepage delivery banner, the delivery pages, checkout, order tracking, the footer and the page-not-found screen. Never on products or the 21+ screen. Each spot shows one of its lines, changing on each visit. One line per row; leave a box empty to use the default lines.</p>
+        {f.salEnabled && (
+          <div className="grid sm:grid-cols-2 gap-3">
+            {SAL_SPOTS.map(([key, label]) => (
+              <div key={key}>
+                <label className="text-xs font-semibold text-neutral-700" htmlFor={`sal-${key}`}>{label}</label>
+                <textarea id={`sal-${key}`} rows={2} maxLength={900} className={inputCls} value={f.salLines[key]} onChange={(e) => setF({ ...f, salLines: { ...f.salLines, [key]: e.target.value } })} />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="border border-neutral-200 rounded-2xl p-5 mb-6" data-testid="settings-zip-tax">

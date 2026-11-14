@@ -12,6 +12,7 @@ import { STORE } from "../seo/config";
 import { useCatalog } from "../context/CatalogContext";
 import { useCart } from "../context/CartContext";
 import AnimatedLogo from "./AnimatedLogo";
+import { SalSays } from "./SalMascot";
 import { useApp } from "../context/AppContext";
 
 const Footer = () => {
@@ -93,6 +94,7 @@ const Footer = () => {
             <li className="flex items-start gap-3"><MapPin className="h-4 w-4 text-emerald-500 mt-0.5" /> <a href={STORE.directionsUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">{STORE.fullAddress}</a></li>
             <li className="flex items-start gap-3"><Clock className="h-4 w-4 text-emerald-500 mt-0.5" /> Open {STORE.hoursText}</li>
           </ul>
+          <SalSays spot="banner" size={36} className="mt-5" textClassName="text-xs text-neutral-300" />
         </div>
 
         <div>

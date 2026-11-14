@@ -4,6 +4,7 @@ import { Search, Package, ShieldCheck } from "lucide-react";
 import api from "../api";
 import { useToast } from "../hooks/use-toast";
 import OrderTracking from "../components/OrderTracking";
+import { SalOrderStatus } from "../components/SalMascot";
 
 const TrackPage = () => {
   const [num, setNum] = useState("");
@@ -46,6 +47,7 @@ const TrackPage = () => {
             <div><p className="text-xs text-neutral-500">Order</p><p className="font-heading text-xl">{order.orderNumber}</p></div>
             <Link to={`/order/${order.id}`} className="text-sm font-bold text-emerald-700 hover:underline">View full order details</Link>
           </div>
+          <SalOrderStatus order={order} />
           <OrderTracking order={order} />
           <p className="rounded-xl bg-neutral-50 border border-neutral-200 px-4 py-3 text-xs text-neutral-600 flex items-start gap-2"><ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" /> Valid government-issued photo ID proving age 21+ is checked at the door. Orders cannot be left with anyone under 21.</p>
         </div>

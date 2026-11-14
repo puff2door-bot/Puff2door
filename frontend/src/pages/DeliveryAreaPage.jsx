@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { MapPin, Truck, ShieldCheck, Clock, SearchCheck, ShoppingBag, Camera, Star, Video } from "lucide-react";
 import { DeliveryChecker } from "../components/DeliveryZone";
+import { SalSays } from "../components/SalMascot";
 import { useCart } from "../context/CartContext";
 import { useCatalog } from "../context/CatalogContext";
 import Seo from "../seo/Seo";
@@ -61,6 +62,7 @@ const DeliveryAreaPage = () => {
           glass pipes, kratom and more online, and we bring them to your door within {zoneDescription}. {sameDayEnabled ? "Order before the cutoff for same-day local delivery. " : "Choose from the available local delivery windows at checkout. "}
           Every order is age-verified (21+){pricing.freeDeliveryMin > 0 ? `, and delivery is free on orders over $${pricing.freeDeliveryMin}` : ", and local delivery is currently free"}.
         </p>
+        <SalSays spot="deliveryPage" pose="wave" size={88} className="mb-8 max-w-xl rounded-2xl bg-emerald-50 border border-emerald-100 p-3 pr-5" textClassName="text-sm font-semibold text-emerald-900 leading-snug" />
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
           {[
