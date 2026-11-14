@@ -54,7 +54,7 @@ const DealBanner = ({ deal }) => {
           <div className="contents sm:block sm:min-w-0">
             <div className="min-w-0 self-center">
               <span className="inline-flex items-center gap-1.5 bg-red-600 text-white text-[10px] sm:text-[11px] font-bold tracking-[0.12em] sm:tracking-[0.2em] uppercase px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full mb-2 sm:mb-3">
-                <Flame className="h-3.5 w-3.5" /> Deal of the Day · {pct}% off
+                <Flame className="h-3.5 w-3.5" /> <span className="sm:hidden">Deal · </span><span className="hidden sm:inline">Deal of the Day · </span>{pct}% off
               </span>
               <Link to={`/shop/${product.slug}`}>
                 <h2 data-testid="deal-product-name" className="font-heading text-lg sm:text-3xl text-white leading-tight sm:mb-2 hover:text-emerald-300 transition-colors">{product.name}</h2>
